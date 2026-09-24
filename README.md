@@ -253,11 +253,12 @@ enabled = false         # camada de decisão por modelo (futuro)
 model = "jev"
 
 [policies]
-deny = [                # bloqueios reais aplicados ao chat e a todos os subagentes
+deny = [                # bloqueado sempre — chat e todos os subagentes
     "Bash(git push --force *)",
     "Read(**/.env)",
     # ...
 ]
+ask = []                # sempre pede sua confirmação, mesmo se liberado em outro lugar
 
 [agents.coder]
 # name = "codificador"  # opcional; minúsculas, dígitos e hífen
@@ -341,7 +342,8 @@ MCP_TIMEOUT = "60000"                          # variáveis para a sessão
 add = "claude mcp add --scope user ado -- npx -y @azure-devops/mcp <org> -d core work work-items -a pat"
 
 [permissions]
-allow = ["mcp__ado", "PowerShell(git log *)"]  # liberadas sem prompt
+allow = ["mcp__ado"]                          # liberadas sem prompt
+ask = ["Bash(git *)", "PowerShell(git *)"]     # sempre pedem confirmação (vencem o allow)
 deny = []
 
 [agents.coder]                                  # por papel
@@ -571,6 +573,7 @@ O princípio é **nunca deixar o modelo ser a última barreira**:
 
 | Camada | Como funciona |
 |---|---|
+| **Confirmação obrigatória** | Regras `ask` (em `[policies]` ou no `context.toml`) sempre pedem sua aprovação — vencem qualquer `allow`. Ex.: um contexto pode exigir aprovação para todo `git`, todo SQL e todo comentário em card |
 | **Bloqueios reais** | `[policies].deny` vira regra de permissão do Claude Code: force push, `reset --hard`, `clean -f` e leitura de `.env` são negados para o chat e para todos os subagentes |
 | **Aprovação humana** | Escritas que mudam estado (API, banco, work items) são propostas pelo agente e só executadas após o seu OK no chat |
 | **Prompts de permissão** | O que não está em `allow` segue o modo de permissão do chat (no modo padrão, pede confirmação). Os subagentes compartilham as permissões da sessão |
