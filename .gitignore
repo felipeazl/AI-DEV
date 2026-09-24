@@ -1,0 +1,23 @@
+# Contextos de trabalho: cada um é um repositório Git próprio e privado
+contexts/*/
+
+# Gerados por `python aidev.py apply`
+/CLAUDE.md
+/.mcp.json
+.claude/agents/
+.claude/skills/
+.claude/settings.local.json
+orchestrator/config/runtime.json
+
+# Estado das execuções (mantém as pastas via .gitkeep)
+state/runs/*
+!state/runs/.gitkeep
+
+# Segredos
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/

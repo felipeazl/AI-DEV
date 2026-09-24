@@ -1,0 +1,28 @@
+name: refactor
+description: Refatoração sem mudança de comportamento; testes antes e depois.
+steps:
+  - id: context
+    agent: orchestrator
+    skill: codebase-context
+  - id: spec
+    agent: orchestrator
+    skill: to-spec
+  - id: tickets
+    agent: orchestrator
+    skill: to-tickets
+  - id: baseline
+    agent: qa
+    skill: testing
+  - id: implement
+    agent: coder
+    skill: implement-ticket
+    for_each: ticket
+  - id: test
+    agent: qa
+    skill: testing
+  - id: review
+    agent: reviewer
+    skill: code-review
+gates:
+  - before: merge
+    require: human_approval

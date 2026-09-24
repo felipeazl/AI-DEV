@@ -1,0 +1,76 @@
+# Catálogo de servidores MCP que o AI-DEV registra no escopo do projeto (.mcp.json).
+#
+# Quais ficam ativos: aidev.config.toml → [mcp].enabled.
+# Depois de mudar este arquivo ou a lista, rode `python aidev.py apply` e abra um chat novo.
+#
+# Campos:
+#   name        nome legível
+#   type        stdio (processo local) | http (servidor remoto)
+#   command     comando + args (stdio)       · url (http)
+#   env         variáveis passadas ao processo (stdio), opcional
+#   auth        "oauth" = autentique uma vez no Claude Code: /mcp → <servidor> → Authenticate
+#   allow       true = ferramentas liberadas sem prompt de permissão
+#   agents      papéis que podem usar ([] = todos)
+#   use_when    quando usar — vai para as instruções do orquestrador e dos agentes
+#   triggers    sinais na tarefa que indicam o uso. São a regra determinística de escolha
+#               enquanto o JEV está desligado (e o fallback quando ele estiver ligado).
+#
+# Fontes: github.com/microsoft/playwright-mcp · github.com/ChromeDevTools/chrome-devtools-mcp
+#         developers.figma.com/docs/figma-mcp-server · github.com/upstash/context7
+
+[servers.playwright]
+name = "Playwright"
+type = "stdio"
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]
+allow = false
+agents = ["coder", "qa", "reviewer"]
+use_when = "Exercitar a aplicação no navegador de ponta a ponta: navegar, preencher formulários, clicar, validar fluxos e critérios de aceite de interface, reproduzir bugs de tela."
+triggers = [
+    "teste E2E / ponta a ponta de uma tela ou fluxo",
+    "validar critério de aceite de interface",
+    "reproduzir bug de interação (clique, formulário, navegação)",
+]
+
+[servers.chrome-devtools]
+name = "Chrome DevTools"
+type = "stdio"
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest"]
+allow = false
+agents = ["coder", "qa"]
+use_when = "Depurar a aplicação num Chrome real: console, requisições de rede, performance (LCP, traces), DOM e CSS, erros de JavaScript."
+triggers = [
+    "erro no console do navegador",
+    "requisição de rede falhando ou lenta no front-end",
+    "página lenta / problema de performance",
+    "problema de layout ou CSS a inspecionar",
+]
+
+[servers.figma]
+name = "Figma"
+type = "http"
+url = "https://mcp.figma.com/mcp"
+auth = "oauth"
+allow = true
+agents = ["coder", "reviewer", "documenter"]
+use_when = "Ler o design no Figma (frames, componentes, variáveis, espaçamentos, textos) para implementar ou conferir uma tela fiel ao layout."
+triggers = [
+    "link do Figma na demanda",
+    "implementar ou ajustar tela a partir do layout",
+    "conferir fidelidade da tela ao design",
+]
+
+[servers.context7]
+name = "Context7"
+type = "stdio"
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+allow = true
+agents = []
+use_when = "Consultar documentação atualizada e exemplos de uma biblioteca/framework, na versão usada pelo projeto, antes de usar uma API sobre a qual há dúvida."
+triggers = [
+    "uso de API de biblioteca ou framework sem certeza da assinatura",
+    "dúvida de versão, breaking change ou migração",
+    "configuração de ferramenta ou pacote externo",
+]

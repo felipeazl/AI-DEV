@@ -1,0 +1,22 @@
+# Regras determinísticas de decisão (Fase 4 do plano).
+#
+# Usadas quando o JEV está desligado e como fallback quando ele está ligado.
+# Assim dá para medir se o JEV realmente melhora o sistema antes de trocar.
+#
+# Formato: <estado do ticket> = "<próxima ação>"
+# Ações válidas: TICKETS, IMPLEMENT, TEST, REVIEW, CODER_FIX, DOCS, DONE, HUMAN_APPROVAL
+
+max_retries = 3
+
+[rules]
+spec_ready = "TICKETS"
+tickets_ready = "IMPLEMENT"
+implementation_complete = "TEST"
+implementation_failed = "CODER_FIX"
+tests_failed = "CODER_FIX"
+tests_passed = "REVIEW"
+review_changes_requested = "CODER_FIX"
+review_approved = "DOCS"
+docs_complete = "DONE"
+max_retries_exceeded = "HUMAN_APPROVAL"
+policy_requires_approval = "HUMAN_APPROVAL"
