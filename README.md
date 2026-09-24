@@ -147,20 +147,50 @@ do seu plano.
 
 ## 4. Instalação
 
-### 4.1 Primeira vez
+### 4.1 Passo a passo
+
+**1. Clone o AI-DEV**
+
+```bash
+git clone https://github.com/felipeazl/AI-DEV.git C:/AI-DEV      # Windows
+git clone https://github.com/felipeazl/AI-DEV.git ~/AI-DEV       # Linux / macOS
+```
+
+**2. (Opcional) Clone um contexto de trabalho**
+
+Se você tem um repositório de contexto (regras de trabalho de uma empresa ou projeto), clone-o
+**dentro de `contexts/`**, com o nome que ele deve ter no AI-DEV:
+
+```bash
+git clone <url-do-repositorio-de-contexto> C:/AI-DEV/contexts/<nome>
+```
+
+Faça isso **antes** do setup. Sem contexto, o AI-DEV funciona só com as regras genéricas; se a
+config apontar para um contexto que não foi clonado, o setup pergunta se você quer seguir sem
+contexto, escolher outro ou criar um novo na hora. Contextos são repositórios **privados** e
+separados — o AI-DEV nunca os versiona.
+
+**3. Rode o setup**
 
 ```powershell
-git clone <url-do-ai-dev> C:\AI-DEV
 cd C:\AI-DEV
 .\setup.ps1                  # Windows
 ```
 
 ```bash
+cd ~/AI-DEV
 ./setup.sh                   # Linux / macOS  (ou: bash setup.sh)
 ```
 
 Os dois atalhos só localizam um Python 3.11+ e chamam `python aidev.py setup`, repassando os
-argumentos. Se não houver `aidev.config.toml`, o setup abre o **wizard**:
+argumentos. O setup roda o `apply` (gera o ambiente) e o `doctor` (verifica tudo).
+
+**4. Abra o Claude Code na pasta do AI-DEV** e autentique os MCPs que pedirem (ex.: Figma:
+`/mcp` → figma → Authenticate). Pronto — esse chat é o orquestrador (seção 6).
+
+### 4.2 O wizard
+
+Se não houver `aidev.config.toml` (ou com `setup --reconfigure`), o setup abre o **wizard**:
 
 | Pergunta | Opções | Padrão |
 |---|---|---|
@@ -178,23 +208,22 @@ argumentos. Se não houver `aidev.config.toml`, o setup abre o **wizard**:
   exigidos, e gera `contexts/<nome>/` com a estrutura mínima e um **repositório Git próprio**.
   Para cada MCP já registrado, o comando de registro é preenchido a partir do `claude mcp list`.
 
-Depois do wizard, o setup roda o `apply` (gera o ambiente) e o `doctor` (verifica tudo).
+Depois do wizard, o setup roda o `apply` e o `doctor`.
 
-### 4.2 Trazendo um contexto existente
+### 4.3 Adicionando um contexto depois
 
-Contextos não vêm no clone do AI-DEV — cada um é um repositório à parte:
+Um contexto pode ser clonado a qualquer momento; depois é só selecioná-lo:
 
-```powershell
-git clone <url-do-contexto> C:\AI-DEV\contexts\<nome>
+```bash
+git clone <url-do-repositorio-de-contexto> C:/AI-DEV/contexts/<nome>
 python aidev.py setup --reconfigure      # escolha o contexto na pergunta 6
 ```
 
-### 4.3 Outra máquina
+### 4.4 Outra máquina
 
-Clone o AI-DEV (e os contextos que usar) e rode o setup. O `aidev.config.toml` vem no clone,
-então **o wizard não roda**: o setup aplica a config direto. Se ela apontar para um contexto que
-não existe nesta máquina, o setup pergunta o que fazer: seguir sem contexto, usar outro ou
-criar um novo (ou cancelar com Ctrl+C para clonar o contexto antes).
+Repita os passos 1 a 4. O `aidev.config.toml` vem no clone, então **o wizard não roda**: o setup
+aplica a mesma config direto. Os arquivos gerados não são versionados — cada máquina gera os
+seus. Para mudar as escolhas nessa máquina, use `setup --reconfigure`.
 
 ---
 
