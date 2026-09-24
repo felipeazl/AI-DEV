@@ -195,7 +195,7 @@ def default_config() -> dict:
         "mcp": {"enabled": list(DEFAULT_MCP)},
         "context": {"active": ""},
         "jev": {"enabled": False, "model": "jev"},
-        "policies": {"deny": list(DEFAULT_DENY)},
+        "policies": {"deny": list(DEFAULT_DENY), "ask": []},
         "agents": json.loads(json.dumps(DEFAULT_AGENTS)),
     }
 
@@ -269,9 +269,13 @@ def render_config(cfg: dict) -> str:
         f"model = {toml_value(j['model'])}",
         "",
         "[policies]",
-        "# Regras de negação gravadas em .claude/settings.local.json (valem para todos os agentes).",
+        "# Regras de permissão gravadas em .claude/settings.local.json (valem para todos os agentes):",
+        "# deny = bloqueado sempre · ask = sempre pede sua confirmação, mesmo se liberado em outro lugar.",
         "deny = [",
         *[f"    {toml_value(d)}," for d in cfg["policies"]["deny"]],
+        "]",
+        "ask = [",
+        *[f"    {toml_value(d)}," for d in cfg["policies"]["ask"]],
         "]",
     ]
     out += ["", "# [agents.<papel>] — o papel é fixo; `name` é opcional (sem ele, vale o padrão comentado)."]
@@ -994,7 +998,7 @@ def sync_settings(managed: dict, previous: dict, dry: bool, rep: Report) -> None
         data.pop("effortLevel", None)
 
     perms = data.setdefault("permissions", {})
-    for key in ("allow", "deny", "additionalDirectories"):
+    for key in ("allow", "ask", "deny", "additionalDirectories"):
         merged = merge_list(perms.get(key, []), previous.get(key, []), managed[key])
         if merged:
             perms[key] = merged
@@ -1102,6 +1106,7 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "allow": list(dict.fromkeys([*ctx_perms.get("allow", []),
                                      *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
         "enabledMcpjsonServers": list(servers),
+        "ask": list(dict.fromkeys([*cfg["policies"]["ask"], *ctx_perms.get("ask", [])])),
         "deny": list(dict.fromkeys([*cfg["policies"]["deny"], *ctx_perms.get("deny", [])])),
         "additionalDirectories": project_dirs(cfg, ctx),
         "env": dict(ctx.get("env", {})) if ctx else {},
