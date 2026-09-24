@@ -426,6 +426,8 @@ def create_context(name: str, description: str, required_mcp: list[str],
         encoding="utf-8", newline="\n")
     (d / ".gitignore").write_text(".env\n.env.*\ndemandas/**/bin/\ndemandas/**/obj/\n",
                                   encoding="utf-8", newline="\n")
+    (d / ".gitattributes").write_text("* text=auto eol=lf\n*.ps1 text eol=crlf\n",
+                                      encoding="utf-8", newline="\n")
     if shutil.which("git"):
         run(["git", "init", "-b", "main"], cwd=d)
     return d
