@@ -1,0 +1,84 @@
+# Configuração do AI-DEV. Gerado por aidev.py configure em 2026-09-24.
+# Pode editar à mão; depois rode `python aidev.py apply`.
+# Atenção: `configure` reescreve este arquivo (comentários próprios são perdidos).
+# Modelos disponíveis: config/models.toml
+
+[models]
+# "multi"  = cada agente usa o modelo definido em [agents.<nome>].model
+# "single" = todos os agentes usam `default`
+# O modelo do orchestrator é o do chat; os subagentes usam o apelido (opus/sonnet/haiku)
+# e herdam o effort do chat.
+mode = "multi"
+default = "opus-high"
+
+[workspace]
+# Pastas dos seus projetos (opcional). Liberadas para o chat e todos os subagentes.
+project_dirs = []
+
+[mcp]
+# Servidores de config/mcp.toml registrados no escopo do projeto (.mcp.json).
+# O orquestrador decide quando cada um é necessário (use_when/triggers do catálogo).
+enabled = ["playwright", "chrome-devtools", "figma", "context7"]
+
+[context]
+# Pacote de regras de trabalho em contexts/<nome>/ ("" = nenhum).
+active = "safeweb"
+
+[jev]
+# Camada de decisão (seção 7 do plano). Desligado = regras determinísticas
+# de orchestrator/config/routing.toml.
+enabled = false
+model = "jev"
+
+[policies]
+# Regras de negação gravadas em .claude/settings.local.json (valem para todos os agentes).
+deny = [
+    "Bash(git push --force *)",
+    "Bash(git push -f *)",
+    "Bash(git reset --hard *)",
+    "Bash(git clean -f *)",
+    "PowerShell(git push --force *)",
+    "PowerShell(git push -f *)",
+    "PowerShell(git reset --hard *)",
+    "PowerShell(git clean -f *)",
+    "Read(**/.env)",
+    "Read(**/.env.*)",
+]
+
+# [agents.<papel>] — o papel é fixo; `name` é opcional (sem ele, vale o padrão comentado).
+
+[agents.orchestrator]
+# name = "orquestrador"
+enabled = true
+model = "opus-high"
+skills = ["to-spec", "to-tickets", "codebase-context"]
+
+[agents.coder]
+# name = "codificador"
+enabled = true
+model = "sonnet"
+skills = ["implement-ticket", "debug", "testing", "codebase-context"]
+
+[agents.reviewer]
+# name = "revisor"
+enabled = true
+model = "sonnet"
+skills = ["code-review"]
+
+[agents.api-db]
+# name = "api"
+enabled = true
+model = "sonnet"
+skills = ["database-safe", "debug"]
+
+[agents.qa]
+# name = "qa"
+enabled = false
+model = "sonnet"
+skills = ["testing"]
+
+[agents.documenter]
+# name = "documentador"
+enabled = true
+model = "sonnet"
+skills = ["documentation"]

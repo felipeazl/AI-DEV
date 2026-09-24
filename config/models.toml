@@ -1,0 +1,66 @@
+# Catálogo de modelos disponíveis para os agentes.
+#
+# O wizard (`python aidev.py configure`) oferece estes modelos como opção.
+# Para adicionar um modelo, crie uma nova tabela [models.<chave>].
+#
+# Campos:
+#   name         nome legível
+#   provider     anthropic | openai | other
+#   model_id     ID completo — usado no chat principal (orquestrador)
+#   alias        apelido aceito pelos subagentes do Claude Code: opus | sonnet | haiku | fable
+#                (subagentes só aceitam apelido, e o effort deles é sempre o do chat)
+#   effort       low | medium | high | xhigh | max — effort do chat quando este modelo é o
+#                do orquestrador
+#   min_claude_code  versão mínima do CLI `claude` para usar o model_id no chat
+#   router_only  true = só pode ser usado como camada de decisão (JEV), não como agente
+#
+# Hoje tudo roda com o login do Claude Code (sem API key), então só provider "anthropic"
+# pode ser usado. Os outros ficam catalogados para quando houver orquestrador próprio.
+
+[models.opus-high]
+name = "Claude Opus 5.5 (High)"
+provider = "anthropic"
+model_id = "claude-opus-5-5"
+alias = "opus"
+effort = "high"
+min_claude_code = "2.1.280"
+
+[models.opus-medium]
+name = "Claude Opus 5.5 (Medium)"
+provider = "anthropic"
+model_id = "claude-opus-5-5"
+alias = "opus"
+effort = "medium"
+min_claude_code = "2.1.280"
+
+[models.sonnet]
+name = "Claude Sonnet 5"
+provider = "anthropic"
+model_id = "claude-sonnet-5"
+alias = "sonnet"
+effort = "high"
+
+[models.haiku]
+name = "Claude Haiku 4.5"
+provider = "anthropic"
+model_id = "claude-haiku-4-5-20251001"
+alias = "haiku"
+
+# --- Exigem API key; ainda não suportados ---------------------------------------------
+# TODO: confirmar os IDs exatos dos modelos GPT na documentação da OpenAI.
+[models.gpt-sol]
+name = "GPT-5.6 Sol"
+provider = "openai"
+model_id = "gpt-5.6-sol"
+
+[models.gpt-luna]
+name = "GPT-5.6 Luna"
+provider = "openai"
+model_id = "gpt-5.6-luna"
+
+# TODO: definir provider e ID do JEV antes de habilitá-lo.
+[models.jev]
+name = "JEV"
+provider = "other"
+model_id = "jev"
+router_only = true

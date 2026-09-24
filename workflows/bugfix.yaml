@@ -1,0 +1,21 @@
+name: bugfix
+description: Correção de bug com reprodução, teste de regressão e review.
+steps:
+  - id: spec
+    agent: orchestrator
+    skill: to-spec
+  - id: reproduce
+    agent: coder
+    skill: debug
+  - id: implement
+    agent: coder
+    skill: implement-ticket
+  - id: test
+    agent: qa
+    skill: testing
+  - id: review
+    agent: reviewer
+    skill: code-review
+gates:
+  - before: merge
+    require: human_approval

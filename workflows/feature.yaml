@@ -1,0 +1,25 @@
+name: feature
+description: Nova funcionalidade, do pedido até a documentação.
+steps:
+  - id: spec
+    agent: orchestrator
+    skill: to-spec
+  - id: tickets
+    agent: orchestrator
+    skill: to-tickets
+  - id: implement
+    agent: coder
+    skill: implement-ticket
+    for_each: ticket
+  - id: test
+    agent: qa
+    skill: testing
+  - id: review
+    agent: reviewer
+    skill: code-review
+  - id: docs
+    agent: documenter
+    skill: documentation
+gates:
+  - before: merge
+    require: human_approval
