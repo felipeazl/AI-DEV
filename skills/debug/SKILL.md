@@ -12,5 +12,5 @@ description: Diagnose a failure (build, test, runtime or integration error) and 
 5. If the cause is outside the ticket scope, or retries reach `max_retries`, stop and report:
 
 ```json
-{"status": "failed", "error": "...", "cause": "...", "next_action": "CODER_FIX | HUMAN_APPROVAL"}
+{"state": "implementation_failed | environment_blocked", "error": "...", "cause": "...", "command": "..."}
 ```

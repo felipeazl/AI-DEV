@@ -11,15 +11,19 @@ steps:
     agent: coder
     skill: implement-ticket
     for_each: ticket
-  - id: test
+  - id: test            # qa quando habilitado; senão o bloco `validation` do codificador
     agent: qa
     skill: testing
-  - id: review
+  - id: prepare_review  # checklist-revisao.md (anexos, tag SQL, pendências, build)
+    agent: orchestrator
+  - id: review          # ⇄ codificador (CODER_FIX) até zero CRITICO/IMPORTANTE
     agent: reviewer
     skill: code-review
   - id: docs
     agent: documenter
     skill: documentation
+  - id: final_review
+    agent: orchestrator
 gates:
   - before: merge
     require: human_approval

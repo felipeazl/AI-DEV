@@ -39,6 +39,8 @@ description: Turn a request into a persistent specification that becomes the sou
 ```markdown
 # <Title>
 
+Nível: <level> — <why> (orchestrator's model table; decides model/effort of every agent)
+
 ## Objective
 
 ## Current behavior
@@ -67,5 +69,5 @@ description: Turn a request into a persistent specification that becomes the sou
 Finish with:
 
 ```json
-{"status": "spec_ready | open_questions", "spec": "<path>", "open_questions": []}
+{"state": "spec_ready | plan_has_open_questions", "spec": "<path>", "level": "<level>", "open_questions": []}
 ```

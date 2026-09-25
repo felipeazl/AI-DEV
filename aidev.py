@@ -63,7 +63,8 @@ ACTIONS = {"TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FI
 EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 ALIASES = {"opus", "sonnet", "haiku", "fable"}
 # Campos do frontmatter do subagente que o apply controla (os demais do AGENT.md são repassados).
-RESERVED_FRONTMATTER = {"name", "description", "model", "skills", "omitClaudeMd"}
+RESERVED_FRONTMATTER = {"name", "description", "model", "effort", "skills", "omitClaudeMd",
+                        "tools", "disallowedTools"}
 
 # Nome padrão de cada papel; sobrescreva com [agents.<papel>].name no aidev.config.toml.
 DEFAULT_NAMES = {
@@ -79,16 +80,17 @@ BUILTIN_AGENT_NAMES = {"general-purpose", "explore", "plan", "statusline-setup",
 # Nos arquivos de instruções, {{agent:<papel>}} vira o nome configurado do agente.
 PLACEHOLDER_RE = re.compile(r"\{\{agent:([\w-]+)\}\}")
 
-# Padrão: orquestrador em Opus (o chat), demais em Sonnet — como no setup anterior.
+# Padrão (nível "padrao" da demanda): orquestrador e revisor em Opus, demais em Sonnet.
+# Os outros níveis vêm de [levels] no routing.toml.
 DEFAULT_AGENTS: dict[str, dict] = {
     "orchestrator": {"enabled": True, "model": "opus-high",
                      "skills": ["to-spec", "to-tickets", "codebase-context"]},
     "coder": {"enabled": True, "model": "sonnet",
               "skills": ["implement-ticket", "debug", "testing", "codebase-context"]},
-    "reviewer": {"enabled": True, "model": "sonnet", "skills": ["code-review"]},
-    "api-db": {"enabled": True, "model": "sonnet", "skills": ["database-safe", "debug"]},
+    "reviewer": {"enabled": True, "model": "opus-high", "skills": ["code-review"]},
+    "api-db": {"enabled": True, "model": "sonnet-medium", "skills": ["database-safe", "debug"]},
     "qa": {"enabled": False, "model": "sonnet", "skills": ["testing"]},
-    "documenter": {"enabled": True, "model": "sonnet", "skills": ["documentation"]},
+    "documenter": {"enabled": True, "model": "sonnet-medium", "skills": ["documentation"]},
 }
 
 # Regras de negação do chat (valem para o orquestrador e todos os subagentes).
@@ -245,8 +247,8 @@ def render_config(cfg: dict) -> str:
         "[models]",
         '# "multi"  = cada agente usa o modelo definido em [agents.<nome>].model',
         '# "single" = todos os agentes usam `default`',
-        "# O modelo do orchestrator é o do chat; os subagentes usam o apelido (opus/sonnet/haiku)",
-        "# e herdam o effort do chat.",
+        "# O modelo do orchestrator é o do chat. O modelo de cada agente aqui é o do nível padrão da",
+        "# demanda; os outros níveis ficam em [levels] do orchestrator/config/routing.toml.",
         f"mode = {toml_value(m['mode'])}",
         f"default = {toml_value(m['default'])}",
         "",
@@ -587,6 +589,46 @@ def load_routing(rep: Report) -> dict:
     return routing
 
 
+def resolve_levels(routing: dict, cfg: dict, catalog: dict, resolved: dict,
+                   rep: Report) -> dict[str, dict]:
+    """Níveis da demanda → subagente (nome + modelo) de cada papel habilitado.
+
+    Effort só é configurável no frontmatter do subagente (não por chamada), então cada
+    combinação modelo/effort diferente da do agente base vira um arquivo `<nome>-<nível>`.
+    Papel ausente no nível usa o agente base. No modo single não há níveis.
+    """
+    levels = routing.get("levels", {})
+    if not levels or cfg["models"]["mode"] == "single":
+        return {}
+    out: dict[str, dict] = {}
+    for lvl, spec in levels.items():
+        if not NAME_RE.match(lvl):
+            rep.error(f"routing.toml: nível {lvl!r} inválido (use minúsculas, dígitos e hífen)")
+            continue
+        roles = {}
+        for role, a in resolved.items():
+            if role == ORCHESTRATOR or not a["enabled"]:
+                continue
+            key = spec.get(role, a["model_key"])
+            m = catalog.get(key)
+            if m is None:
+                rep.error(f"routing.toml: [levels.{lvl}] {role} = {key!r} não existe em config/models.toml")
+                continue
+            if not m.get("alias") or m.get("provider") != "anthropic" or m.get("router_only"):
+                rep.error(f"routing.toml: [levels.{lvl}] {role} = {key!r} não serve para subagente")
+                continue
+            same = (m["alias"], m.get("effort")) == (a["model"]["alias"], a["model"].get("effort"))
+            roles[role] = {"name": a["name"] if same else f"{a['name']}-{lvl}",
+                           "model_key": key, "model": m}
+        for role in spec:
+            if role != "when" and role not in resolved:
+                rep.error(f"routing.toml: [levels.{lvl}] cita papel desconhecido {role!r}")
+        out[lvl] = {"when": spec.get("when", ""), "roles": roles}
+    if routing.get("default_level", "") not in out:
+        rep.error(f"routing.toml: default_level {routing.get('default_level')!r} não é um nível de [levels]")
+    return out
+
+
 def decision_label(cfg: dict, catalog: dict) -> str:
     if cfg["jev"]["enabled"]:
         jev = catalog.get(cfg["jev"]["model"], {"name": cfg["jev"]["model"]})
@@ -598,7 +640,8 @@ def model_label(agent_name: str, m: dict) -> str:
     if agent_name == ORCHESTRATOR:
         effort = f", effort {m['effort']}" if m.get("effort") else ""
         return f"{m['name']} (`{m['model_id']}`{effort})"
-    return f"{m['name']} (`{m.get('alias', '?')}`, effort inherited from the chat)"
+    effort = f"effort {m['effort']}" if m.get("effort") else "effort inherited from the chat"
+    return f"{m['name']} (`{m.get('alias', '?')}`, {effort})"
 
 
 # ---------------------------------------------------------------------------
@@ -902,24 +945,52 @@ def mcp_agent_section(servers: dict, role: str) -> str:
     ])
 
 
+def csv_field(value: str) -> list[str]:
+    return [t.strip() for t in value.split(",") if t.strip()]
+
+
+def subagent_tools(meta: dict, role: str, ctx: dict | None, servers: dict) -> list[str]:
+    """Allowlist do AGENT.md + os servidores MCP do papel + os MCP exigidos pelo contexto.
+
+    Sem `tools` no AGENT.md o subagente herda todas as ferramentas (comportamento antigo).
+    """
+    tools = csv_field(meta.get("tools", ""))
+    if not tools:
+        return []
+    mcp = [*mcp_for_role(servers, role), *(ctx.get("required_mcp", []) if ctx else [])]
+    return list(dict.fromkeys([*tools, *[f"mcp__{k}" for k in mcp]]))
+
+
 def render_subagent(role: str, agent: dict, cfg: dict, catalog: dict, ctx: dict | None,
-                    tpl: Templater, servers: dict) -> str:
+                    tpl: Templater, servers: dict, routing: dict,
+                    variant: dict | None = None) -> str:
+    """Instruções do subagente. `variant` = {"name", "model", "level"} gera a cópia de um nível."""
     source = AGENTS_DIR / role / "AGENT.md"
     meta, body = read_frontmatter(source)
-    name = agent["name"]
+    name = variant["name"] if variant else agent["name"]
+    model = variant["model"] if variant else agent["model"]
+    description = tpl.render(meta.get("description", name), source)
+    if variant:
+        description = (f"Mesmo papel de `{agent['name']}`, no nível {variant['level']} da demanda "
+                       f"({model['name']}, effort {model.get('effort', 'do chat')}). Use só quando o "
+                       f"orquestrador classificar a tarefa nesse nível.")
     front = ["---", f"name: {name}",
-             f"description: {json.dumps(tpl.render(meta.get('description', name), source), ensure_ascii=False)}",
-             f"model: {agent['model']['alias']}",
-             "omitClaudeMd: true"]
+             f"description: {json.dumps(description, ensure_ascii=False)}",
+             f"model: {model['alias']}"]
+    if model.get("effort"):
+        front.append(f"effort: {model['effort']}")
+    front.append("omitClaudeMd: true")
     if agent["skills"]:
         front += ["skills:"] + [f"  - {s}" for s in agent["skills"]]
+    tools = subagent_tools(meta, role, ctx, servers)
+    if tools:
+        front.append(f"tools: {', '.join(tools)}")
     ctx_agent = ctx.get("agents", {}).get(role, {}) if ctx else {}
-    disallowed = [t.strip() for t in meta.get("disallowedTools", "").split(",") if t.strip()]
+    disallowed = csv_field(meta.get("disallowedTools", ""))
     disallowed += [t for t in ctx_agent.get("disallowed_tools", []) if t not in disallowed]
     if disallowed:
         front.append(f"disallowedTools: {', '.join(disallowed)}")
-    front += [f"{k}: {v}" for k, v in meta.items()
-              if k not in RESERVED_FRONTMATTER and k != "disallowedTools"]
+    front += [f"{k}: {v}" for k, v in meta.items() if k not in RESERVED_FRONTMATTER]
     front.append("---")
 
     sources = [source, *policy_files(ctx), *context_files(ctx, role)]
@@ -931,8 +1002,10 @@ def render_subagent(role: str, agent: dict, cfg: dict, catalog: dict, ctx: dict 
         "\n".join(["## Runtime", "",
                    f"- Agent: `{name}` (role `{role}`; subagent — you cannot talk to the user, "
                    f"return questions and approvals to `{tpl.names[ORCHESTRATOR]}`)",
-                   f"- Model: {model_label(role, agent['model'])}",
+                   f"- Model: {model_label(role, model)}",
                    f"- Skills: {', '.join(f'`{s}`' for s in agent['skills']) or '—'}",
+                   f"- Max retries: {routing.get('max_retries', 3)} (the same failing step; then "
+                   "stop and report the failure `state` of your OUTPUT)",
                    *runtime_lines(cfg, catalog, ctx)]),
         mcp_agent_section(servers, role),
         systems_section(ctx, detailed=True),
@@ -947,15 +1020,54 @@ def render_subagent(role: str, agent: dict, cfg: dict, catalog: dict, ctx: dict 
     return "\n\n".join(parts) + "\n"
 
 
+def short_model(m: dict) -> str:
+    return f"{m.get('alias', '?')}/{m['effort']}" if m.get("effort") else m.get("alias", "?")
+
+
+def levels_section(levels: dict, resolved: dict, cfg: dict, routing: dict) -> str:
+    if not levels:
+        return ""
+    roles = [r for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
+    rows = ["| Level | When | " + " | ".join(resolved[r]["name"] for r in roles) + " |",
+            "|---|---|" + "---|" * len(roles)]
+    for lvl, spec in levels.items():
+        cells = [f"`{spec['roles'][r]['name']}` ({short_model(spec['roles'][r]['model'])})"
+                 for r in roles if r in spec["roles"]]
+        rows.append(f"| **{lvl}** | {spec['when']} | " + " | ".join(cells) + " |")
+    default = routing.get("default_level", "")
+    if cfg["jev"]["enabled"]:
+        rule = ("1. Ask the JEV decision layer for the agent, model and effort of each task. Its answer "
+                "must be a subagent from the table below (effort is fixed per subagent file). If it "
+                "gives no valid answer, fall back to rule 2.")
+    else:
+        rule = ("1. JEV is disabled, so **you** choose: this is a cost decision, make it on every "
+                "delegation. A simple demand does not need a strong model or a high effort.")
+    return "\n".join([
+        "## Model and effort per task", "",
+        rule,
+        "2. Classify the demand in the plan with one level from the table and why "
+        f"(`Nível: <level> — <reason>`); if unsure, use **{default}**. A ticket may take another "
+        "level when its own scope clearly fits it — write that in the ticket.",
+        "3. Delegate to the subagent the table gives for that level and role. Do not pass `model` in "
+        "the `Agent` call: each subagent already pins its model and effort.",
+        "4. Escalate one level for the next attempt of a role when it failed the same step twice, "
+        "when a review finds a CRITICO, or when a result shows the task is harder than classified.",
+        "5. Record every delegation in `metricas.md` in the demand folder: agent, level, "
+        "model/effort and the **real** usage from the completion notification (tokens, tool uses, "
+        "duration). Never estimate tokens; those numbers are the evidence to tune these levels.",
+        "", *rows,
+    ])
+
+
 def render_root_claude_md(resolved: dict, cfg: dict, catalog: dict, ctx: dict | None,
-                          tpl: Templater, servers: dict) -> str:
+                          tpl: Templater, servers: dict, levels: dict, routing: dict) -> str:
     orch = resolved[ORCHESTRATOR]
     team = ["| Subagent (name) | Role | Model | Skills | Status |", "|---|---|---|---|---|"]
     for role, a in resolved.items():
         if role == ORCHESTRATOR:
             continue
         status = "enabled" if a["enabled"] else "disabled — do not delegate"
-        team.append(f"| `{a['name']}` | {role} | {a['model']['name']} (`{a['model'].get('alias', '?')}`) | "
+        team.append(f"| `{a['name']}` | {role} | {a['model']['name']} (`{short_model(a['model'])}`) | "
                     f"{', '.join(a['skills'])} | {status} |")
 
     parts = [
@@ -972,7 +1084,9 @@ def render_root_claude_md(resolved: dict, cfg: dict, catalog: dict, ctx: dict | 
             f"- Orchestrator skills: {', '.join(f'`{s}`' for s in orch['skills'])}",
             *runtime_lines(cfg, catalog, ctx)]),
         "\n".join(["## Team", "",
-                   "Call subagents by the name in the first column (`subagent_type`).", "", *team]),
+                   "Call subagents by the name in the first column (`subagent_type`). This is the "
+                   "default level; the next section picks the variant for each task.", "", *team]),
+        levels_section(levels, resolved, cfg, routing),
         mcp_orchestrator_section(servers, resolved, cfg),
         systems_section(ctx, detailed=False),
         "# Policies",
@@ -1139,14 +1253,25 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     skills = available_skills(ctx, rep)
     resolved = resolve(cfg, catalog, ctx, skills, rep)
     routing = load_routing(rep)
+    levels = resolve_levels(routing, cfg, catalog, resolved, rep)
     check_workflows(resolved, skills, rep)
     servers = resolve_mcp(cfg, list(resolved), rep)
     if not rep.errors:
         # Gera tudo antes de gravar qualquer coisa: marcador inválido aborta sem meio-termo.
         tpl = Templater(resolved, rep)
-        subagents = {a["name"]: render_subagent(role, a, cfg, catalog, ctx, tpl, servers)
+        subagents = {a["name"]: render_subagent(role, a, cfg, catalog, ctx, tpl, servers, routing)
                      for role, a in resolved.items() if role != ORCHESTRATOR and a["enabled"]}
-        root_md = render_root_claude_md(resolved, cfg, catalog, ctx, tpl, servers)
+        taken = {a["name"] for a in resolved.values()} | BUILTIN_AGENT_NAMES
+        for lvl, spec in levels.items():
+            for role, v in spec["roles"].items():
+                if v["name"] in subagents:
+                    continue
+                if v["name"] in taken:
+                    rep.error(f"nível {lvl}: nome de variante {v['name']!r} colide com outro agente")
+                    continue
+                subagents[v["name"]] = render_subagent(role, resolved[role], cfg, catalog, ctx, tpl,
+                                                       servers, routing, {**v, "level": lvl})
+        root_md = render_root_claude_md(resolved, cfg, catalog, ctx, tpl, servers, levels, routing)
     if rep.errors:
         print("\nCorrija os erros acima e rode novamente.")
         return False
@@ -1164,8 +1289,11 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     sync_subagents(subagents, dry, rep)
     for role, a in resolved.items():
         if a["name"] in subagents:
-            rep.info(f"{a['name']:<13} {role:<11} {a['model']['name']:<16} "
-                     f"~{len(subagents[a['name']]) // 4:,} tokens de instruções")
+            rep.info(f"{a['name']:<13} {role:<11} {short_model(a['model']):<14} "
+                     f"~{len(subagents[a['name']]) // 3:,} tokens de instruções")
+    for lvl, spec in levels.items():
+        variants = [f"{v['name']} ({short_model(v['model'])})" for v in spec["roles"].values()]
+        rep.info(f"nível {lvl}: {', '.join(variants)}")
 
     heading("Orquestrador (CLAUDE.md + .claude/settings.local.json)")
     write_if_changed(ROOT_CLAUDE_MD, root_md, dry, rep)
@@ -1204,6 +1332,11 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
             "jev_model": catalog.get(cfg["jev"]["model"]) if cfg["jev"]["enabled"] else None,
             "max_retries": routing.get("max_retries", 3),
             "rules": routing.get("rules", {}),
+            "default_level": routing.get("default_level"),
+            "levels": {lvl: {"when": spec["when"],
+                             "agents": {r: {"name": v["name"], "model_key": v["model_key"]}
+                                        for r, v in spec["roles"].items()}}
+                       for lvl, spec in levels.items()},
         },
         "agents": {role: {k: a[k] for k in ("name", "enabled", "skills", "model_key", "model")}
                    for role, a in resolved.items()},
@@ -1387,6 +1520,10 @@ def save_config(cfg: dict) -> None:
 
 
 def main() -> int:
+    # Console do Windows (cp1252) quebra em "→" e acentos; UTF-8 com substituição nunca falha.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Configuração do ambiente AI-DEV.")
     sub = parser.add_subparsers(dest="command")
     p_setup = sub.add_parser("setup", help="wizard (se necessário) + apply + doctor")

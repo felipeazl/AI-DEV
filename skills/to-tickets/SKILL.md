@@ -21,6 +21,7 @@ description: Break an approved spec into small, self-contained tickets that an a
 - Agent: coder | api-db | qa | documenter
 - Depends on: <ticket ids or none>
 - Risk: low | medium | high
+- Level: <level from the orchestrator's model table> — only when it differs from the demand's, and why
 
 ## Goal
 
@@ -35,5 +36,5 @@ description: Break an approved spec into small, self-contained tickets that an a
 Finish with:
 
 ```json
-{"status": "tickets_ready", "tickets": ["<state dir>/tickets/WS-001-client-reconnect.md"]}
+{"state": "tickets_ready", "tickets": ["<state dir>/tickets/WS-001-client-reconnect.md"]}
 ```

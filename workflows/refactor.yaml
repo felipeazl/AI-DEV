@@ -10,7 +10,7 @@ steps:
   - id: tickets
     agent: orchestrator
     skill: to-tickets
-  - id: baseline
+  - id: baseline        # build/testes da base; com qa desabilitado, o codificador roda
     agent: qa
     skill: testing
   - id: implement
@@ -20,9 +20,16 @@ steps:
   - id: test
     agent: qa
     skill: testing
+  - id: prepare_review
+    agent: orchestrator
   - id: review
     agent: reviewer
     skill: code-review
+  - id: docs
+    agent: documenter
+    skill: documentation
+  - id: final_review
+    agent: orchestrator
 gates:
   - before: merge
     require: human_approval
