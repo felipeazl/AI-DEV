@@ -34,7 +34,7 @@ model = "jev"
 # Orquestrador alternativo no Codex CLI (GPT): o apply gera AGENTS.md e o Codex delega aos
 # agentes Claude com `python aidev.py delegate` (claude -p, modelo/effort por chamada).
 enabled = true
-model = "gpt-terra"   # gpt-5.6-sol não é liberado para esta conta ChatGPT no Codex
+model = "gpt-6-luna"  # o GPT mais recente liberado para a conta ChatGPT no Codex (Sol não é)
 effort = "high"
 
 [policies]
