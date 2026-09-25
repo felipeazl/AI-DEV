@@ -7,10 +7,10 @@
 #   name         nome legível
 #   provider     anthropic | openai | other
 #   model_id     ID completo — usado no chat principal (orquestrador)
-#   alias        apelido aceito pelos subagentes do Claude Code: opus | sonnet | haiku | fable
-#                (subagentes só aceitam apelido, e o effort deles é sempre o do chat)
-#   effort       low | medium | high | xhigh | max — effort do chat quando este modelo é o
-#                do orquestrador
+#   alias        apelido usado no frontmatter dos subagentes: opus | sonnet | haiku | fable
+#   effort       low | medium | high | xhigh | max — effort do chat (orquestrador) ou do
+#                subagente (campo `effort` do frontmatter; não dá para trocar por chamada, por
+#                isso cada nível de demanda com effort diferente gera uma variante do agente)
 #   min_claude_code  versão mínima do CLI `claude` para usar o model_id no chat
 #   router_only  true = só pode ser usado como camada de decisão (JEV), não como agente
 #
@@ -39,6 +39,20 @@ provider = "anthropic"
 model_id = "claude-sonnet-5"
 alias = "sonnet"
 effort = "high"
+
+[models.sonnet-medium]
+name = "Claude Sonnet 5 (Medium)"
+provider = "anthropic"
+model_id = "claude-sonnet-5"
+alias = "sonnet"
+effort = "medium"
+
+[models.sonnet-low]
+name = "Claude Sonnet 5 (Low)"
+provider = "anthropic"
+model_id = "claude-sonnet-5"
+alias = "sonnet"
+effort = "low"
 
 [models.haiku]
 name = "Claude Haiku 4.5"

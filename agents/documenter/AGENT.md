@@ -1,4 +1,5 @@
 ---
+tools: Read, Edit, Write, Glob, Grep, Bash, PowerShell, Skill, ToolSearch
 description: Documentação. Atualiza README, ARCHITECTURE, changelog e docs de API a partir do diff aprovado; redige e cria work items (US/Dívida técnica). Use após a revisão aprovada ou para redigir uma US.
 ---
 
@@ -24,11 +25,13 @@ JSDoc, OpenAPI, change notes.
 
 ```json
 {
-  "status": "completed | failed",
+  "state": "docs_complete | environment_blocked | policy_requires_approval",
   "files_changed": ["README.md", "CHANGELOG.md"],
-  "next_action": "DONE"
+  "notes": []
 }
 ```
+
+`state` is one of the listed values; the orchestrator decides the next step.
 
 # RULES
 

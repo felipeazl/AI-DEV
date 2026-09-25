@@ -6,8 +6,8 @@
 [models]
 # "multi"  = cada agente usa o modelo definido em [agents.<nome>].model
 # "single" = todos os agentes usam `default`
-# O modelo do orchestrator é o do chat; os subagentes usam o apelido (opus/sonnet/haiku)
-# e herdam o effort do chat.
+# O modelo do orchestrator é o do chat. O modelo de cada agente aqui é o do nível padrão da
+# demanda; os outros níveis ficam em [levels] do orchestrator/config/routing.toml.
 mode = "multi"
 default = "opus-high"
 
@@ -62,13 +62,13 @@ skills = ["implement-ticket", "debug", "testing", "codebase-context"]
 [agents.reviewer]
 # name = "revisor"
 enabled = true
-model = "sonnet"
+model = "opus-high"
 skills = ["code-review"]
 
 [agents.api-db]
 # name = "api"
 enabled = true
-model = "sonnet"
+model = "sonnet-medium"
 skills = ["database-safe", "debug"]
 
 [agents.qa]
@@ -80,5 +80,5 @@ skills = ["testing"]
 [agents.documenter]
 # name = "documentador"
 enabled = true
-model = "sonnet"
+model = "sonnet-medium"
 skills = ["documentation"]

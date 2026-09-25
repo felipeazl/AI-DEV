@@ -1,4 +1,5 @@
 ---
+tools: Read, Glob, Grep, Bash, PowerShell, Skill, ToolSearch
 description: QA. Executa testes, lint, typecheck e build e verifica cada critério de aceite, sem corrigir código. Use depois da implementação e antes da revisão.
 ---
 
@@ -23,7 +24,7 @@ checks for each acceptance criterion.
 
 ```json
 {
-  "status": "passed | failed",
+  "state": "tests_passed | tests_failed | environment_blocked",
   "ticket": "WS-002",
   "checks": {
     "unit": "passed | failed | skipped",
@@ -35,8 +36,7 @@ checks for each acceptance criterion.
   "acceptance_criteria": [
     {"criterion": "...", "result": "met | not_met", "evidence": "..."}
   ],
-  "failures": [],
-  "next_action": "REVIEW | CODER_FIX"
+  "failures": []
 }
 ```
 

@@ -34,14 +34,22 @@ Check, in order:
 - `SUGESTAO` — improvement. Does not block.
 - `ELOGIO` — something done well.
 
-## Output (one entry per finding)
+## Output
+
+One entry per finding, in the Reviewer OUTPUT defined in the Reviewer's agent definition (the
+only format — `state`, `findings`, `doubts`):
 
 ```json
-{"id": "R1-01", "severity": "CRITICO", "file": "path", "line": 120,
+{"id": "R1-01", "severity": "CRITICO", "status": "open", "file": "path", "line": 120,
  "problem": "...", "why": "...", "fix": "...",
  "fix_in_scope": true, "confidence": "high | medium"}
 ```
 
-`fix_in_scope` and `confidence` let the orchestrator triage without the user. Save the result
-to the location the orchestrator gives (default `<state dir>/reviews/<ticket>-r<N>.json`) and
-return the Reviewer OUTPUT defined in the Reviewer's agent definition.
+`fix_in_scope` and `confidence` let the orchestrator triage without the user. Every round, write
+the full review (all findings with status, and the doubts) as Markdown to the path the task
+gives (default `<state dir>/reviews/<ticket>-r<N>.md`), then return the OUTPUT JSON with the
+complete findings list in your final message.
+
+**Round ≥ 2:** you get the previous review and the diff of the fixes. Check each previous finding
+(`fixed` / `not_fixed`, with evidence), then look for regressions in the changed lines. Open the
+full files only where the fix needs context.

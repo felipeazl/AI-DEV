@@ -9,8 +9,12 @@
 # Formato: <estado da demanda> = "<próxima ação>"
 # Ações válidas: TICKETS, IMPLEMENT, TEST, PREPARE_REVIEW, REVIEW, CODER_FIX, DOCS,
 #                FINAL_REVIEW, DONE, HUMAN_APPROVAL
+#
+# Cada agente termina com `"state": "<estado>"` usando as chaves abaixo (veja o OUTPUT de cada
+# AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
 
 max_retries = 3
+default_level = "padrao"      # nível da demanda quando não há motivo para outro (ver [levels])
 
 [rules]
 # Início e plano
@@ -19,10 +23,14 @@ plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um cam
 spec_ready = "TICKETS"                          # sem dúvidas: segue sozinho
 tickets_ready = "IMPLEMENT"
 
-# Implementação
+# Implementação (codificador)
 implementation_complete = "TEST"
 implementation_failed = "CODER_FIX"
 environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não consegue resolver
+ticket_has_open_questions = "HUMAN_APPROVAL"    # o plano não serve para o código; confira antes
+
+# Testes. Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador
+# (build/testes pelos comandos de Systems); não há outro agente.
 tests_failed = "CODER_FIX"
 tests_passed = "PREPARE_REVIEW"                 # checklist: anexos, tag SQL, pendências, build
 
@@ -37,3 +45,28 @@ max_retries_exceeded = "HUMAN_APPROVAL"
 docs_complete = "FINAL_REVIEW"                  # pacote único para o Felipe
 final_review_approved = "DONE"
 policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, SQL de escrita...)
+
+# ---------------------------------------------------------------------------------------------
+# Nível da demanda → modelo e effort de cada papel.
+#
+# JEV desligado: o orquestrador classifica a demanda (e, se preciso, o ticket) num nível.
+# JEV ligado: ele escolhe agente, modelo e effort; estas regras ficam como fallback.
+# Valores: chaves de config/models.toml. Papel ausente num nível = o modelo do agente em
+# aidev.config.toml (que é o nível padrão). Cada combinação diferente vira um subagente
+# `<nome>-<nível>`, porque o effort só é configurável no frontmatter.
+
+[levels.simples]
+when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
+coder = "sonnet-low"
+reviewer = "sonnet-medium"
+api-db = "sonnet-low"
+documenter = "sonnet-low"
+qa = "sonnet-low"
+
+[levels.padrao]
+when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
+
+[levels.complexa]
+when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
+api-db = "sonnet"
+documenter = "sonnet"

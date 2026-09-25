@@ -7,12 +7,16 @@ steps:
   - id: implement
     agent: coder
     skill: implement-ticket
-  - id: test
+  - id: test            # qa quando habilitado; senão o bloco `validation` do codificador
     agent: qa
     skill: testing
+  - id: prepare_review
+    agent: orchestrator
   - id: review
     agent: reviewer
     skill: code-review
+  - id: final_review
+    agent: orchestrator
 gates:
   - before: deploy
     require: human_approval

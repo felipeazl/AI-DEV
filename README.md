@@ -269,8 +269,9 @@ skills = ["implement-ticket", "debug", "testing", "codebase-context"]
 
 - **Modelo do orquestrador** é o do chat: vai para `.claude/settings.local.json` com o ID
   completo e o effort (ex.: `claude-opus-5-5`, `high`).
-- **Modelo dos subagentes** é passado por apelido (`opus`, `sonnet`, `haiku`) — é o que o
-  Claude Code aceita — e o **effort é herdado do chat**. Chat em High ⇒ subagentes em High.
+- **Modelo dos subagentes** vai no frontmatter por apelido (`opus`, `sonnet`, `haiku`) junto
+  com o `effort` do modelo escolhido. O modelo configurado aqui é o do **nível padrão** da
+  demanda; os outros níveis ficam em `[levels]` do `routing.toml` (seção 5.4).
 - `python aidev.py configure` reescreve o arquivo inteiro (comentários próprios se perdem);
   para ajustes pontuais, edite à mão.
 
@@ -282,8 +283,11 @@ name = "Claude Sonnet 5"
 provider = "anthropic"
 model_id = "claude-sonnet-5"   # usado quando é o modelo do chat
 alias = "sonnet"               # usado quando é modelo de subagente
-effort = "high"                # effort do chat quando é o orquestrador
+effort = "high"                # effort do chat (orquestrador) ou do subagente
 ```
+
+Para o mesmo modelo com efforts diferentes, crie uma chave por effort (`sonnet`,
+`sonnet-medium`, `sonnet-low`).
 
 Campos opcionais: `min_claude_code` (versão mínima do CLI, checada pelo `doctor`) e
 `router_only` (só pode ser usado pelo JEV). Modelos com `provider` diferente de `anthropic`
@@ -314,15 +318,35 @@ triggers = ["teste E2E de uma tela ou fluxo", "validar critério de aceite de in
 
 ```toml
 max_retries = 3
+default_level = "padrao"
 
 [rules]
 implementation_complete = "TEST"
 tests_failed = "CODER_FIX"
-tests_passed = "REVIEW"
+tests_passed = "PREPARE_REVIEW"
 review_changes_requested = "CODER_FIX"
 review_approved = "DOCS"
 max_retries_exceeded = "HUMAN_APPROVAL"
+
+[levels.simples]
+when = "Mudança pontual de baixo risco…"
+coder = "sonnet-low"
+reviewer = "sonnet-medium"
+
+[levels.padrao]              # papel ausente = modelo do agente em aidev.config.toml
+when = "O caso comum…"
 ```
+
+- **`[rules]`**: cada agente termina com `"state": "<chave>"`; o orquestrador aplica a regra
+  daquela chave. Agentes não escolhem a próxima ação.
+- **`[levels]`**: nível da demanda → modelo e effort de cada papel. Com o JEV desligado, o
+  orquestrador classifica a demanda no plano (`Nível: <nível> — <motivo>`) e delega para o
+  subagente daquele nível; com o JEV ligado, ele escolhe agente, modelo e effort, e os níveis
+  ficam como fallback. Como o effort só é configurável no frontmatter (não por chamada), cada
+  combinação diferente da do agente base vira um subagente `<nome>-<nível>` (ex.:
+  `codificador-simples`). Variantes novas só aparecem num chat novo.
+- O orquestrador registra o consumo **real** de cada delegação (tokens, ferramentas, duração)
+  em `metricas.md` na pasta da demanda — é a base para calibrar os níveis.
 
 ### 5.5 `contexts/<nome>/context.toml` — um contexto de trabalho
 
@@ -635,8 +659,8 @@ O princípio é **nunca deixar o modelo ser a última barreira**:
 
 **Limitações atuais**
 
-- Subagentes escolhem o modelo só por apelido e **herdam o effort do chat** — não dá para ter
-  "Sonnet High no codificador e Opus Medium no revisor" ao mesmo tempo.
+- O effort de um subagente é fixo no arquivo dele (não dá para trocar por chamada); por isso
+  os níveis geram variantes `<nome>-<nível>`, que só aparecem num chat novo.
 - O orquestrador recebe apenas a **mensagem final** de cada subagente; por isso os agentes
   devem colocar todo o resultado nela.
 - Modelos não-Anthropic (GPT, JEV) exigem API key e ainda não são suportados.

@@ -1,4 +1,5 @@
 ---
+tools: Read, Glob, Grep, Bash, PowerShell, Skill, ToolSearch
 description: Agente de API e banco. Consulta schemas, APIs e logs; propõe operações de escrita e só as executa após aprovação. Use para gerar ou ajustar dados de teste, descobrir ids e investigar integrações.
 ---
 
@@ -27,15 +28,17 @@ LLM → SQL → Parser/Validator → Permission check → Human approval (when r
 
 ```json
 {
-  "status": "completed | failed | blocked | needs_approval",
   "ticket": "DB-001",
   "operations": [
     {"type": "read | write | ddl", "environment": "dev", "statement": "...", "risk": "low | medium | high"}
   ],
   "findings": [],
-  "next_action": "TEST | HUMAN_APPROVAL"
+  "state": "task_complete | policy_requires_approval | environment_blocked"
 }
 ```
+
+`state` is one of the listed values. `task_complete` returns the flow to the step that asked
+for you; `policy_requires_approval` lists the proposed writes in `operations`, not executed.
 
 # RULES
 
