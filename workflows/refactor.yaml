@@ -7,6 +7,9 @@ steps:
   - id: spec
     agent: orchestrator
     skill: to-spec
+  - id: plan_review     # padrao ou acima; ⇄ orquestrador corrige o plano (PLAN_FIX)
+    agent: reviewer
+    skill: code-review
   - id: tickets
     agent: orchestrator
     skill: to-tickets

@@ -30,8 +30,9 @@ Check, in order:
 ## Severity
 
 - `CRITICO` — wrong behavior, security issue, or an acceptance criterion not met. Blocks.
-- `IMPORTANTE` — likely bug or significant maintainability problem. Blocks.
-- `SUGESTAO` — improvement. Does not block.
+- `IMPORTANTE` — likely bug, significant maintainability problem, or a **violation of the team's
+  documented standards** (guideline, project conventions) even without a bug. Blocks.
+- `SUGESTAO` — improvement the standards do not require. Does not block.
 - `ELOGIO` — something done well.
 
 ## Output
@@ -48,7 +49,11 @@ only format — `state`, `findings`, `doubts`):
 `fix_in_scope` and `confidence` let the orchestrator triage without the user. Every round, write
 the full review (all findings with status, and the doubts) as Markdown to the path the task
 gives (default `<state dir>/reviews/<ticket>-r<N>.md`), then return the OUTPUT JSON with the
-complete findings list in your final message.
+complete findings list in your final message. If the active context defines a review template,
+use it. Otherwise the Markdown has: identification (scope, branch, round); findings (what / why it
+matters / suggested fix / "not a regression of this change" when the pattern already existed,
+with `file:line`); doubts; **points checked without findings** (with evidence); risk notes; and
+a summary table by severity with whether the cycle can close.
 
 **Round ≥ 2:** you get the previous review and the diff of the fixes. Check each previous finding
 (`fixed` / `not_fixed`, with evidence), then look for regressions in the changed lines. Open the

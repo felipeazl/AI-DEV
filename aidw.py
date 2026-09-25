@@ -75,7 +75,7 @@ PROVIDER_LABEL = {"claude": "Claude (Claude Code)", "codex": "Codex (Codex CLI)"
 # headless = um processo do CLI por tarefa, via `aidw.py delegate`
 DELEGATION_MODES = ("native", "headless")
 
-ACTIONS = {"TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
+ACTIONS = {"PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
            "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL", "RETURN"}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
@@ -506,6 +506,11 @@ def load_routing(rep: Report) -> dict:
         for role, value in spec.items():
             if role == "when":
                 continue
+            if role == "models":
+                for r in value:
+                    if r not in DEFAULT_AGENTS:
+                        rep.error(f"routing.toml: [effort.levels.{lvl}.models] cita papel desconhecido {r!r}")
+                continue
             if role not in DEFAULT_AGENTS:
                 rep.error(f"routing.toml: [effort.levels.{lvl}] cita papel desconhecido {role!r}")
             elif value not in EFFORTS:
@@ -518,6 +523,57 @@ def load_routing(rep: Report) -> dict:
 def effort_for(routing: dict, role: str, level: str, agent: dict) -> str:
     spec = routing.get("effort", {}).get("levels", {}).get(level, {})
     return spec.get(role) or agent["effort"]
+
+
+def attach_variants(resolved: dict, routing: dict, catalog: dict, rep: Report) -> None:
+    """Resolve, por papel, o modelo e o effort de cada nível (`a["by_level"]`) e as variantes
+    nativas do Claude (`a["variants"]`: nome → modelo/effort). O modelo do nível vem de
+    [effort.levels.<nível>.models] (exceção à regra de modelo fixo); sem ele, o do agente. O effort
+    padrão com o modelo do agente fica com o nome base; outro effort vira `<nome>-<effort>` e outro
+    modelo `<nome>-<alias>-<effort>` (o Claude fixa modelo e effort no arquivo do subagente)."""
+    levels = routing.get("effort", {}).get("levels", {})
+    for role, a in resolved.items():
+        if role == ORCHESTRATOR:
+            continue
+        base = a["model"]
+        by_level = {}
+        for lvl, spec in levels.items():
+            key = spec.get("models", {}).get(role)
+            model = base
+            if key:
+                if key not in catalog:
+                    rep.error(f"routing.toml: [effort.levels.{lvl}.models] {role} = {key!r} não existe em "
+                              "config/models.toml")
+                elif catalog[key]["provider"] != base["provider"]:
+                    rep.warn(f"routing.toml: [effort.levels.{lvl}.models] {role} = {key!r} é de outro "
+                             f"provedor; usando {base['key']!r}")
+                else:
+                    model = {**catalog[key], "key": key}
+            effort = effort_for(routing, role, lvl, a) if model.get("efforts") else ""
+            if effort and effort not in model["efforts"]:
+                rep.error(f"routing.toml: [effort.levels.{lvl}] {model['name']} não aceita effort {effort!r}")
+            by_level[lvl] = (model, effort)
+        base_effort = a["effort"] if base.get("efforts") else ""
+        pairs = [(base, base_effort), *by_level.values()]
+        pairs.sort(key=lambda p: (p[0]["key"] != base["key"], p[0]["key"],
+                                  EFFORTS.index(p[1]) if p[1] in EFFORTS else -1))
+        variants: dict[str, dict] = {}
+        for model, effort in pairs:
+            if model["key"] == base["key"] and effort == base_effort:
+                name = a["name"]
+            elif model["key"] == base["key"]:
+                name = f"{a['name']}-{effort}"
+            else:
+                name = "-".join(x for x in (a["name"], model.get("alias") or model["key"], effort) if x)
+            variants.setdefault(name, {"model": model, "effort": effort})
+        a["by_level"], a["variants"] = by_level, variants
+
+
+def variant_name(a: dict, model: dict, effort: str) -> str:
+    for name, v in a.get("variants", {}).items():
+        if v["model"]["key"] == model["key"] and v["effort"] == effort:
+            return name
+    return a["name"]
 
 
 def model_label(a: dict, effort: str | None = None) -> str:
@@ -1002,19 +1058,6 @@ def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, ser
     return entry
 
 
-def effort_variants(role: str, a: dict, routing: dict) -> dict[str, str]:
-    """effort → nome do subagente nativo do Claude. O effort padrão fica com o nome base; cada
-    outro effort que a tabela de níveis usa para o papel vira `<nome>-<effort>` (o Claude fixa
-    o effort no arquivo do subagente, não por chamada)."""
-    efforts_ok = a["model"].get("efforts") or []
-    if not efforts_ok:
-        return {"": a["name"]}
-    wanted = {a["effort"]} | {spec.get(role) for spec in routing.get("effort", {}).get("levels", {}).values()}
-    efforts = [e for e in EFFORTS if e in wanted and e in efforts_ok]
-    base = a["effort"] if a["effort"] in efforts else efforts[0]
-    return {e: a["name"] if e == base else f"{a['name']}-{e}" for e in efforts}
-
-
 def effort_table(resolved: dict, routing: dict, cfg: dict) -> str:
     eff = routing.get("effort", {})
     levels = eff.get("levels", {})
@@ -1028,18 +1071,22 @@ def effort_table(resolved: dict, routing: dict, cfg: dict) -> str:
         cells = []
         for r in roles:
             a = resolved[r]
-            effort = effort_for(routing, r, lvl, a) if a["model"].get("efforts") else ""
+            model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
             if claude_native:
-                cells.append(f"`{effort_variants(r, a, routing).get(effort, a['name'])}`")
+                cells.append(f"`{variant_name(a, model, effort)}`")
+            elif model["key"] != a["model"]["key"]:
+                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model['model_id']}`)")
             else:
                 cells.append(effort or "—")
         rows.append(f"| **{lvl}** | {spec.get('when', '')} | " + " | ".join(cells) + " |")
     esc = eff.get("escalate", {})
     if claude_native:
         intro = ("Each cell is the `subagent_type` to use: the agent's model with the effort of that "
-                 "level already pinned in its definition.")
+                 "level already pinned in its definition (a `-<alias>-` in the name means that level "
+                 "uses another model, e.g. `revisor-opus-high`).")
     else:
-        intro = "Each cell is the effort to pass. `—` = the model takes no effort (omit it)."
+        intro = ("Each cell is the effort to pass. `—` = the model takes no effort (omit it). A cell "
+                 "with `+ model` also names the model to pass for that level.")
     lines = ["## Effort per task", "", f"Default level: **{eff.get('default_level', 'padrao')}**. {intro}",
              "", *rows]
     if esc.get("rules"):
@@ -1135,7 +1182,8 @@ def headless_delegation_section(provider: str, example: str) -> str:
         f"- `--agent`: the agent name from the Team table (e.g. `{example}`) or its role.",
         "- `--effort` and `--level`: your decision for this task (*Effort per task*). Omit `--effort` "
         "only for models marked `—`.",
-        "- `--model <key>`: only when the user asked for another model for this task.",
+        "- `--model <key>`: only when the user asked for another model for this task (a level whose "
+        "*Effort per task* cell names a model already gets it without `--model`).",
         *COMMON_DELEGATION,
         "- The command prints one JSON line: `header`, `resumo`, `state`, `output` (the agent's final "
         "JSON), `result_file`, `denials`, tokens and duration. The full answer is in `result_file` — read "
@@ -1221,14 +1269,20 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
 
 
 def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: str, name: str,
-                           ctx: dict | None, servers: dict) -> str:
+                           ctx: dict | None, servers: dict, model: dict | None = None) -> str:
+    model = model or a["model"]
     entry = claude_agent_entry(role, meta, prompt, ctx, servers)
     description = meta["description"]
-    if name != a["name"]:
+    if model["key"] != a["model"]["key"]:
+        description = (f"{a['display']} com {model['name']} e effort {effort or '—'}. {description} Use esta "
+                       "variante só quando a tabela Effort per task a indicar para o nível da tarefa.")
+        prompt = prompt.replace(f"- Model: {a['model']['name']} (`{a['model']['model_id']}`).",
+                                f"- Model: {model['name']} (`{model['model_id']}`).")
+    elif name != a["name"]:
         description = (f"{a['display']} com effort {effort}. {description} Use esta variante só quando o "
                        f"orquestrador escolher effort {effort} para a tarefa.")
     front = ["---", f"name: {name}", f"description: {json.dumps(description, ensure_ascii=False)}",
-             f"model: {a['model'].get('alias') or a['model']['model_id']}"]
+             f"model: {model.get('alias') or model['model_id']}"]
     if effort:
         front.append(f"effort: {effort}")
     front.append("omitClaudeMd: true")
@@ -1543,6 +1597,7 @@ def build(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     routing = load_routing(rep)
     if not resolved:
         return None
+    attach_variants(resolved, routing, catalog, rep)
     check_workflows(resolved, skills, rep)
     servers = resolve_mcp(cfg, rep)
     if rep.errors:
@@ -1606,12 +1661,12 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         if mode == "native":
             for role, g in b["agents"].items():
                 a = resolved[role]
-                variants = effort_variants(role, a, b["routing"])
-                for effort, name in variants.items():
-                    subagents[name] = render_claude_subagent(role, a, g["meta"], g["prompt"], effort, name,
-                                                             ctx, servers)
+                for name, v in a["variants"].items():
+                    subagents[name] = render_claude_subagent(role, a, g["meta"], g["prompt"], v["effort"], name,
+                                                             ctx, servers, v["model"])
                 rep.info(f"subagentes de {a['name']}: " + ", ".join(
-                    f"{n} ({e or 'sem effort'})" for e, n in variants.items()))
+                    f"{n} ({v['model'].get('alias') or v['model']['key']}, {v['effort'] or 'sem effort'})"
+                    for n, v in a["variants"].items()))
         sync_generated_dir(CLAUDE_SUBAGENTS, subagents, ".md", dry, rep)
         sync_generated_dir(CODEX_SUBAGENTS, {}, ".toml", dry, rep)
         sync_skill_links(CLAUDE_SKILLS, b["skills"], dry, rep)
@@ -1842,17 +1897,18 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     resolved = resolve(cfg, catalog, ctx, available_skills(ctx, rep), rep)
     routing = load_routing(rep)
     provider = cfg["provider"]["name"]
+    attach_variants(resolved, routing, catalog, rep)
     wanted = slugify(args.agent)
-    role, effort = None, args.effort or ""
+    role, effort, model = None, args.effort or "", None
     for r, a in resolved.items():
         if r == ORCHESTRATOR:
             continue
         if wanted in (r, a["name"]):
             role = r
             break
-        for e, name in effort_variants(r, a, routing).items():
+        for name, v in a["variants"].items():
             if wanted == name:
-                role, effort = r, effort or e
+                role, effort, model = r, effort or v["effort"], v["model"]
                 break
         if role:
             break
@@ -1861,11 +1917,11 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         return 2
     a = resolved[role]
     level = args.level or routing.get("effort", {}).get("default_level", "padrao")
-    if not effort and a["model"].get("efforts"):
+    model = model or a["model"]
+    if not effort and model.get("efforts"):
         effort = effort_for(routing, role, level, a)
-    if not a["model"].get("efforts"):
+    if not model.get("efforts"):
         effort = ""
-    model = a["model"]
     row = {"date": date.today().isoformat(), "agent": a["name"], "level": level, "model": model["model_id"],
            "effort": effort, "label": args.label, "state": args.state or "missing_state", "turns": None,
            "duration_s": round((args.duration_ms or 0) / 1000), "tokens_in": args.tokens,
@@ -2057,7 +2113,10 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     if a is None or role == ORCHESTRATOR or not a["enabled"]:
         valid = ", ".join(x["name"] for r, x in resolved.items() if r != ORCHESTRATOR and x["enabled"])
         rep.error(f"agente {args.agent!r} inexistente, desabilitado ou é o orquestrador (válidos: {valid})")
-    model = a["model"] if a else {}
+    attach_variants(resolved, routing, catalog, rep)
+    level = args.level or routing.get("effort", {}).get("default_level", "padrao")
+    # Modelo do nível ([effort.levels.<nível>.models]) quando houver; `--model` vence.
+    model = a["by_level"].get(level, (a["model"], ""))[0] if a else {}
     if a and args.model:
         m = catalog.get(args.model) or next((dict(v, key=k) for k, v in catalog.items()
                                              if v["model_id"] == args.model), None)
@@ -2065,7 +2124,6 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
             rep.error(f"--model {args.model!r} não é um modelo {provider} de config/models.toml")
         else:
             model = {**m, "key": m.get("key", args.model)}
-    level = args.level or routing.get("effort", {}).get("default_level", "padrao")
     effort = args.effort or (effort_for(routing, role, level, a) if a else "")
     if effort and effort not in EFFORTS:
         rep.error(f"--effort {effort!r} inválido (válidos: {', '.join(EFFORTS)})")

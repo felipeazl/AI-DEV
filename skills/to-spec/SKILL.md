@@ -8,6 +8,8 @@ description: Turn a request into a persistent specification that becomes the sou
 1. Restate the request in one sentence.
 2. **Check existing work first:** work item state, child tasks, linked PRs, attachments, and
    branches. If work already exists, ask whether this is a continuation, a fix or a redo.
+   Read the work item's **comments** and its **linked items** (parent, related, predecessors):
+   decisions often live only there and override the description.
 3. Inspect the repository through a cheap exploration subagent (e.g. `Explore`), asking for
    the relevant files with `file:line` pointers. Use `codebase-context` if no context doc exists.
 4. **Inspect the dependencies:** if the change consumes another system (API, library, shared
@@ -37,9 +39,16 @@ description: Turn a request into a persistent specification that becomes the sou
 ## Template
 
 ```markdown
-# <Title>
+# <Title> — v<N>
 
 Nível: <level> — <why> (orchestrator's model table; decides model/effort of every agent)
+(from v2 on: what changed since the previous version)
+
+## Decisions taken
+| # | Topic | Decision | Who / when |
+
+## Premises verified
+| Premise (card) | What the code/card showed (`file:line`) | Status ✅/⚠️ |
 
 ## Objective
 
@@ -58,6 +67,8 @@ Nível: <level> — <why> (orchestrator's model table; decides model/effort of e
 (enum/state values · limits · UI thread · errors)
 
 ## Out of scope (and why)
+
+## Branch and PR (base, target, when the PR opens; dependency on unmerged work)
 
 ## Technical considerations
 
