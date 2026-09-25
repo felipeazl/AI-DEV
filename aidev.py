@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -1106,6 +1107,9 @@ def codex_delegation_section(resolved: dict, levels: dict, routing: dict) -> str
         "`permission_denials`, tokens, cost and duration. Decide the next step from `state` "
         "(`routing.toml`). The full answer is in `result_file` — read it only when needed.",
         "- Usage is appended to `metricas.md` in the demand folder automatically; do not estimate it.",
+        "- **After every delegation, show the user the `resumo` field verbatim, on its own line, before "
+        "anything else** (agent, model, effort, tokens, duration, cost, and the 5-hour and weekly "
+        "limits of Claude and Codex). Never omit it, even when the agent failed.",
         "- `permission_denials` lists what the agent tried and was not allowed (locked actions such as "
         "commit or SQL writes): treat them as proposals for the user, never retry them another way.",
         "- Never call `claude` directly and never pass `--model`/`--effort` yourself: the level decides.",
@@ -1458,12 +1462,98 @@ def final_json(text: str) -> dict | None:
     return None
 
 
+def fmt_window(w: dict | None, fmt: str) -> str:
+    """{"pct": 68, "resets_at": epoch} → "68% (reinicia 14:20)"; sem dado → "?"."""
+    if w and w.get("stale"):
+        return "sem dado atual"
+    if not w or w.get("pct") is None:
+        return "?"
+    when = ""
+    if w.get("resets_at"):
+        from datetime import datetime
+        when = f" (reinicia {datetime.fromtimestamp(w['resets_at']).strftime(fmt)})"
+    return f"{w['pct']:.0f}%{when}"
+
+
+def claude_limits(events: list[dict]) -> dict:
+    """Último `rate_limit_event` do stream-json: janelas de 5 h e 7 dias da assinatura Claude."""
+    for e in reversed(events):
+        if e.get("type") == "rate_limit_event":
+            windows = (e.get("rate_limit_info") or {}).get("unifiedWindows") or {}
+            out = {}
+            for key, name in (("five_hour", "5h"), ("seven_day", "semana")):
+                w = windows.get(key) or {}
+                if w.get("utilization") is not None:
+                    out[name] = {"pct": round(w["utilization"] * 100), "resets_at": w.get("resetsAt")}
+            return out
+    return {}
+
+
+def codex_limits() -> dict:
+    """Limites do Codex (plano ChatGPT) no evento mais recente das sessões em ~/.codex/sessions."""
+    root = Path.home() / ".codex" / "sessions"
+    try:
+        files = sorted(root.rglob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)[:3]
+    except OSError:
+        return {}
+    for f in files:
+        try:
+            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if '"rate_limits"' not in line:
+                continue
+            try:
+                payload = json.loads(line).get("payload") or {}
+            except json.JSONDecodeError:
+                continue
+            rl = payload.get("rate_limits") or (payload.get("info") or {}).get("rate_limits")
+            if not rl:
+                continue
+            out = {}
+            for key in ("primary", "secondary"):
+                w = rl.get(key) or {}
+                if w.get("used_percent") is None:
+                    continue
+                minutes = w.get("window_minutes") or 0
+                name = {300: "5h", 10080: "semana", 43200: "mês"}.get(minutes, f"{minutes // 60}h")
+                # Janela que já reiniciou: o percentual é de antes do reinício, não vale mais.
+                stale = bool(w.get("resets_at")) and w["resets_at"] < time.time()
+                out[name] = {"pct": w["used_percent"], "resets_at": w.get("resets_at"), "stale": stale}
+            if out and rl.get("plan_type"):
+                out["plano"] = rl["plan_type"]
+            return out
+    return {}
+
+
+def summary_line(row: dict, model: dict, climits: dict, xlimits: dict) -> str:
+    effort = model.get("effort") or "padrão"
+    parts = [f"{row['agent']} ({row['level']})", model["name"].split(" (")[0], f"effort {effort}",
+             f"{row['tokens_in']:,} tokens entrada + {row['tokens_out']:,} saída".replace(",", "."),
+             f"{row['duration_s']} s", f"US$ {row['cost_usd']:.2f}".replace(".", ","),
+             f"Claude 5h {fmt_window(climits.get('5h'), '%H:%M')} · semana "
+             f"{fmt_window(climits.get('semana'), '%d/%m %H:%M')}"]
+    if xlimits:
+        parts.append(codex_windows_text(xlimits))
+    return " | ".join(parts)
+
+
+def codex_windows_text(xlimits: dict) -> str:
+    """Janelas que o plano do Codex tiver (5h/semana nos pagos; mês no free)."""
+    plan = f" ({xlimits['plano']})" if xlimits.get("plano") else ""
+    windows = [f"{k} {fmt_window(v, '%H:%M' if k == '5h' else '%d/%m %H:%M')}"
+               for k, v in xlimits.items() if k != "plano"]
+    return f"Codex{plan} " + " · ".join(windows)
+
+
 def append_metrics(demand: Path, row: dict) -> None:
     f = demand / "metricas.md"
     header = ("| Data | Agente | Nível | Modelo | Label | State | Turnos | Duração | Tokens entrada (soma dos turnos, com cache) | "
-              "Tokens saída | Custo (USD, estimado) |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
+              "Tokens saída | Custo (USD, estimado) | Claude 5h / semana | Codex (janelas do plano) |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     line = ("| {date} | {agent} | {level} | {model} | {label} | {state} | {turns} | {duration_s}s | "
-            "{tokens_in:,} | {tokens_out:,} | {cost_usd:.4f} |\n").format(**row)
+            "{tokens_in:,} | {tokens_out:,} | {cost_usd:.4f} | {claude_limits} | {codex_limits} |\n").format(**row)
     if not f.exists():
         f.write_text("# Métricas da demanda\n\nConsumo real de cada delegação (gravado por "
                      "`aidev.py delegate`).\n\n" + header, encoding="utf-8", newline="\n")
@@ -1502,7 +1592,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     # Sem o CLAUDE.md do orquestrador: com --agent o agente é a sessão principal e o carregaria.
     settings = {"claudeMdExcludes": [ROOT_CLAUDE_MD.as_posix(), str(ROOT_CLAUDE_MD)]}
     cmd = [claude, "-p", prompt, "--agent", agent["name"], "--model", model["alias"],
-           "--output-format", "json", "--settings", json.dumps(settings),
+           "--output-format", "stream-json", "--verbose", "--settings", json.dumps(settings),
            "--permission-mode", DELEGATE_PERMISSION.get(args.role, "default"),
            "--max-turns", str(args.max_turns or DELEGATE_MAX_TURNS.get(args.role, 40))]
     if model.get("effort"):
@@ -1514,10 +1604,15 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     except subprocess.TimeoutExpired:
         print(json.dumps({"state": "implementation_failed", "error": f"timeout de {args.timeout}s"}))
         return 1
-    try:
-        data = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        print(json.dumps({"state": "environment_blocked", "error": "saída do claude não é JSON",
+    events = []
+    for line in proc.stdout.splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    data = next((e for e in reversed(events) if e.get("type") == "result"), None)
+    if data is None:
+        print(json.dumps({"state": "environment_blocked", "error": "saída do claude sem evento result",
                           "stderr": proc.stderr[-800:]}, ensure_ascii=False))
         return 1
 
@@ -1535,9 +1630,15 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
            "tokens_in": u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
                         + u.get("cache_read_input_tokens", 0),
            "tokens_out": u.get("output_tokens", 0), "cost_usd": data.get("total_cost_usd", 0.0)}
+    climits, xlimits = claude_limits(events), codex_limits()
+    row["claude_limits"] = (f"{fmt_window(climits.get('5h'), '%H:%M')} / "
+                            f"{fmt_window(climits.get('semana'), '%d/%m %H:%M')}")
+    row["codex_limits"] = codex_windows_text(xlimits).removeprefix("Codex ") if xlimits else "—"
     append_metrics(demand, row)
     denials = [d.get("tool_name", "?") for d in data.get("permission_denials", [])]
-    print(json.dumps({**row, "output": output, "result_file": (demand / f"{base}.md").as_posix(),
+    print(json.dumps({"resumo": summary_line(row, model, climits, xlimits), **row,
+                      "limits": {"claude": climits, "codex": xlimits},
+                      "output": output, "result_file": (demand / f"{base}.md").as_posix(),
                       "permission_denials": denials, "session_id": data.get("session_id"),
                       "is_error": data.get("is_error", False)}, ensure_ascii=False))
     return 0 if not data.get("is_error") else 1

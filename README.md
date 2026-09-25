@@ -454,6 +454,17 @@ Codex (GPT) ── lê AGENTS.md ── escreve tarefa-<agente>-<assunto>.md
 - Sem prompt interativo: o que pediria aprovação (commit, SQL de escrita, comando fora do
   `allow`) é negado e volta em `permission_denials` — o Codex leva ao usuário como proposta.
 - Login: o Codex usa o plano ChatGPT; o `claude -p`, o login do Claude Code (uso pessoal).
+- **Resumo de cada delegação:** o orquestrador mostra uma linha por agente, por exemplo
+  `api (simples) | Claude Sonnet 5 | effort low | 121.825 tokens entrada + 705 saída | 13 s |
+  US$ 0,03 | Claude 5h 71% (reinicia 13:20) · semana 63% (reinicia 29/09 12:00) | Codex (free)
+  mês 5% (reinicia 25/10 09:30)`. Os limites do Claude vêm do `rate_limit_event` do
+  `claude -p --output-format stream-json`; os do Codex, da sessão mais recente em
+  `~/.codex/sessions` (janelas do plano: 5h/semana nos pagos, mês no free). A mesma informação
+  vai para o `metricas.md`.
+- **MCP `ado` no Codex (Windows):** em `~/.codex/config.toml`, `[mcp_servers.ado]` com
+  `command = "cmd"`, `args = ["/c", "npx", "-y", "@azure-devops/mcp", "safewebcd", "-d", "core",
+  "work", "work-items", "-a", "pat"]`, `env_vars = ["PERSONAL_ACCESS_TOKEN"]` (só o nome — nunca o
+  valor) e `startup_timeout_sec = 60`. O Codex pede aprovação na primeira chamada de cada ferramenta.
 - O Codex tem sandbox e aprovações próprias: as regras `ask`/`deny` do `.claude/settings` valem
   para os agentes Claude, não para os comandos que o próprio Codex roda.
 
