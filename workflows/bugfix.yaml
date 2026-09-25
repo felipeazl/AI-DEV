@@ -10,7 +10,7 @@ steps:
   - id: tickets
     agent: orchestrator
     skill: to-tickets
-  - id: reproduce
+  - id: reproduce       # causa-raiz não óbvia: bugs (modo root-cause) antes de fechar o plano
     agent: coder
     skill: debug
   - id: implement
@@ -25,6 +25,14 @@ steps:
   - id: review
     agent: reviewer
     skill: code-review
+  - id: bug_hunt        # opcional — o orquestrador decide (ORCHESTRATOR.md, specialist passes);
+    agent: bug-hunter   # roda em paralelo com a 1ª rodada de revisão
+    skill: bug-hunt
+    optional: true
+  - id: security_audit  # opcional — idem
+    agent: security
+    skill: security-audit
+    optional: true
   - id: docs            # só se o comportamento documentado mudou
     agent: documenter
     skill: documentation

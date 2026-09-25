@@ -87,6 +87,8 @@ DEFAULT_NAMES = {
     "api-db": "api",
     "qa": "qa",
     "documenter": "documentador",
+    "bug-hunter": "bugs",
+    "security": "seguranca",
 }
 # Opus no orquestrador e no codificador, Sonnet no api e no revisor, Haiku no documentador.
 # No Codex o tier escolhe o equivalente (config/models.toml).
@@ -99,6 +101,9 @@ DEFAULT_AGENTS: dict[str, dict] = {
     "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe", "debug"]},
     "qa": {"enabled": False, "tier": "mid", "effort": "medium", "skills": ["testing"]},
     "documenter": {"enabled": True, "tier": "fast", "effort": "medium", "skills": ["documentation"]},
+    # Especialistas sob demanda: o orquestrador decide quando uma passada vale o custo.
+    "bug-hunter": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["bug-hunt"]},
+    "security": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["security-audit"]},
 }
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 RESERVED_NAMES = {"general-purpose", "explore", "plan", "statusline-setup", "claude-code-guide",
@@ -117,6 +122,8 @@ RUN_PROFILE = {
     "documenter": {"claude_mode": "auto", "max_turns": 40, "write": "projects", "network": False},
     "qa": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": True},
     "api-db": {"claude_mode": "default", "max_turns": 30, "write": "state", "network": True},
+    "bug-hunter": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
+    "security": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
 }
 
 DEFAULT_DENY = [

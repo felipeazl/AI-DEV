@@ -22,6 +22,14 @@ steps:
   - id: review          # ⇄ codificador (CODER_FIX) até zero CRITICO/IMPORTANTE
     agent: reviewer
     skill: code-review
+  - id: bug_hunt        # opcional — o orquestrador decide (ORCHESTRATOR.md, specialist passes);
+    agent: bug-hunter   # roda em paralelo com a 1ª rodada de revisão
+    skill: bug-hunt
+    optional: true
+  - id: security_audit  # opcional — idem
+    agent: security
+    skill: security-audit
+    optional: true
   - id: docs
     agent: documenter
     skill: documentation

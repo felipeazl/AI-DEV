@@ -41,6 +41,12 @@ max_retries_exceeded = "HUMAN_APPROVAL"
 # Agente de apoio (api): devolve o fluxo para a etapa que o chamou
 task_complete = "RETURN"
 
+# Especialistas sob demanda (bugs, seguranca): voltam para a etapa que os chamou. Os achados
+# entram na mesma triagem da revisão (CRITICO/IMPORTANTE → CODER_FIX ou PLAN_FIX).
+audit_clean = "RETURN"
+audit_findings = "RETURN"
+audit_has_open_questions = "HUMAN_APPROVAL"
+
 # Fim
 docs_complete = "FINAL_REVIEW"
 final_review_approved = "DONE"
@@ -66,6 +72,8 @@ reviewer = "low"
 api-db = "low"
 documenter = "low"
 qa = "low"
+bug-hunter = "low"
+security = "low"
 
 [effort.levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
@@ -74,6 +82,8 @@ reviewer = "medium"
 api-db = "low"
 documenter = "low"
 qa = "low"
+bug-hunter = "medium"
+security = "medium"
 
 [effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
@@ -82,6 +92,8 @@ reviewer = "high"
 api-db = "medium"
 documenter = "medium"
 qa = "medium"
+bug-hunter = "high"
+security = "high"
 
 [effort.levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
@@ -90,10 +102,15 @@ reviewer = "high"
 api-db = "high"
 documenter = "medium"
 qa = "high"
+bug-hunter = "high"
+security = "high"
 
 [effort.levels.complexa.models]
 # Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+# Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
 reviewer = "opus"
+bug-hunter = "opus"
+security = "opus"
 
 [effort.levels.critica]
 when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
@@ -102,10 +119,15 @@ reviewer = "xhigh"
 api-db = "high"
 documenter = "medium"
 qa = "high"
+bug-hunter = "xhigh"
+security = "xhigh"
 
 [effort.levels.critica.models]
 # Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+# Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
 reviewer = "opus"
+bug-hunter = "opus"
+security = "opus"
 
 [effort.escalate]
 # Quando subir um nível na próxima tentativa do mesmo papel.

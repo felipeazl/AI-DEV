@@ -24,7 +24,7 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@playwright/mcp@latest"]
 allow = false
-agents = ["coder", "qa", "reviewer"]
+agents = ["coder", "qa", "reviewer", "bug-hunter"]
 use_when = "Exercitar a aplicação no navegador de ponta a ponta: navegar, preencher formulários, clicar, validar fluxos e critérios de aceite de interface, reproduzir bugs de tela."
 triggers = [
     "teste E2E / ponta a ponta de uma tela ou fluxo",
@@ -38,7 +38,7 @@ type = "stdio"
 command = "npx"
 args = ["-y", "chrome-devtools-mcp@latest"]
 allow = false
-agents = ["coder", "qa"]
+agents = ["coder", "qa", "bug-hunter"]
 use_when = "Depurar a aplicação num Chrome real: console, requisições de rede, performance (LCP, traces), DOM e CSS, erros de JavaScript."
 triggers = [
     "erro no console do navegador",
