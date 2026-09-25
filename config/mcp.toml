@@ -56,7 +56,7 @@ allow = true
 agents = ["coder", "reviewer", "documenter"]
 use_when = "Ler o design no Figma (frames, componentes, variáveis, espaçamentos, textos) para implementar ou conferir uma tela fiel ao layout."
 triggers = [
-    "link do Figma na demanda",
+    "a demanda cria ou altera tela/layout (um link do Figma é só uma pista, não basta)",
     "implementar ou ajustar tela a partir do layout",
     "conferir fidelidade da tela ao design",
 ]
