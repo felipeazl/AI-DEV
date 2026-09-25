@@ -426,6 +426,37 @@ Abra o Claude Code **na pasta do AI-DEV**:
 Esse chat já é o orquestrador: ele carrega o `CLAUDE.md` gerado, com as regras, as policies,
 o contexto e a tabela do time.
 
+**Orquestrador em GPT (Codex CLI).** Com `[codex] enabled = true` no `aidev.config.toml`, o
+`apply` gera também o `AGENTS.md`, e você pode abrir o orquestrador no Codex:
+
+```powershell
+cd C:\AI-DEV
+codex -m gpt-5.6-sol
+```
+
+O Claude Code não roda modelos de outro fornecedor, então aqui a arquitetura se inverte: o Codex
+(GPT) orquestra e cada tarefa vira um agente Claude headless, disparado por
+`python aidev.py delegate`:
+
+```text
+Codex (GPT) ── lê AGENTS.md ── escreve tarefa-<agente>-<assunto>.md
+   └─ python aidev.py delegate --role coder --level padrao --task … --demand …
+        └─ claude -p --agent codificador --model opus --effort medium --output-format json
+             ├─ resultado-<agente>-<label>.md / .json   (resposta completa)
+             ├─ metricas.md                               (tokens, custo, duração — automático)
+             └─ stdout: 1 linha JSON (state, output, permission_denials…) → o Codex decide
+```
+
+- Modelo e effort vêm do nível (`[levels]` do `routing.toml`) e são passados por chamada; o
+  orquestrador só escolhe `--role` e `--level`.
+- O `delegate` exclui o `CLAUDE.md` do orquestrador do contexto do agente (`claudeMdExcludes`):
+  com `--agent` o agente é a sessão principal e o carregaria.
+- Sem prompt interativo: o que pediria aprovação (commit, SQL de escrita, comando fora do
+  `allow`) é negado e volta em `permission_denials` — o Codex leva ao usuário como proposta.
+- Login: o Codex usa o plano ChatGPT; o `claude -p`, o login do Claude Code (uso pessoal).
+- O Codex tem sandbox e aprovações próprias: as regras `ask`/`deny` do `.claude/settings` valem
+  para os agentes Claude, não para os comandos que o próprio Codex roda.
+
 ### 6.2 Pedindo uma demanda
 
 Escreva como pediria a um tech lead:
@@ -498,6 +529,7 @@ abrir um chat novo
 | `python aidev.py apply --dry-run` | Mostra o que mudaria, sem alterar nada |
 | `python aidev.py doctor` | Verifica CLI, versão, contexto, pastas, variáveis e MCPs (padrão e do contexto), inclusive duplicados |
 | `python aidev.py show` | Mostra nome, papel, modelo e tipo de cada agente |
+| `python aidev.py delegate --role <papel> --level <nível> --task <arquivo> --demand <pasta>` | Roda um agente Claude headless para uma tarefa (usado pelo orquestrador no Codex); grava resultado e `metricas.md` |
 
 Exemplo de `show`:
 

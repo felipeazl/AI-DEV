@@ -30,6 +30,13 @@ active = "safeweb"
 enabled = false
 model = "jev"
 
+[codex]
+# Orquestrador alternativo no Codex CLI (GPT): o apply gera AGENTS.md e o Codex delega aos
+# agentes Claude com `python aidev.py delegate` (claude -p, modelo/effort por chamada).
+enabled = true
+model = "gpt-terra"   # gpt-5.6-sol não é liberado para esta conta ChatGPT no Codex
+effort = "high"
+
 [policies]
 # Regras de negação gravadas em .claude/settings.local.json (valem para todos os agentes).
 deny = [
@@ -56,13 +63,13 @@ skills = ["to-spec", "to-tickets", "codebase-context"]
 [agents.coder]
 # name = "codificador"
 enabled = true
-model = "sonnet"
+model = "opus-medium"
 skills = ["implement-ticket", "debug", "testing", "codebase-context"]
 
 [agents.reviewer]
 # name = "revisor"
 enabled = true
-model = "opus-high"
+model = "sonnet"
 skills = ["code-review"]
 
 [agents.api-db]
@@ -80,5 +87,5 @@ skills = ["testing"]
 [agents.documenter]
 # name = "documentador"
 enabled = true
-model = "sonnet-medium"
+model = "haiku"
 skills = ["documentation"]

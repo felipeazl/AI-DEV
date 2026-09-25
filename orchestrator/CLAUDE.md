@@ -34,8 +34,9 @@ decisions into a single question instead of interrupting several times.
 
 # DELEGATION
 
-Agents are Claude Code subagents: call them with the `Agent` tool, using the names in the
-Team table. Never delegate to an agent marked as disabled.
+Agents are Claude Code agents. How to call them depends on where you run — the *Team* section
+says (Claude Code: the `Agent` tool; Codex: `python aidev.py delegate`). Never delegate to an
+agent marked as disabled.
 
 Subagents do not see this conversation and cannot talk to the user. So:
 

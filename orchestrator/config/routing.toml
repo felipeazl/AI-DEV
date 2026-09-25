@@ -55,12 +55,13 @@ policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, 
 # aidev.config.toml (que é o nível padrão). Cada combinação diferente vira um subagente
 # `<nome>-<nível>`, porque o effort só é configurável no frontmatter.
 
+# Política de modelos (Felipe, 2026-09-25): codificador sempre Opus; revisor Sonnet, Opus só no
+# complexo; api sempre Sonnet; documentador sempre Haiku. O effort varia com o nível.
 [levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
-coder = "sonnet-low"
+coder = "opus-low"
 reviewer = "sonnet-medium"
 api-db = "sonnet-low"
-documenter = "sonnet-low"
 qa = "sonnet-low"
 
 [levels.padrao]
@@ -68,5 +69,6 @@ when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de neg�
 
 [levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
+coder = "opus-high"
+reviewer = "opus-high"
 api-db = "sonnet"
-documenter = "sonnet"
