@@ -92,18 +92,22 @@ DEFAULT_NAMES = {
 }
 # Opus no orquestrador e no codificador, Sonnet no api e no revisor, Haiku no documentador.
 # No Codex o tier escolhe o equivalente (config/models.toml).
+# skills  = disponíveis para o agente (listadas no prompt; ele chama com o Skill tool quando precisa)
+# preload = subconjunto injetado inteiro no início de cada execução — só o que ele usa sempre.
 DEFAULT_AGENTS: dict[str, dict] = {
     "orchestrator": {"enabled": True, "tier": "top", "effort": "high",
-                     "skills": ["to-spec", "to-tickets", "codebase-context"]},
-    "coder": {"enabled": True, "tier": "top", "effort": "medium",
-              "skills": ["implement-ticket", "debug", "testing", "codebase-context"]},
-    "reviewer": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["code-review"]},
-    "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe", "debug"]},
-    "qa": {"enabled": False, "tier": "mid", "effort": "medium", "skills": ["testing"]},
-    "documenter": {"enabled": True, "tier": "fast", "effort": "medium", "skills": ["documentation"]},
+                     "skills": ["to-spec", "verificar-premissa", "preparar-worktree"]},
+    "coder": {"enabled": True, "tier": "top", "effort": "medium", "skills": ["preparar-worktree"]},
+    "reviewer": {"enabled": True, "tier": "mid", "effort": "high",
+                 "skills": ["code-review", "verificar-premissa"], "preload": ["code-review"]},
+    "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe"]},
+    "qa": {"enabled": False, "tier": "mid", "effort": "medium", "skills": []},
+    "documenter": {"enabled": True, "tier": "fast", "effort": "medium", "skills": []},
     # Especialistas sob demanda: o orquestrador decide quando uma passada vale o custo.
-    "bug-hunter": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["bug-hunt"]},
-    "security": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["security-audit"]},
+    "bug-hunter": {"enabled": True, "tier": "mid", "effort": "high",
+                   "skills": ["bug-hunt", "verificar-premissa"], "preload": ["bug-hunt"]},
+    "security": {"enabled": True, "tier": "mid", "effort": "high",
+                 "skills": ["security-audit", "verificar-premissa"], "preload": ["security-audit"]},
 }
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 RESERVED_NAMES = {"general-purpose", "explore", "plan", "statusline-setup", "claude-code-guide",
@@ -334,6 +338,8 @@ def render_config(cfg: dict) -> str:
         if a.get("effort"):
             out.append(f"effort = {toml_value(a['effort'])}")
         out.append(f"skills = {toml_value(a.get('skills', []))}")
+        if a.get("preload"):
+            out.append(f"preload = {toml_value(a['preload'])}")
     return "\n".join(out) + "\n"
 
 
@@ -480,14 +486,19 @@ def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Repor
             rep.error(f"agente {role}: {model['name']} não aceita effort {effort!r}")
         if a.get("enabled", True) and role != ORCHESTRATOR and not (AGENTS_DIR / role / "AGENT.md").exists():
             rep.error(f"agente {role}: agents/{role}/AGENT.md não existe")
-        ctx_skills = ctx.get("agents", {}).get(role, {}).get("skills", []) if ctx else []
-        all_skills = list(dict.fromkeys([*a.get("skills", []), *ctx_skills]))
+        ctx_agent = ctx.get("agents", {}).get(role, {}) if ctx else {}
+        all_skills = list(dict.fromkeys([*a.get("skills", []), *ctx_agent.get("skills", [])]))
+        preload = list(dict.fromkeys([*a.get("preload", []), *ctx_agent.get("preload", [])]))
         for s in all_skills:
             if s not in skills:
                 rep.error(f"agente {role}: skill {s!r} não encontrada")
+        for s in preload:
+            if s not in all_skills:
+                rep.error(f"agente {role}: preload {s!r} precisa estar também em skills")
         slug, display = agent_names(role, a)
         resolved[role] = {"role": role, "enabled": a.get("enabled", True), "name": slug,
-                          "display": display, "skills": all_skills, "model": model, "effort": effort}
+                          "display": display, "skills": all_skills, "preload": preload, "model": model,
+                          "effort": effort}
 
     seen: dict[str, str] = {}
     for role, a in resolved.items():
@@ -968,13 +979,17 @@ def reference_section(ctx: dict | None, role: str) -> str:
     return "\n".join(rows)
 
 
-def skills_section(names: list[str], skills: dict[str, Path], provider: str) -> str:
+def skills_section(names: list[str], skills: dict[str, Path], provider: str,
+                   preload: list[str] | None = None) -> str:
     if not names:
         return ""
-    how = ("Invoke them with the `Skill` tool." if provider == "claude" else
+    preload = preload or []
+    how = ("Invoke one with the `Skill` tool when the step needs it; those marked *loaded* are already "
+           "in your context — do not invoke them again." if provider == "claude" else
            "Codex may list them as skills; if not, read the `SKILL.md` below and follow it.")
     rows = ["## Skills", "", f"Procedures you use in your process. {how}", ""]
-    rows += [f"- `{n}` — `{(skills[n] / 'SKILL.md').as_posix()}`" for n in names if n in skills]
+    rows += [f"- `{n}` — `{(skills[n] / 'SKILL.md').as_posix()}`" + (" (*loaded*)" if n in preload else "")
+             for n in names if n in skills]
     return "\n".join(rows)
 
 
@@ -1036,7 +1051,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    "report the failure `state` of your OUTPUT)",
                    "- Put the whole result in your final message: the orchestrator only receives that.",
                    *runtime_lines(cfg, ctx)]),
-        skills_section(a["skills"], skills, provider),
+        skills_section(a["skills"], skills, provider, a["preload"]),
         mcp_agent_section(servers, role),
         systems_section(ctx, detailed=True),
         reference_section(ctx, role),
@@ -1051,8 +1066,11 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
     return {**meta, "description": description}, "\n\n".join(parts) + "\n"
 
 
-def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict) -> dict:
+def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict,
+                       preload: list[str] | None = None) -> dict:
     entry: dict = {"description": meta["description"], "prompt": prompt}
+    if preload:
+        entry["skills"] = list(preload)  # o --agents aceita o mesmo campo do frontmatter
     tools = csv_field(meta.get("tools", ""))
     if tools:
         mcp = [*mcp_for_role(servers, role), *(ctx.get("required_mcp", []) if ctx else [])]
@@ -1169,8 +1187,8 @@ def delegation_section(cfg: dict, resolved: dict) -> str:
         "", "```", record_hint(codex=True), "```", "",
         f"- There is no exploration role: for broad code exploration spawn `{example}` at level `trivial` "
         "asking for `file:line` pointers, or read short excerpts yourself.",
-        "- Your own skills (`to-spec`, `to-tickets`, `codebase-context`): read `skills/<name>/SKILL.md` and "
-        "follow it when the workflow says to use it.",
+        "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
+        "workflow or a trigger says to use it.",
     ]
     return "\n".join(lines)
 
@@ -1219,8 +1237,8 @@ def headless_delegation_section(provider: str, example: str) -> str:
             "it asking for escalated permissions — the project rules allow this command.",
             "- There is no exploration subagent: for broad code exploration delegate a read-only task to "
             f"`{example}` at level `trivial` asking for `file:line` pointers, or read short excerpts yourself.",
-            "- Your own skills (`to-spec`, `to-tickets`, `codebase-context`): read `skills/<name>/SKILL.md` "
-            "and follow it when the workflow says to use it.",
+            "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
+            "workflow or a trigger says to use it.",
         ]
     return "\n".join(lines)
 
@@ -1293,8 +1311,8 @@ def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: 
     if effort:
         front.append(f"effort: {effort}")
     front.append("omitClaudeMd: true")
-    if a["skills"]:
-        front += ["skills:", *[f"  - {x}" for x in a["skills"]]]
+    if a["preload"]:
+        front += ["skills:", *[f"  - {x}" for x in a["preload"]]]
     if entry.get("tools"):
         front.append("tools: " + ", ".join(entry["tools"]))
     if entry.get("disallowedTools"):
@@ -1661,7 +1679,8 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     if provider == "claude":
         heading("Claude Code (CLAUDE.md, .claude/, .mcp.json)")
         write_if_changed(CLAUDE_MD, b["orchestrator_md"], dry, rep)
-        agents_json = {resolved[r]["name"]: claude_agent_entry(r, g["meta"], g["prompt"], ctx, servers)
+        agents_json = {resolved[r]["name"]: claude_agent_entry(r, g["meta"], g["prompt"], ctx, servers,
+                                                               resolved[r]["preload"])
                        for r, g in b["agents"].items()}
         write_if_changed(CLAUDE_AGENTS_JSON, json.dumps(agents_json, indent=2, ensure_ascii=False) + "\n", dry, rep)
         subagents = {}
@@ -1737,7 +1756,7 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "state_dir": sdir.as_posix(),
         "agents": {role: {"name": a["name"], "display": a["display"], "enabled": a["enabled"],
                           "model": a["model"]["key"], "model_id": a["model"]["model_id"],
-                          "effort": a["effort"], "skills": a["skills"]}
+                          "effort": a["effort"], "skills": a["skills"], "preload": a["preload"]}
                    for role, a in resolved.items()},
         "mcp": list(servers),
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),

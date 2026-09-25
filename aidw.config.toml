@@ -50,31 +50,33 @@ ask = [
 # name = "orquestrador"
 enabled = true
 effort = "high"
-skills = ["to-spec", "to-tickets", "codebase-context"]
+skills = ["to-spec", "verificar-premissa", "preparar-worktree"]
 
 [agents.coder]
 # name = "codificador"
 enabled = true
 effort = "medium"
-skills = ["implement-ticket", "debug", "testing", "codebase-context"]
+skills = ["preparar-worktree"]
 
 [agents.reviewer]
 # name = "revisor"
 enabled = true
 effort = "high"
-skills = ["code-review"]
+skills = ["code-review", "verificar-premissa"]
+# preload = injetada inteira em toda execução; as demais o agente chama quando precisa.
+preload = ["code-review"]
 
 [agents.api-db]
 # name = "api"
 enabled = true
 effort = "medium"
-skills = ["database-safe", "debug"]
+skills = ["database-safe"]
 
 [agents.qa]
 # name = "qa"
 enabled = false
 effort = "medium"
-skills = ["testing"]
+skills = []
 
 [agents.documenter]
 # name = "documentador"
@@ -82,18 +84,20 @@ skills = ["testing"]
 model = "sonnet"
 enabled = true
 effort = "medium"
-skills = ["documentation"]
+skills = []
 
 [agents.bug-hunter]
 # name = "bugs"
 # Sob demanda: o orquestrador decide quando a passada vale o custo (ORCHESTRATOR.md).
 enabled = true
 effort = "high"
-skills = ["bug-hunt"]
+skills = ["bug-hunt", "verificar-premissa"]
+preload = ["bug-hunt"]
 
 [agents.security]
 # name = "seguranca"
 # Sob demanda, como o de bugs.
 enabled = true
 effort = "high"
-skills = ["security-audit"]
+skills = ["security-audit", "verificar-premissa"]
+preload = ["security-audit"]

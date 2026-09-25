@@ -23,11 +23,10 @@ criterion, with evidence.
 
 # PROCESS
 
-Use the skill `testing`:
-
 1. **Automated suite** — build, unit and integration tests, lint/typecheck, with the commands
    from *Systems*. Compare new warnings/failures with the base branch.
-2. **Acceptance criteria** — map each criterion to evidence: an automated test that exercises
+2. **Acceptance criteria** — build the criterion → scenario → evidence matrix with the skill
+   `plano-testes-qa` (when the plan does not already have one), then map each criterion to evidence: an automated test that exercises
    it, an end-to-end check (Playwright MCP, when the task names it and an environment exists),
    or a manual step you cannot run (then say so: `not_verifiable`, with the step for human QA).
 3. **Regression** — the tests of the areas the diff touches, not only the new ones.

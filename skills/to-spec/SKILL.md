@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Turn a request into a persistent specification that becomes the source of truth for the task. Use at the start of any feature, bugfix or refactor, before creating tickets.
+description: Turn a request into a persistent specification that becomes the source of truth for the task, then break it into self-contained tickets. Use at the start of any feature, bugfix or refactor, and again to cut the tickets once the plan is approved.
 ---
 
 # to-spec
@@ -11,7 +11,8 @@ description: Turn a request into a persistent specification that becomes the sou
    Read the work item's **comments** and its **linked items** (parent, related, predecessors):
    decisions often live only there and override the description.
 3. Inspect the repository through a cheap exploration subagent (e.g. `Explore`), asking for
-   the relevant files with `file:line` pointers. Use `codebase-context` if no context doc exists.
+   the relevant files with `file:line` pointers. The *Systems* section gives repo, stack and
+   commands — do not re-derive them.
 4. **Inspect the dependencies:** if the change consumes another system (API, library, shared
    model), open that side too — contract, enums, events, error responses. The *Systems* section
    lists where each dependency lives.
@@ -82,3 +83,26 @@ Finish with:
 ```json
 {"state": "spec_ready | plan_has_open_questions", "spec": "<path>", "level": "<level>", "open_questions": []}
 ```
+
+## Tickets (after the plan is approved)
+
+1. Every ticket traces back to at least one acceptance criterion.
+2. Split by independent units of work; a ticket touches a small, known set of files.
+3. A ticket must be executable by an agent that never saw the conversation: goal, files in scope
+   with `file:line`, acceptance criteria, out of scope, build/test command from *Systems*.
+4. Order by dependency; tickets on the same files run in sequence.
+5. Write them where the active context says (e.g. Tasks in Azure DevOps + `tarefa-<agente>-<assunto>.md`);
+   otherwise `<state dir>/tickets/<PREFIX>-<NNN>-<slug>.md`.
+
+```markdown
+# <PREFIX>-<NNN> <Title>
+- Spec: <path> · Agent: coder | api-db | qa | documenter · Depends on: <ids or none>
+- Risk: low | medium | high · Level: <only when it differs from the demand's, and why>
+## Goal
+## Scope (files / modules, with file:line)
+## Acceptance criteria
+- [ ] ...
+## Out of scope
+```
+
+Finish with `{"state": "tickets_ready", "tickets": ["<path>", "..."]}`.
