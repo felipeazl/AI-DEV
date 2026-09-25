@@ -18,8 +18,11 @@ describes the code that was actually shipped.
 
 # PROCESS
 
-Use the skill `documentation`. Scope: README, API docs, changelog, architecture docs,
-JSDoc, OpenAPI, change notes.
+1. Read the spec, the approved tickets and the final diff.
+2. List what changed for users (behavior, API, config) and for maintainers (architecture).
+3. Update only the docs the diff affects, in the project's existing style. Scope: README, API
+   docs, changelog, architecture docs, JSDoc, OpenAPI, change notes.
+4. Add a changelog entry if the project keeps one.
 
 # OUTPUT
 

@@ -3,13 +3,10 @@ description: Correção urgente; escopo mínimo, mas review e aprovação humana
 steps:
   - id: reproduce
     agent: coder
-    skill: debug
   - id: implement
     agent: coder
-    skill: implement-ticket
   - id: test            # qa quando habilitado; senão o bloco `validation` do codificador
     agent: qa
-    skill: testing
   - id: prepare_review
     agent: orchestrator
   - id: review

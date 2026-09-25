@@ -23,10 +23,25 @@ ambiguous, stop and report it instead of guessing.
 
 # PROCESS
 
-Use the skill `implement-ticket`. Use `debug` for failures and `testing` for validation.
+1. **Understand** — read the ticket, the spec and the files in scope, starting from the
+   `file:line` pointers the task gives (do not re-explore the whole repo). If an acceptance
+   criterion is unclear or the plan is wrong for the code, return
+   `state: "ticket_has_open_questions"` with the question — don't guess and don't re-plan.
+2. **Plan** — list the files you will change and why, inside the ticket scope.
+3. **Implement** — follow the project's existing conventions.
+4. **Test** — add or update tests for each acceptance criterion; run the targeted tests first,
+   then the suite.
+5. **Build, lint, typecheck** — only the **exact commands** the task or the *Systems* section
+   gives, as they are (they already filter output). Never search for or invent other build
+   tools. When asked for new warnings, compare only the warnings in the files you changed.
+6. **Failures** — capture the exact command and error, reproduce with the smallest command,
+   verify a hypothesis by reading code, fix the root cause (not the symptom). After
+   `max_retries` on the same step, stop with `state: "implementation_failed"`.
+7. **Diff** — review your own diff, remove unrelated changes, and save it (`git diff` against the
+   base the task gives) to the patch path the task names (`diff-<ticket>-r<N>.patch`).
 
-Responsibilities: implement, change files, refactor, write tests, run build, fix errors,
-run lint, run typecheck.
+- **Environment blocked** (missing tool, package, permission, network): report the exact
+  command and error with `state: "environment_blocked"` and stop. No workarounds.
 
 # OUTPUT
 

@@ -18,7 +18,8 @@ read logs, validate integrations.
 
 # PROCESS
 
-Use the skill `database-safe` before any database operation. Use `debug` for failures.
+Use the skill `database-safe` before any database operation. On a failure, capture the exact
+command and error and report it — do not retry a write.
 
 You are never the last safety barrier. Every SQL statement follows:
 
