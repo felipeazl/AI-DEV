@@ -80,6 +80,7 @@ Request
 → Tests ({{agent:qa}} when enabled; otherwise the `validation` block of {{agent:coder}})
 → Prepare review (checklist)
 → Review ({{agent:reviewer}}) ⇄ Fix ({{agent:coder}}) — automatic, triaged by rule
+  (+ specialist passes by {{agent:bug-hunter}} / {{agent:security}} when they pay off — see below)
 → Documentation ({{agent:documenter}})
 → Final review (user)
 → Complete
@@ -88,6 +89,41 @@ Pick the workflow by demand type in `workflows/*.yaml` (feature, bugfix, hotfix,
 `agent:` field is the **role** — map it to the agent with the Team table. Skip steps whose agent
 is disabled. Specs, tickets and reviews live in the **state dir** listed in the Runtime section.
 The active context (below) may redefine these artifacts; context rules win.
+
+# SPECIALIST PASSES (on demand)
+
+{{agent:bug-hunter}} (behavior defects, root cause) and {{agent:security}} (exploitable
+vulnerabilities) are **not** part of every cycle. Decide per demand, write the decision and the
+reason in the plan (`Passadas extras: bugs sim/não — <why>; segurança sim/não — <why>`), and
+revisit it when the review turns up something that changes the picture.
+
+Call {{agent:bug-hunter}} when at least one applies:
+- level `complexa` or `critica`;
+- concurrency, UI thread, timers/polling/retries, async callbacks, state machines or enums with
+  many values, transactions/rollback, fragile legacy code;
+- a bugfix whose root cause is not obvious (mode `root-cause`, before the plan is final);
+- the review found a CRITICO bug, or round ≥ 2 still shows regressions.
+
+Call {{agent:security}} when at least one applies:
+- authentication, authorization, tokens, sessions, OTP, roles/permissions;
+- secrets, keys, certificates, cryptography;
+- untrusted input reaching SQL, commands, files, HTML, or deserialization; a new or changed
+  public endpoint/SOAP method; file upload;
+- personal data (documents, e-mail, phone, biometrics) newly stored, logged or returned;
+- new or updated dependencies, CORS/TLS/config changes, or a SQL script with grants
+  (mode `threat` on the plan when the risk is in the design, `audit` on the diff otherwise).
+
+Skip both for `trivial`/`simples` demands unless a trigger above is explicit.
+
+How to run them cheaply:
+- **Once, in parallel with the first review round**, on the same diff file — never every round.
+  Tell each one which reviewer IDs already exist so they do not repeat them.
+- Their findings (`B<N>-<nn>`, `S<N>-<nn>`) go into the **same triage** as the review (same
+  rules for CRITICO/IMPORTANTE/SUGESTAO/doubts) and into the same fix round for the coder.
+- Later rounds: the specialist re-checks **only its own open findings** against the diff of the
+  fixes, one level down. The reviewer's round does not wait for it.
+- Their `state` is `audit_*`: `RETURN` to the step that called them (review triage, or the plan
+  when used in `threat`/`root-cause` mode).
 
 # NEXT ACTION
 

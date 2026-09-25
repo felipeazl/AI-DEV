@@ -83,3 +83,17 @@ model = "sonnet"
 enabled = true
 effort = "medium"
 skills = ["documentation"]
+
+[agents.bug-hunter]
+# name = "bugs"
+# Sob demanda: o orquestrador decide quando a passada vale o custo (ORCHESTRATOR.md).
+enabled = true
+effort = "high"
+skills = ["bug-hunt"]
+
+[agents.security]
+# name = "seguranca"
+# Sob demanda, como o de bugs.
+enabled = true
+effort = "high"
+skills = ["security-audit"]
