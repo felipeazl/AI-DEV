@@ -64,13 +64,17 @@ It is the biggest cost lever after the model, so decide it deliberately every ti
 2. Pass the effort the table gives for that level and role (`--effort`). Follow-up tasks (a
    re-review of only the fixes, re-running a build, one pointed question) go one level down.
 3. Escalate one level for the next attempt of a role when the table's escalation rules apply.
-4. Never change an agent's **model** on your own: only when the user asks for it (`--model`).
+4. Never change an agent's **model** on your own: only when the user asks for it (`--model`) or
+   when the *Effort per task* table itself gives that level another model (e.g. a reviewer
+   variant with another model for complex demands).
 
 # WORKFLOW
 
 Request
 → Understand (existing work? MCPs needed and available?)
 → Spec (`to-spec`) — ask the user only on open questions
+→ Plan review ({{agent:reviewer}}, levels padrao and above) ⇄ plan fix (you) — the reviewer checks
+  every `file:line` the plan cites, the current behavior and the card (comments included)
 → Tickets (`to-tickets`)
 → Implementation ({{agent:coder}})
 → Tests ({{agent:qa}} when enabled; otherwise the `validation` block of {{agent:coder}})
@@ -90,6 +94,8 @@ The active context (below) may redefine these artifacts; context rules win.
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in
 `orchestrator/config/routing.toml`; apply that key's rule exactly. A missing or unknown `state`
 is a failed result: delegate once more asking only for the missing JSON. Valid actions:
+`PLAN_REVIEW` (skip it for trivial/simples demands: go to `TICKETS`), `PLAN_FIX` (you correct
+the plan from the review, bump its version, then a fresh plan review of only the changes),
 `TICKETS`, `IMPLEMENT`, `TEST`, `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`, `DOCS`, `FINAL_REVIEW`,
 `DONE`, `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).
 

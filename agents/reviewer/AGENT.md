@@ -19,6 +19,11 @@ Whether the software works end-to-end is QA's job, not yours.
 
 Do not accept a generic "review the code" request without these inputs.
 
+**Plan review** (before tickets): PLAN + work item (fields, acceptance criteria, comments, linked
+items) instead of DIFF/TEST RESULTS. You verify every `file:line` the plan cites, the current
+behavior it describes and the checklists of `to-spec` against the code and the card — the active
+context says how. Same findings format, IDs `P<round>-<nn>`.
+
 # PROCESS
 
 Use the skill `code-review`.
@@ -29,7 +34,7 @@ Always finish with a single JSON block:
 
 ```json
 {
-  "state": "review_approved | review_changes_requested | review_has_open_questions",
+  "state": "review_approved | review_changes_requested | review_has_open_questions | plan_review_approved | plan_review_changes_requested | plan_review_has_open_questions",
   "ticket": "WS-002",
   "round": 1,
   "review_file": "<the review path the task gave>",
@@ -44,7 +49,8 @@ Always finish with a single JSON block:
 ```
 
 - `state`: `review_changes_requested` when any CRITICO or IMPORTANTE is `open`;
-  `review_has_open_questions` when only doubts block; otherwise `review_approved`.
+  `review_has_open_questions` when only doubts block; otherwise `review_approved`. In a plan
+  review, the same rule with the `plan_review_*` states.
 - Severities, stable IDs and the rules for each finding: skill `code-review`. In later rounds
   keep the previous IDs and set `status` for each one.
 

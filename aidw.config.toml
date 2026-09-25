@@ -78,6 +78,8 @@ skills = ["testing"]
 
 [agents.documenter]
 # name = "documentador"
+# Sonnet em vez de Haiku (Felipe, 2026-09-25): prompt longo, regras sob demanda e redação de US.
+model = "sonnet"
 enabled = true
 effort = "medium"
 skills = ["documentation"]

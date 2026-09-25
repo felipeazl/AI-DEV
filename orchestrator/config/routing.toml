@@ -3,7 +3,8 @@
 # [rules]  estado devolvido pelo agente → próxima ação (determinístico).
 # [effort] quanto raciocínio cada tarefa merece. O orquestrador escolhe o effort de CADA
 #          delegação (`aidw.py delegate --effort`), com o nível da tarefa e as regras abaixo.
-#          O modelo de cada agente é fixo (aidw.config.toml); só muda se o usuário pedir.
+#          O modelo de cada agente é fixo (aidw.config.toml); só muda se o usuário pedir ou
+#          se o nível tiver [effort.levels.<nível>.models] (papel → chave de config/models.toml).
 #
 # Cada agente termina com `"state": "<estado>"` usando as chaves de [rules] (veja o OUTPUT de
 # cada AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
@@ -14,7 +15,10 @@ max_retries = 3
 # Início e plano
 existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou retrabalho?
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
-spec_ready = "TICKETS"                          # sem dúvidas: segue sozinho
+spec_ready = "PLAN_REVIEW"                      # sem dúvidas: revisor confere o plano (padrao+)
+plan_review_approved = "TICKETS"
+plan_review_changes_requested = "PLAN_FIX"      # o orquestrador corrige o plano; nova rodada
+plan_review_has_open_questions = "HUMAN_APPROVAL"
 tickets_ready = "IMPLEMENT"
 
 # Implementação (codificador)
@@ -87,6 +91,10 @@ api-db = "high"
 documenter = "medium"
 qa = "high"
 
+[effort.levels.complexa.models]
+# Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+reviewer = "opus"
+
 [effort.levels.critica]
 when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
 coder = "xhigh"
@@ -94,6 +102,10 @@ reviewer = "xhigh"
 api-db = "high"
 documenter = "medium"
 qa = "high"
+
+[effort.levels.critica.models]
+# Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+reviewer = "opus"
 
 [effort.escalate]
 # Quando subir um nível na próxima tentativa do mesmo papel.
