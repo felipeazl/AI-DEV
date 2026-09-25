@@ -342,20 +342,40 @@ MCP_TIMEOUT = "60000"                          # variáveis para a sessão
 add = "claude mcp add --scope user ado -- npx -y @azure-devops/mcp <org> -d core work work-items -a pat"
 
 [permissions]
-allow = ["mcp__ado"]                          # liberadas sem prompt
-ask = ["Bash(git *)", "PowerShell(git *)"]     # sempre pedem confirmação (vencem o allow)
+allow = ["mcp__ado", "Bash(git *)", "PowerShell(git *)",
+         'PowerShell(C:\AI-DEV\contexts\meu-trabalho\tools\meu-script.ps1 *)']
+git_ask = ["commit", "push", "merge"]          # gera ask para `git X` e `git -C <pasta> X`
+ask = ["PowerShell(sqlcmd *)"]                 # sempre pedem confirmação (vencem o allow)
 deny = []
 
+[systems.meu-sistema]                           # mapa de sistemas (vai para todos os agentes)
+name = "Meu Sistema"
+repos = ["C:/Projetos/MeuSistema"]
+stack = ".NET 8, Clean Architecture"
+depends_on = ["outra-api"]                     # o plano inspeciona o contrato das dependências
+build = "dotnet build 'C:\\Projetos\\MeuSistema' -v q -clp:ErrorsOnly"   # pronto e filtrado
+test = "dotnet test 'C:\\Projetos\\MeuSistema' -v q --nologo"
+notes = ["armadilha conhecida: ..."]
+
 [agents.coder]                                  # por papel
-include = ["shared/guia-time.md", "agents/coder.md"]   # anexado às instruções do agente
+include = ["shared/guia-time.md", "agents/coder.md"]   # sempre nas instruções do agente
 skills = ["minha-skill-do-contexto"]                  # somado às skills do agente
+disallowed_tools = ["mcp__ado__wit_work_item_comment_write"]   # bloqueado neste agente
+reference = [                                          # lido só quando o tema aparece
+    { path = "reference/guia-integracoes.md", when = "integrar com os serviços SOAP legados" },
+]
 
 [agents.orchestrator]
 include = ["agents/orchestrator.md"]
 ```
 
-Todo `*.md` em `contexts/<nome>/policies/` entra automaticamente em todos os agentes. As pastas
-liberadas no fim são a soma de `[workspace].project_dirs` com `additional_dirs` do contexto.
+- Todo `*.md` em `contexts/<nome>/policies/` entra automaticamente em todos os agentes.
+- As pastas liberadas são a soma de `[workspace].project_dirs` com `additional_dirs` do contexto.
+- **Economia de tokens:** o que entra em `include` é carregado em toda chamada do agente; guias
+  longos que só às vezes importam vão em `reference` (o agente lê quando o tema aparece).
+- **Scripts liberados** precisam ser chamados pelo **caminho direto, sem espaços**: o Claude Code
+  sempre pede aprovação para chamadas com `&` ou `pwsh -File`, mesmo com regra `allow`. Por isso
+  ferramentas como um validador de SQL ou um wrapper de build ficam em `contexts/<nome>/tools/`.
 
 ### 5.6 Citando agentes nas instruções
 
@@ -396,23 +416,27 @@ Redigir uma dívida técnica para remover o cliente HTTP duplicado
 
 ### 6.3 O que acontece
 
+O fluxo é **autônomo**. Você entra só em dúvidas, ações travadas e na revisão final:
+
 ```text
 Você: "Implementar a US 1234"
   │
-  ├─ orquestrador  lê a US, inspeciona o repositório
-  ├─ to-spec       monta o plano de execução ............. ⏸ você aprova
-  ├─ to-tickets    cria os tickets (ex.: Tasks no board)
-  ├─ codificador   implementa ticket a ticket
-  ├─ revisor       devolve os achados numerados .......... ⏸ você decide manter/descartar
-  ├─ revisor       gera e anexa a review final ........... ⏸ você aprova
-  ├─ codificador   aplica as correções ................... ⏸ você aprova
-  ├─ revisor       revisa de novo, até zero CRITICO/IMPORTANTE
-  └─ documentador  documenta o que foi entregue
+  ├─ orquestrador  lê a US (trabalho já existente? MCPs necessários?) · explora o código
+  ├─ to-spec       plano com checklists ........ ⏸ só se houver dúvida ou mais de um caminho
+  ├─ to-tickets    Tasks no board, branch/worktree da demanda
+  ├─ codificador   implementa ticket a ticket (build pronto, saída filtrada)
+  ├─ preparação    checklist: anexos, tag, pendências para QA, build
+  ├─ revisor ⇄ codificador   loop automático, triagem por regras, até zero CRITICO/IMPORTANTE
+  ├─ documentador  documenta o que foi entregue
+  └─ revisão final ............................. ⏸ você: resultado, decisões tomadas,
+                                                   comentários a publicar, commit/push
 ```
 
+- **Triagem por regras:** CRITICO/IMPORTANTE são corrigidos dentro do escopo; SUGESTAO é
+  aplicada se for barata; dúvidas e decisões de Tech Lead vão para você numa pergunta só.
+- **Ações travadas** (definidas pelas policies do contexto, ex.: commit, push, SQL de escrita)
+  pedem sua aprovação pelo prompt de permissão — nunca são contornadas.
 - Cada resultado vem identificado com o agente e o modelo (ex.: `## codificador — sonnet`).
-- Quando um agente precisa de uma decisão, ele devolve `HUMAN_APPROVAL`; o orquestrador
-  pergunta a você e só então reaciona o agente.
 - Tickets independentes podem rodar em paralelo.
 
 ### 6.4 Pedidos úteis ao orquestrador
@@ -575,7 +599,9 @@ O princípio é **nunca deixar o modelo ser a última barreira**:
 |---|---|
 | **Confirmação obrigatória** | Regras `ask` (em `[policies]` ou no `context.toml`) sempre pedem sua aprovação — vencem qualquer `allow`. Ex.: um contexto pode exigir aprovação para todo `git`, todo SQL e todo comentário em card |
 | **Bloqueios reais** | `[policies].deny` vira regra de permissão do Claude Code: force push, `reset --hard`, `clean -f` e leitura de `.env` são negados para o chat e para todos os subagentes |
-| **Aprovação humana** | Escritas que mudam estado (API, banco, work items) são propostas pelo agente e só executadas após o seu OK no chat |
+| **Aprovação humana pontual** | O fluxo roda sozinho; as ações que o contexto trava (ex.: commit, push, SQL de escrita, escrita em ambiente) são propostas pelo agente e só executadas com o seu OK |
+| **Validadores** | Operações liberadas com risco (ex.: SQL de leitura) passam por um script em `contexts/<nome>/tools/` que recusa o que não for permitido e registra log — o LLM nunca é a última barreira |
+| **Ferramentas por agente** | `disallowed_tools` remove ferramentas de um subagente (ex.: só o orquestrador comenta em cards) |
 | **Prompts de permissão** | O que não está em `allow` segue o modo de permissão do chat (no modo padrão, pede confirmação). Os subagentes compartilham as permissões da sessão |
 | **Policies nas instruções** | Todo agente recebe as policies genéricas e as do contexto |
 | **Contextos fora do Git** | `contexts/*/` é ignorado; o `doctor` dá **erro** se um contexto ativo deixar de estar no `.gitignore` |

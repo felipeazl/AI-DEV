@@ -58,7 +58,8 @@ IS_WINDOWS = os.name == "nt"
 GENERATED_MARK = "Gerado por aidev.py"
 ORCHESTRATOR = "orchestrator"
 
-ACTIONS = {"TICKETS", "IMPLEMENT", "TEST", "REVIEW", "CODER_FIX", "DOCS", "DONE", "HUMAN_APPROVAL"}
+ACTIONS = {"TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
+           "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL"}
 EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 ALIASES = {"opus", "sonnet", "haiku", "fable"}
 # Campos do frontmatter do subagente que o apply controla (os demais do AGENT.md são repassados).
@@ -317,7 +318,66 @@ def load_context(cfg: dict, rep: Report) -> dict | None:
         for inc in spec.get("include", []):
             if not (ctx["dir"] / inc).is_file():
                 rep.error(f"contexto {name}: [agents.{agent}] inclui arquivo inexistente {inc!r}")
+        for ref in spec.get("reference", []):
+            if not (ctx["dir"] / ref.get("path", "")).is_file():
+                rep.error(f"contexto {name}: [agents.{agent}] referência inexistente {ref.get('path')!r}")
+    systems = ctx.get("systems", {})
+    for key, sysdef in systems.items():
+        for dep in sysdef.get("depends_on", []):
+            if dep not in systems:
+                rep.warn(f"contexto {name}: sistema {key!r} depende de {dep!r}, que não está em [systems]")
+        for repo in sysdef.get("repos", []):
+            if not Path(repo).is_dir():
+                rep.warn(f"contexto {name}: repositório do sistema {key!r} não existe: {repo}")
     return ctx
+
+
+def expand_git_ask(subcommands: list[str]) -> list[str]:
+    """`commit` → ask para `git commit ...` e `git -C <pasta> commit ...`, no Bash e no PowerShell."""
+    rules = []
+    for tool in ("Bash", "PowerShell"):
+        for sub in subcommands:
+            rules += [f"{tool}(git {sub})", f"{tool}(git {sub} *)", f"{tool}(git -C * {sub})",
+                      f"{tool}(git -C * {sub} *)"]
+    return rules
+
+
+def systems_section(ctx: dict | None, detailed: bool) -> str:
+    systems = ctx.get("systems", {}) if ctx else {}
+    if not systems:
+        return ""
+    lines = ["## Systems", "",
+             "Where each system lives and how to validate it. Use these commands as given; do not "
+             "search for other build tools.", ""]
+    for key, s in systems.items():
+        lines.append(f"### {s.get('name', key)} (`{key}`)")
+        if s.get("repos"):
+            lines.append(f"- Repos: {', '.join(f'`{r}`' for r in s['repos'])}")
+        if s.get("stack"):
+            lines.append(f"- Stack: {s['stack']}")
+        if s.get("depends_on"):
+            deps = ", ".join(f"`{d}`" for d in s["depends_on"])
+            lines.append(f"- Depends on: {deps} — when a change consumes one of these, inspect its "
+                         "contract (endpoints, enums, events) in that repo before planning")
+        if s.get("build"):
+            lines.append(f"- Build: `{s['build']}`")
+        if s.get("test"):
+            lines.append(f"- Test: `{s['test']}`")
+        if detailed and s.get("notes"):
+            lines += ["- Notes:", *[f"  - {n}" for n in s["notes"]]]
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def reference_section(ctx: dict | None, role: str) -> str:
+    refs = ctx.get("agents", {}).get(role, {}).get("reference", []) if ctx else []
+    if not refs:
+        return ""
+    rows = ["## Reference (read on demand)", "",
+            "Not loaded up front, to keep your context small. Read a file only when its topic "
+            "applies to the task.", ""]
+    rows += [f"- `{(ctx['dir'] / r['path']).as_posix()}` — {r.get('when', '')}" for r in refs]
+    return "\n".join(rows)
 
 
 def context_missing(cfg: dict) -> bool:
@@ -853,7 +913,13 @@ def render_subagent(role: str, agent: dict, cfg: dict, catalog: dict, ctx: dict 
              "omitClaudeMd: true"]
     if agent["skills"]:
         front += ["skills:"] + [f"  - {s}" for s in agent["skills"]]
-    front += [f"{k}: {v}" for k, v in meta.items() if k not in RESERVED_FRONTMATTER]
+    ctx_agent = ctx.get("agents", {}).get(role, {}) if ctx else {}
+    disallowed = [t.strip() for t in meta.get("disallowedTools", "").split(",") if t.strip()]
+    disallowed += [t for t in ctx_agent.get("disallowed_tools", []) if t not in disallowed]
+    if disallowed:
+        front.append(f"disallowedTools: {', '.join(disallowed)}")
+    front += [f"{k}: {v}" for k, v in meta.items()
+              if k not in RESERVED_FRONTMATTER and k != "disallowedTools"]
     front.append("---")
 
     sources = [source, *policy_files(ctx), *context_files(ctx, role)]
@@ -869,9 +935,12 @@ def render_subagent(role: str, agent: dict, cfg: dict, catalog: dict, ctx: dict 
                    f"- Skills: {', '.join(f'`{s}`' for s in agent['skills']) or '—'}",
                    *runtime_lines(cfg, catalog, ctx)]),
         mcp_agent_section(servers, role),
+        systems_section(ctx, detailed=True),
+        reference_section(ctx, role),
         "# POLICIES",
         *[tpl.include(p) for p in policy_files(ctx)],
     ]
+    parts = [x for x in parts if x]
     if context_files(ctx, role):
         parts.append(f"# CONTEXT: {ctx['description']}")
         parts += [tpl.include(p) for p in context_files(ctx, role)]
@@ -905,9 +974,11 @@ def render_root_claude_md(resolved: dict, cfg: dict, catalog: dict, ctx: dict | 
         "\n".join(["## Team", "",
                    "Call subagents by the name in the first column (`subagent_type`).", "", *team]),
         mcp_orchestrator_section(servers, resolved, cfg),
+        systems_section(ctx, detailed=False),
         "# Policies",
         *[tpl.include(p) for p in policy_files(ctx)],
     ]
+    parts = [x for x in parts if x]
     if context_files(ctx, ORCHESTRATOR):
         parts.append(f"# Context: {ctx['description']}")
         parts += [tpl.include(p) for p in context_files(ctx, ORCHESTRATOR)]
@@ -1106,7 +1177,8 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "allow": list(dict.fromkeys([*ctx_perms.get("allow", []),
                                      *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
         "enabledMcpjsonServers": list(servers),
-        "ask": list(dict.fromkeys([*cfg["policies"]["ask"], *ctx_perms.get("ask", [])])),
+        "ask": list(dict.fromkeys([*cfg["policies"]["ask"], *ctx_perms.get("ask", []),
+                                   *expand_git_ask(ctx_perms.get("git_ask", []))])),
         "deny": list(dict.fromkeys([*cfg["policies"]["deny"], *ctx_perms.get("deny", [])])),
         "additionalDirectories": project_dirs(cfg, ctx),
         "env": dict(ctx.get("env", {})) if ctx else {},

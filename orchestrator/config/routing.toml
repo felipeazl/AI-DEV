@@ -3,20 +3,37 @@
 # Usadas quando o JEV está desligado e como fallback quando ele está ligado.
 # Assim dá para medir se o JEV realmente melhora o sistema antes de trocar.
 #
-# Formato: <estado do ticket> = "<próxima ação>"
-# Ações válidas: TICKETS, IMPLEMENT, TEST, REVIEW, CODER_FIX, DOCS, DONE, HUMAN_APPROVAL
+# O fluxo é autônomo: HUMAN_APPROVAL só onde a regra manda (dúvida, ação travada, fora do plano)
+# e FINAL_REVIEW uma vez no fim.
+#
+# Formato: <estado da demanda> = "<próxima ação>"
+# Ações válidas: TICKETS, IMPLEMENT, TEST, PREPARE_REVIEW, REVIEW, CODER_FIX, DOCS,
+#                FINAL_REVIEW, DONE, HUMAN_APPROVAL
 
 max_retries = 3
 
 [rules]
-spec_ready = "TICKETS"
+# Início e plano
+existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou retrabalho?
+plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
+spec_ready = "TICKETS"                          # sem dúvidas: segue sozinho
 tickets_ready = "IMPLEMENT"
+
+# Implementação
 implementation_complete = "TEST"
 implementation_failed = "CODER_FIX"
+environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não consegue resolver
 tests_failed = "CODER_FIX"
-tests_passed = "REVIEW"
-review_changes_requested = "CODER_FIX"
+tests_passed = "PREPARE_REVIEW"                 # checklist: anexos, tag SQL, pendências, build
+
+# Ciclo de revisão (triagem por regras, sem o Felipe)
+review_ready = "REVIEW"
+review_changes_requested = "CODER_FIX"          # CRITICO/IMPORTANTE pendentes
+review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ciclo segue
 review_approved = "DOCS"
-docs_complete = "DONE"
 max_retries_exceeded = "HUMAN_APPROVAL"
-policy_requires_approval = "HUMAN_APPROVAL"
+
+# Fim
+docs_complete = "FINAL_REVIEW"                  # pacote único para o Felipe
+final_review_approved = "DONE"
+policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, SQL de escrita...)
