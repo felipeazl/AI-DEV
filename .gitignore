@@ -3,6 +3,7 @@ contexts/*/
 
 # Gerados por `python aidev.py apply`
 /CLAUDE.md
+/AGENTS.md
 /.mcp.json
 .claude/agents/
 .claude/skills/

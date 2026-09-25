@@ -47,6 +47,7 @@ SKILLS_DIR = ROOT / "skills"
 CONTEXTS_DIR = ROOT / "contexts"
 WORKFLOWS_DIR = ROOT / "workflows"
 ROOT_CLAUDE_MD = ROOT / "CLAUDE.md"
+ROOT_AGENTS_MD = ROOT / "AGENTS.md"          # instruções do orquestrador no Codex CLI
 CLAUDE_DIR = ROOT / ".claude"
 SUBAGENTS_DIR = CLAUDE_DIR / "agents"
 LINKED_SKILLS_DIR = CLAUDE_DIR / "skills"
@@ -80,18 +81,28 @@ BUILTIN_AGENT_NAMES = {"general-purpose", "explore", "plan", "statusline-setup",
 # Nos arquivos de instruções, {{agent:<papel>}} vira o nome configurado do agente.
 PLACEHOLDER_RE = re.compile(r"\{\{agent:([\w-]+)\}\}")
 
-# Padrão (nível "padrao" da demanda): orquestrador e revisor em Opus, demais em Sonnet.
+# Padrão (nível "padrao" da demanda): codificador em Opus, revisor e api em Sonnet,
+# documentador em Haiku.
 # Os outros níveis vêm de [levels] no routing.toml.
 DEFAULT_AGENTS: dict[str, dict] = {
     "orchestrator": {"enabled": True, "model": "opus-high",
                      "skills": ["to-spec", "to-tickets", "codebase-context"]},
-    "coder": {"enabled": True, "model": "sonnet",
+    "coder": {"enabled": True, "model": "opus-medium",
               "skills": ["implement-ticket", "debug", "testing", "codebase-context"]},
-    "reviewer": {"enabled": True, "model": "opus-high", "skills": ["code-review"]},
+    "reviewer": {"enabled": True, "model": "sonnet", "skills": ["code-review"]},
     "api-db": {"enabled": True, "model": "sonnet-medium", "skills": ["database-safe", "debug"]},
     "qa": {"enabled": False, "model": "sonnet", "skills": ["testing"]},
-    "documenter": {"enabled": True, "model": "sonnet-medium", "skills": ["documentation"]},
+    "documenter": {"enabled": True, "model": "haiku", "skills": ["documentation"]},
 }
+
+# `delegate`: modo de permissão de cada papel no `claude -p`. Sem prompt interativo, o que pediria
+# aprovação é negado e volta em `permission_denials`, para o orquestrador levar ao usuário.
+# `auto`: comandos de rotina rodam (classificador); regras `ask` (commit, push, sqlcmd…) seguem
+# negadas — testado em 2026-09-25. O api fica em `default`: só o que está no `allow` (validador
+# SQL, git); chamada de API que muda estado precisa de OK um a um (policies/ambientes-e-escrita).
+DELEGATE_PERMISSION = {"coder": "auto", "reviewer": "auto", "documenter": "auto",
+                       "qa": "auto", "api-db": "default"}
+DELEGATE_MAX_TURNS = {"coder": 80, "reviewer": 40, "documenter": 40, "qa": 40, "api-db": 30}
 
 # Regras de negação do chat (valem para o orquestrador e todos os subagentes).
 DEFAULT_DENY = [
@@ -198,6 +209,7 @@ def default_config() -> dict:
         "mcp": {"enabled": list(DEFAULT_MCP)},
         "context": {"active": ""},
         "jev": {"enabled": False, "model": "jev"},
+        "codex": {"enabled": False, "model": "gpt-sol", "effort": "high"},
         "policies": {"deny": list(DEFAULT_DENY), "ask": []},
         "agents": json.loads(json.dumps(DEFAULT_AGENTS)),
     }
@@ -208,7 +220,7 @@ def load_config() -> dict | None:
         return None
     cfg = load_toml(CONFIG_FILE)
     base = default_config()
-    for section in ("models", "workspace", "mcp", "context", "jev", "policies"):
+    for section in ("models", "workspace", "mcp", "context", "jev", "codex", "policies"):
         base[section].update(cfg.get(section, {}))
     if "agents" in cfg:
         base["agents"] = {}
@@ -270,6 +282,13 @@ def render_config(cfg: dict) -> str:
         "# de orchestrator/config/routing.toml.",
         f"enabled = {toml_value(j['enabled'])}",
         f"model = {toml_value(j['model'])}",
+        "",
+        "[codex]",
+        "# Orquestrador alternativo no Codex CLI (GPT): o apply gera AGENTS.md e o Codex delega aos",
+        "# agentes Claude com `python aidev.py delegate` (claude -p, modelo/effort por chamada).",
+        f"enabled = {toml_value(cfg['codex']['enabled'])}",
+        f"model = {toml_value(cfg['codex']['model'])}",
+        f"effort = {toml_value(cfg['codex']['effort'])}",
         "",
         "[policies]",
         "# Regras de permissão gravadas em .claude/settings.local.json (valem para todos os agentes):",
@@ -577,6 +596,10 @@ def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Repor
 
     if cfg["jev"]["enabled"] and cfg["jev"]["model"] not in catalog:
         rep.error(f"jev.model {cfg['jev']['model']!r} não existe em config/models.toml")
+    if cfg["codex"]["enabled"]:
+        cm = catalog.get(cfg["codex"]["model"])
+        if cm is None or cm.get("provider") != "openai":
+            rep.error(f"codex.model {cfg['codex']['model']!r} precisa ser um modelo openai de config/models.toml")
     return resolved
 
 
@@ -1059,9 +1082,56 @@ def levels_section(levels: dict, resolved: dict, cfg: dict, routing: dict) -> st
     ])
 
 
+def codex_delegation_section(resolved: dict, levels: dict, routing: dict) -> str:
+    roles = [r for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
+    rows = ["| Level | When | " + " | ".join(f"{resolved[r]['name']} (`--role {r}`)" for r in roles) + " |",
+            "|---|---|" + "---|" * len(roles)]
+    for lvl, spec in levels.items():
+        cells = [short_model(spec["roles"][r]["model"]) for r in roles if r in spec["roles"]]
+        rows.append(f"| **{lvl}** | {spec['when']} | " + " | ".join(cells) + " |")
+    default = routing.get("default_level", "padrao")
+    return "\n".join([
+        "## How to delegate (Codex runtime)", "",
+        "You run in the Codex CLI. The agents are Claude Code agents run headless, one process per task:",
+        "",
+        "```",
+        "python aidev.py delegate --role <role> --level <level> --task <task.md> --demand <demand dir> "
+        "[--label <ticket>-r<N>]",
+        "```",
+        "",
+        "- Write the task to a file first (`tarefa-<agente>-<assunto>.md` in the demand folder): SPEC + "
+        "TICKET + files in scope with `file:line` + the build/test command + the paths of the diff, "
+        "plan and previous review. Never paste large inputs into the command.",
+        "- The command prints one JSON line: `state`, `output` (the agent's final JSON), `result_file`, "
+        "`permission_denials`, tokens, cost and duration. Decide the next step from `state` "
+        "(`routing.toml`). The full answer is in `result_file` — read it only when needed.",
+        "- Usage is appended to `metricas.md` in the demand folder automatically; do not estimate it.",
+        "- `permission_denials` lists what the agent tried and was not allowed (locked actions such as "
+        "commit or SQL writes): treat them as proposals for the user, never retry them another way.",
+        "- Never call `claude` directly and never pass `--model`/`--effort` yourself: the level decides.",
+        "- Independent tickets may run in parallel (separate commands); tickets on the same files run in "
+        "sequence. Each call is a fresh agent — a new review round is a new call.",
+        "- There is no `Explore` subagent here: for broad code exploration delegate a read-only task to "
+        "`--role coder --level simples` asking for `file:line` pointers, or read short excerpts yourself.",
+        "- Skills of the orchestrator (`to-spec`, `to-tickets`, `codebase-context`): read "
+        "`skills/<name>/SKILL.md` and follow it when the flow says to use it.",
+        "",
+        "## Model and effort per task", "",
+        "1. Classify the demand in the plan with one level (`Nível: <level> — <reason>`); if unsure, "
+        f"use **{default}**. A ticket may take another level when its own scope clearly fits it.",
+        "2. Escalate one level for the next attempt of a role when it failed the same step twice, when a "
+        "review finds a CRITICO, or when a result shows the task is harder than classified.",
+        "3. With the JEV configured, ask it for role, level (model/effort) and MCPs before each delegation; "
+        "this table is the fallback.",
+        "", *rows,
+    ])
+
+
 def render_root_claude_md(resolved: dict, cfg: dict, catalog: dict, ctx: dict | None,
-                          tpl: Templater, servers: dict, levels: dict, routing: dict) -> str:
+                          tpl: Templater, servers: dict, levels: dict, routing: dict,
+                          runtime: str = "claude") -> str:
     orch = resolved[ORCHESTRATOR]
+    codex = runtime == "codex"
     team = ["| Subagent (name) | Role | Model | Skills | Status |", "|---|---|---|---|---|"]
     for role, a in resolved.items():
         if role == ORCHESTRATOR:
@@ -1070,23 +1140,30 @@ def render_root_claude_md(resolved: dict, cfg: dict, catalog: dict, ctx: dict | 
         team.append(f"| `{a['name']}` | {role} | {a['model']['name']} (`{short_model(a['model'])}`) | "
                     f"{', '.join(a['skills'])} | {status} |")
 
+    orch_model = catalog.get(cfg["codex"]["model"], {"name": cfg["codex"]["model"]}) if codex else orch["model"]
+    orch_label = (f"{orch_model['name']} (`{orch_model.get('model_id', '?')}`, effort "
+                  f"{cfg['codex'].get('effort', '?')}) in the Codex CLI" if codex
+                  else model_label(ORCHESTRATOR, orch_model))
+    team_intro = ("Delegate with `python aidev.py delegate --role <role>` (next section); the model below "
+                  "is the default level." if codex else
+                  "Call subagents by the name in the first column (`subagent_type`). This is the "
+                  "default level; the next section picks the variant for each task.")
     parts = [
         f"<!-- {GENERATED_MARK} apply — não edite. Fontes: orchestrator/CLAUDE.md, "
         "orchestrator/policies/ e o contexto ativo; rode `python aidev.py apply` após alterá-las. -->",
-        "> **Subagents:** if you were invoked as a subagent, ignore this file and follow only your "
-        "own agent definition.",
+        "" if codex else ("> **Subagents:** if you were invoked as a subagent, ignore this file and "
+                          "follow only your own agent definition."),
         tpl.include(ORCHESTRATOR_MD),
         "\n".join([
             "## Runtime", "",
             f"- You are `{orch['name']}` (role `orchestrator`), the main chat.",
-            f"- Orchestrator model: {model_label(ORCHESTRATOR, orch['model'])}",
+            f"- Orchestrator model: {orch_label}",
             f"- Model mode: **{cfg['models']['mode']}**",
             f"- Orchestrator skills: {', '.join(f'`{s}`' for s in orch['skills'])}",
             *runtime_lines(cfg, catalog, ctx)]),
-        "\n".join(["## Team", "",
-                   "Call subagents by the name in the first column (`subagent_type`). This is the "
-                   "default level; the next section picks the variant for each task.", "", *team]),
-        levels_section(levels, resolved, cfg, routing),
+        "\n".join(["## Team", "", team_intro, "", *team]),
+        codex_delegation_section(resolved, levels, routing) if codex
+        else levels_section(levels, resolved, cfg, routing),
         mcp_orchestrator_section(servers, resolved, cfg),
         systems_section(ctx, detailed=False),
         "# Policies",
@@ -1272,6 +1349,8 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
                 subagents[v["name"]] = render_subagent(role, resolved[role], cfg, catalog, ctx, tpl,
                                                        servers, routing, {**v, "level": lvl})
         root_md = render_root_claude_md(resolved, cfg, catalog, ctx, tpl, servers, levels, routing)
+        agents_md = (render_root_claude_md(resolved, cfg, catalog, ctx, tpl, servers, levels, routing,
+                                           runtime="codex") if cfg["codex"]["enabled"] else None)
     if rep.errors:
         print("\nCorrija os erros acima e rode novamente.")
         return False
@@ -1297,6 +1376,14 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
 
     heading("Orquestrador (CLAUDE.md + .claude/settings.local.json)")
     write_if_changed(ROOT_CLAUDE_MD, root_md, dry, rep)
+    if agents_md:
+        write_if_changed(ROOT_AGENTS_MD, agents_md, dry, rep)
+        rep.info(f"Codex: AGENTS.md para o orquestrador em {cfg['codex']['model']} "
+                 "(abra `codex` na raiz do AI-DEV)")
+    elif ROOT_AGENTS_MD.exists() and GENERATED_MARK in ROOT_AGENTS_MD.read_text(encoding="utf-8"):
+        if not dry:
+            ROOT_AGENTS_MD.unlink()
+        rep.ok("removido AGENTS.md (codex desabilitado)")
     orch_model = resolved[ORCHESTRATOR]["model"]
     ctx_perms = ctx.get("permissions", {}) if ctx else {}
     managed = {
@@ -1348,6 +1435,112 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
           f"{f' com {len(rep.warnings)} aviso(s)' if rep.warnings else ''}.")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Delegate (orquestrador fora do Claude Code → agente Claude headless)
+# ---------------------------------------------------------------------------
+
+def final_json(text: str) -> dict | None:
+    """Último objeto JSON da resposta do agente (bloco ```json ou o último {...} parseável)."""
+    blocks = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    candidates = blocks[::-1] or []
+    starts = [m.start() for m in re.finditer(r"\{", text)]
+    candidates += [text[i:] for i in reversed(starts)]
+    decoder = json.JSONDecoder()
+    for c in candidates:
+        try:
+            obj, _ = decoder.raw_decode(c.strip())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
+def append_metrics(demand: Path, row: dict) -> None:
+    f = demand / "metricas.md"
+    header = ("| Data | Agente | Nível | Modelo | Label | State | Turnos | Duração | Tokens entrada (soma dos turnos, com cache) | "
+              "Tokens saída | Custo (USD, estimado) |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
+    line = ("| {date} | {agent} | {level} | {model} | {label} | {state} | {turns} | {duration_s}s | "
+            "{tokens_in:,} | {tokens_out:,} | {cost_usd:.4f} |\n").format(**row)
+    if not f.exists():
+        f.write_text("# Métricas da demanda\n\nConsumo real de cada delegação (gravado por "
+                     "`aidev.py delegate`).\n\n" + header, encoding="utf-8", newline="\n")
+    with f.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(line)
+
+
+def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
+    rep = Report()
+    ctx = load_context(cfg, rep)
+    resolved = resolve(cfg, catalog, ctx, available_skills(ctx, rep), rep)
+    routing = load_routing(rep)
+    levels = resolve_levels(routing, cfg, catalog, resolved, rep)
+    agent = resolved.get(args.role)
+    if agent is None or args.role == ORCHESTRATOR or not agent["enabled"]:
+        rep.error(f"papel {args.role!r} inexistente, desabilitado ou é o orquestrador")
+    level = args.level or routing.get("default_level", "")
+    if levels and level not in levels:
+        rep.error(f"nível {level!r} não existe (válidos: {', '.join(levels)})")
+    task, demand = Path(args.task).resolve(), Path(args.demand).resolve()
+    if not task.is_file():
+        rep.error(f"arquivo da tarefa não existe: {task}")
+    claude = shutil.which("claude")
+    if not claude:
+        rep.error("CLI `claude` não encontrado no PATH")
+    if rep.errors:
+        print(json.dumps({"state": "environment_blocked", "error": "; ".join(rep.errors)}, ensure_ascii=False))
+        return 2
+
+    model = levels[level]["roles"][args.role]["model"] if levels else agent["model"]
+    label = args.label or task.stem
+    prompt = (f"Sua tarefa está no arquivo `{task.as_posix()}`: leia e execute. Pasta da demanda: "
+              f"`{demand.as_posix()}`. Nível desta tarefa: {level or '—'} ({model['name']}, effort "
+              f"{model.get('effort', 'padrão do modelo')}); vale sobre o modelo citado no Runtime. "
+              "Termine com o JSON da seção OUTPUT da sua definição, com `state`.")
+    # Sem o CLAUDE.md do orquestrador: com --agent o agente é a sessão principal e o carregaria.
+    settings = {"claudeMdExcludes": [ROOT_CLAUDE_MD.as_posix(), str(ROOT_CLAUDE_MD)]}
+    cmd = [claude, "-p", prompt, "--agent", agent["name"], "--model", model["alias"],
+           "--output-format", "json", "--settings", json.dumps(settings),
+           "--permission-mode", DELEGATE_PERMISSION.get(args.role, "default"),
+           "--max-turns", str(args.max_turns or DELEGATE_MAX_TURNS.get(args.role, 40))]
+    if model.get("effort"):
+        cmd += ["--effort", model["effort"]]
+    demand.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=args.timeout)
+    except subprocess.TimeoutExpired:
+        print(json.dumps({"state": "implementation_failed", "error": f"timeout de {args.timeout}s"}))
+        return 1
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        print(json.dumps({"state": "environment_blocked", "error": "saída do claude não é JSON",
+                          "stderr": proc.stderr[-800:]}, ensure_ascii=False))
+        return 1
+
+    result = data.get("result") or ""
+    base = f"resultado-{agent['name']}-{label}"
+    (demand / f"{base}.md").write_text(result, encoding="utf-8", newline="\n")
+    (demand / f"{base}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                                         encoding="utf-8", newline="\n")
+    output = final_json(result)
+    state = (output or {}).get("state") or ("implementation_failed" if data.get("is_error") else "missing_state")
+    u = data.get("usage", {})
+    row = {"date": date.today().isoformat(), "agent": agent["name"], "level": level or "—",
+           "model": short_model(model), "label": label, "state": state,
+           "turns": data.get("num_turns", 0), "duration_s": round(data.get("duration_ms", 0) / 1000),
+           "tokens_in": u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+                        + u.get("cache_read_input_tokens", 0),
+           "tokens_out": u.get("output_tokens", 0), "cost_usd": data.get("total_cost_usd", 0.0)}
+    append_metrics(demand, row)
+    denials = [d.get("tool_name", "?") for d in data.get("permission_denials", [])]
+    print(json.dumps({**row, "output": output, "result_file": (demand / f"{base}.md").as_posix(),
+                      "permission_denials": denials, "session_id": data.get("session_id"),
+                      "is_error": data.get("is_error", False)}, ensure_ascii=False))
+    return 0 if not data.get("is_error") else 1
 
 
 # ---------------------------------------------------------------------------
@@ -1459,6 +1652,32 @@ def doctor(cfg: dict, catalog: dict) -> bool:
     else:
         rep.error("Claude Code (`claude`) não encontrado — é ele que executa todos os agentes")
 
+    if cfg["codex"]["enabled"]:
+        if shutil.which("codex"):
+            rep.ok(run(["codex", "--version"]) or "codex")
+            try:  # `codex login status` escreve no stderr
+                p = subprocess.run(["codex", "login", "status"], capture_output=True, text=True, cwd=ROOT)
+                status = (p.stdout + p.stderr).strip()
+            except OSError:
+                status = ""
+            if "Logged in" in status:
+                rep.ok(f"Codex: {status.splitlines()[0]}")
+            else:
+                rep.warn("Codex sem login — rode `codex login`")
+            model_id = catalog.get(cfg["codex"]["model"], {}).get("model_id", cfg["codex"]["model"])
+            try:
+                cache = json.loads((Path.home() / ".codex" / "models_cache.json").read_text(encoding="utf-8"))
+                allowed = {m.get("slug") for m in cache.get("models", [])}
+            except (OSError, json.JSONDecodeError):
+                allowed = set()
+            if allowed and model_id not in allowed:
+                rep.warn(f"Codex: o modelo {model_id} não está liberado para esta conta "
+                         f"(disponíveis: {', '.join(sorted(a for a in allowed if a))})")
+            elif allowed:
+                rep.ok(f"Codex: modelo {model_id} liberado para a conta")
+        else:
+            rep.error("[codex] habilitado, mas o CLI `codex` não está no PATH")
+
     ctx = load_context(cfg, rep)
     if ctx:
         if (ctx["dir"] / ".git").exists():
@@ -1534,6 +1753,14 @@ def main() -> int:
     p_apply.add_argument("--dry-run", action="store_true", help="mostra o que mudaria, sem alterar nada")
     sub.add_parser("doctor", help="verifica pré-requisitos")
     sub.add_parser("show", help="mostra agentes e modelos resolvidos")
+    p_del = sub.add_parser("delegate", help="roda um agente Claude headless para uma tarefa (orquestrador Codex)")
+    p_del.add_argument("--role", required=True, help="papel: coder, reviewer, api-db, documenter, qa")
+    p_del.add_argument("--level", help="nível da demanda ([levels] do routing.toml); padrão: default_level")
+    p_del.add_argument("--task", required=True, help="arquivo .md com a tarefa")
+    p_del.add_argument("--demand", required=True, help="pasta da demanda (resultado e metricas.md)")
+    p_del.add_argument("--label", help="rótulo do resultado, ex.: t1-r1 (padrão: nome do arquivo da tarefa)")
+    p_del.add_argument("--max-turns", type=int, help="limite de turnos do agente")
+    p_del.add_argument("--timeout", type=int, default=3600, help="tempo máximo em segundos (padrão 3600)")
     args = parser.parse_args()
     command = args.command or "setup"
 
@@ -1571,6 +1798,8 @@ def main() -> int:
     if command == "show":
         show(cfg, catalog)
         return 0
+    if command == "delegate":
+        return delegate(cfg, catalog, args)
     return 1
 
 
