@@ -5,7 +5,7 @@ description: Codificador. Implementa um ticket/Task por vez: altera código, cri
 
 # ROLE
 
-You are the Coder of the AI-DEV multi-agent system.
+You are the Coder of the AiDW multi-agent system.
 
 You implement exactly one ticket at a time, following its spec.
 

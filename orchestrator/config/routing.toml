@@ -1,20 +1,14 @@
-# Regras determinísticas de decisão (Fase 4 do plano).
+# Regras de decisão do orquestrador.
 #
-# Usadas quando o JEV está desligado e como fallback quando ele está ligado.
-# Assim dá para medir se o JEV realmente melhora o sistema antes de trocar.
+# [rules]  estado devolvido pelo agente → próxima ação (determinístico).
+# [effort] quanto raciocínio cada tarefa merece. O orquestrador escolhe o effort de CADA
+#          delegação (`aidw.py delegate --effort`), com o nível da tarefa e as regras abaixo.
+#          O modelo de cada agente é fixo (aidw.config.toml); só muda se o usuário pedir.
 #
-# O fluxo é autônomo: HUMAN_APPROVAL só onde a regra manda (dúvida, ação travada, fora do plano)
-# e FINAL_REVIEW uma vez no fim.
-#
-# Formato: <estado da demanda> = "<próxima ação>"
-# Ações válidas: TICKETS, IMPLEMENT, TEST, PREPARE_REVIEW, REVIEW, CODER_FIX, DOCS,
-#                FINAL_REVIEW, DONE, HUMAN_APPROVAL
-#
-# Cada agente termina com `"state": "<estado>"` usando as chaves abaixo (veja o OUTPUT de cada
-# AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
+# Cada agente termina com `"state": "<estado>"` usando as chaves de [rules] (veja o OUTPUT de
+# cada AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
 
 max_retries = 3
-default_level = "padrao"      # nível da demanda quando não há motivo para outro (ver [levels])
 
 [rules]
 # Início e plano
@@ -29,46 +23,85 @@ implementation_failed = "CODER_FIX"
 environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não consegue resolver
 ticket_has_open_questions = "HUMAN_APPROVAL"    # o plano não serve para o código; confira antes
 
-# Testes. Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador
-# (build/testes pelos comandos de Systems); não há outro agente.
+# Testes. Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador.
 tests_failed = "CODER_FIX"
-tests_passed = "PREPARE_REVIEW"                 # checklist: anexos, tag SQL, pendências, build
+tests_passed = "PREPARE_REVIEW"
 
-# Ciclo de revisão (triagem por regras, sem o Felipe)
+# Ciclo de revisão (triagem por regras)
 review_ready = "REVIEW"
 review_changes_requested = "CODER_FIX"          # CRITICO/IMPORTANTE pendentes
 review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ciclo segue
 review_approved = "DOCS"
 max_retries_exceeded = "HUMAN_APPROVAL"
 
+# Agente de apoio (api): devolve o fluxo para a etapa que o chamou
+task_complete = "RETURN"
+
 # Fim
-docs_complete = "FINAL_REVIEW"                  # pacote único para o Felipe
+docs_complete = "FINAL_REVIEW"
 final_review_approved = "DONE"
 policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, SQL de escrita...)
 
 # ---------------------------------------------------------------------------------------------
-# Nível da demanda → modelo e effort de cada papel.
+# Effort por tarefa.
 #
-# JEV desligado: o orquestrador classifica a demanda (e, se preciso, o ticket) num nível.
-# JEV ligado: ele escolhe agente, modelo e effort; estas regras ficam como fallback.
-# Valores: chaves de config/models.toml. Papel ausente num nível = o modelo do agente em
-# aidev.config.toml (que é o nível padrão). Cada combinação diferente vira um subagente
-# `<nome>-<nível>`, porque o effort só é configurável no frontmatter.
+# O orquestrador classifica cada tarefa num nível e passa o effort daquele nível para o papel
+# que vai executá-la. Papel ausente num nível = o effort padrão do agente (aidw.config.toml).
+# Valores: low | medium | high | xhigh | max. Modelos sem effort (ex.: Haiku) ignoram o valor.
+#
+# Custo: effort é a principal alavanca de gasto depois do modelo. Na dúvida entre dois níveis,
+# escolha o menor e suba se o resultado mostrar que faltou (regras em [effort.escalate]).
 
-# Política de modelos (Felipe, 2026-09-25): codificador sempre Opus; revisor Sonnet, Opus só no
-# complexo; api sempre Sonnet; documentador sempre Haiku. O effort varia com o nível.
-[levels.simples]
+[effort]
+default_level = "padrao"
+
+[effort.levels.trivial]
+when = "Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto."
+coder = "low"
+reviewer = "low"
+api-db = "low"
+documenter = "low"
+qa = "low"
+
+[effort.levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
-coder = "opus-low"
-reviewer = "sonnet-medium"
-api-db = "sonnet-low"
-qa = "sonnet-low"
+coder = "low"
+reviewer = "medium"
+api-db = "low"
+documenter = "low"
+qa = "low"
 
-[levels.padrao]
+[effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
+coder = "medium"
+reviewer = "high"
+api-db = "medium"
+documenter = "medium"
+qa = "medium"
 
-[levels.complexa]
+[effort.levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
-coder = "opus-high"
-reviewer = "opus-high"
-api-db = "sonnet"
+coder = "high"
+reviewer = "high"
+api-db = "high"
+documenter = "medium"
+qa = "high"
+
+[effort.levels.critica]
+when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
+coder = "xhigh"
+reviewer = "xhigh"
+api-db = "high"
+documenter = "medium"
+qa = "high"
+
+[effort.escalate]
+# Quando subir um nível na próxima tentativa do mesmo papel.
+rules = [
+    "o agente falhou duas vezes na mesma etapa",
+    "a revisão achou CRITICO",
+    "o resultado mostra que a tarefa é mais difícil do que o nível classificado",
+]
+# Quando descer: tarefas de acompanhamento (re-revisão só das correções, rodar build de novo,
+# responder uma dúvida pontual) usam um nível abaixo do da demanda.
+downgrade = "re-revisão só das correções, rodada de build/teste, pergunta pontual"

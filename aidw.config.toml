@@ -1,0 +1,83 @@
+# Configuração do AiDW. Gerado por aidw.py configure em 2026-09-25.
+# Pode editar à mão; depois rode `python aidw.py apply` e abra um chat novo.
+# Atenção: `configure` reescreve este arquivo (comentários próprios são perdidos).
+
+[provider]
+# "claude" = tudo no Claude Code · "codex" = tudo no Codex CLI. Um provedor por vez.
+name = "claude"
+
+[delegation]
+mode = "native"
+
+[workspace]
+# Pastas dos seus projetos. Liberadas para o orquestrador e todos os agentes.
+project_dirs = []
+
+[mcp]
+# Servidores de config/mcp.toml registrados no projeto. O orquestrador decide quando usar.
+enabled = ["playwright", "chrome-devtools", "figma", "context7"]
+
+[context]
+# Pacote de regras de trabalho em contexts/<nome>/ ("" = nenhum).
+active = "safeweb"
+
+[policies]
+# deny = bloqueado sempre · ask = sempre pede confirmação (vence qualquer allow).
+# Sintaxe do Claude Code; no Codex, as regras de comando viram .codex/rules/aidw.rules.
+deny = [
+    "Bash(git push --force *)",
+    "Bash(git push -f *)",
+    "Bash(git reset --hard *)",
+    "Bash(git clean -f *)",
+    "PowerShell(git push --force *)",
+    "PowerShell(git push -f *)",
+    "PowerShell(git reset --hard *)",
+    "PowerShell(git clean -f *)",
+    "Read(**/.env)",
+    "Read(**/.env.*)",
+]
+ask = [
+]
+
+# [agents.<papel>] — o papel é fixo. Opcionais:
+#   name   nome do agente (aceita acento e espaço; sem ele, vale o padrão comentado)
+#   model  chave de config/models.toml do provedor; sem ele, vale o tier padrão do papel
+#          (Opus/top no orquestrador e codificador, Sonnet/mid no revisor e api,
+#           Haiku/fast no documentador). Modelo de outro provedor é ignorado com aviso.
+#   effort effort padrão do agente; o orquestrador escolhe o de cada tarefa (routing.toml).
+
+[agents.orchestrator]
+# name = "orquestrador"
+enabled = true
+effort = "high"
+skills = ["to-spec", "to-tickets", "codebase-context"]
+
+[agents.coder]
+# name = "codificador"
+enabled = true
+effort = "medium"
+skills = ["implement-ticket", "debug", "testing", "codebase-context"]
+
+[agents.reviewer]
+# name = "revisor"
+enabled = true
+effort = "high"
+skills = ["code-review"]
+
+[agents.api-db]
+# name = "api"
+enabled = true
+effort = "medium"
+skills = ["database-safe", "debug"]
+
+[agents.qa]
+# name = "qa"
+enabled = false
+effort = "medium"
+skills = ["testing"]
+
+[agents.documenter]
+# name = "documentador"
+enabled = true
+effort = "medium"
+skills = ["documentation"]
