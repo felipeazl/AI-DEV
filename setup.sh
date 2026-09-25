@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# Atalho para Linux/macOS: ./setup.sh  (equivale a `python3 aidev.py setup`)
+# Setup do AiDW no Linux/macOS: garante o Python 3.11+ e chama `python3 aidw.py setup`, que cuida
+# do resto (Git, Node, CLI do provedor, wizard, geração do ambiente, MCPs e doctor).
 # Argumentos são repassados, ex.: ./setup.sh --reconfigure
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-python=""
-for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1 &&
-        "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
-        python="$candidate"
-        break
-    fi
-done
+find_python() {
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 &&
+            "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+            echo "$candidate"
+            return
+        fi
+    done
+}
 
+python="$(find_python)"
 if [ -z "$python" ]; then
     echo "Python 3.11+ não encontrado."
     echo "  macOS:         brew install python"
@@ -22,4 +25,4 @@ if [ -z "$python" ]; then
     exit 1
 fi
 
-exec "$python" aidev.py setup "$@"
+exec "$python" aidw.py setup "$@"

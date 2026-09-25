@@ -1,18 +1,20 @@
 # Contextos de trabalho: cada um é um repositório Git próprio e privado
 contexts/*/
 
-# Gerados por `python aidev.py apply`
+# Gerados por `python aidw.py apply` (cada máquina gera os seus)
 /CLAUDE.md
 /AGENTS.md
 /.mcp.json
-.claude/agents/
-.claude/skills/
-.claude/settings.local.json
-orchestrator/config/runtime.json
+/.aidw/
+/.claude/skills/
+/.claude/agents/
+/.claude/settings.local.json
+/.codex/
+/.agents/
 
-# Estado das execuções (mantém as pastas via .gitkeep)
-state/runs/*
-!state/runs/.gitkeep
+# Estado das execuções sem contexto
+/state/*
+!/state/.gitkeep
 
 # Segredos
 .env

@@ -1,105 +1,86 @@
-# Catálogo de modelos disponíveis para os agentes.
+# Catálogo de modelos do AiDW.
 #
-# O wizard (`python aidev.py configure`) oferece estes modelos como opção.
-# Para adicionar um modelo, crie uma nova tabela [models.<chave>].
+# O AiDW roda com UM provedor por instalação — todos os agentes são Claude ou todos são Codex
+# ([provider].name no aidw.config.toml). Cada modelo pertence a um provedor.
 #
 # Campos:
-#   name         nome legível
-#   provider     anthropic | openai | other
-#   model_id     ID completo — usado no chat principal (orquestrador)
-#   alias        apelido usado no frontmatter dos subagentes: opus | sonnet | haiku | fable
-#   effort       low | medium | high | xhigh | max — effort do chat (orquestrador) ou do
-#                subagente (campo `effort` do frontmatter; não dá para trocar por chamada, por
-#                isso cada nível de demanda com effort diferente gera uma variante do agente)
-#   min_claude_code  versão mínima do CLI `claude` para usar o model_id no chat
-#   router_only  true = só pode ser usado como camada de decisão (JEV), não como agente
+#   name       nome legível
+#   provider   claude | codex
+#   model_id   ID passado ao CLI (`claude --model` / `codex -m`)
+#   tiers      top | mid | fast — o wizard usa o tier para escolher o padrão de cada agente
+#              (Opus/Sonnet/Haiku no Claude; os equivalentes no Codex). Em cada tier vale o
+#              primeiro modelo do arquivo que estiver disponível para a conta.
+#   efforts    efforts aceitos; vazio = o modelo não aceita effort (o delegate não passa --effort)
+#   min_cli    versão mínima do CLI para o modelo (o `doctor` confere)
+#   alias      (Claude) apelido do frontmatter dos subagentes nativos: opus | sonnet | haiku | fable
 #
-# Hoje tudo roda com o login do Claude Code (sem API key), então só provider "anthropic"
-# pode ser usado. Os outros ficam catalogados para quando houver orquestrador próprio.
+# O effort não pertence ao modelo: cada agente tem um effort padrão no aidw.config.toml e o
+# orquestrador escolhe o effort de cada tarefa (orchestrator/config/routing.toml, [effort]).
 
-[models.opus-high]
-name = "Claude Opus 5.5 (High)"
-provider = "anthropic"
+# --- Claude (Claude Code, login da assinatura) -----------------------------------------------
+
+[models.opus]
+name = "Claude Opus 5.5"
+provider = "claude"
 model_id = "claude-opus-5-5"
 alias = "opus"
-effort = "high"
-min_claude_code = "2.1.280"
-
-[models.opus-low]
-name = "Claude Opus 5.5 (Low)"
-provider = "anthropic"
-model_id = "claude-opus-5-5"
-alias = "opus"
-effort = "low"
-min_claude_code = "2.1.280"
-
-[models.opus-medium]
-name = "Claude Opus 5.5 (Medium)"
-provider = "anthropic"
-model_id = "claude-opus-5-5"
-alias = "opus"
-effort = "medium"
-min_claude_code = "2.1.280"
+tiers = ["top"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
+min_cli = "2.1.280"
 
 [models.sonnet]
 name = "Claude Sonnet 5"
-provider = "anthropic"
+provider = "claude"
 model_id = "claude-sonnet-5"
 alias = "sonnet"
-effort = "high"
-
-[models.sonnet-medium]
-name = "Claude Sonnet 5 (Medium)"
-provider = "anthropic"
-model_id = "claude-sonnet-5"
-alias = "sonnet"
-effort = "medium"
-
-[models.sonnet-low]
-name = "Claude Sonnet 5 (Low)"
-provider = "anthropic"
-model_id = "claude-sonnet-5"
-alias = "sonnet"
-effort = "low"
+tiers = ["mid"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
 
 [models.haiku]
 name = "Claude Haiku 4.5"
-provider = "anthropic"
+provider = "claude"
 model_id = "claude-haiku-4-5-20251001"
 alias = "haiku"
+tiers = ["fast"]
+efforts = []
 
-# --- OpenAI: só como orquestrador no Codex CLI ([codex] do aidev.config.toml) ------------
-# IDs conferidos em developers.openai.com/api/docs/models (2026-09-25). No Codex com conta ChatGPT
-# só valem os modelos liberados para o plano (o `doctor` confere em ~/.codex/models_cache.json). Os agentes continuam
-# Claude: o Codex delega com `python aidev.py delegate`.
-[models.gpt-sol]
-name = "GPT-5.6 Sol"
-provider = "openai"
-model_id = "gpt-5.6-sol"
+[models.fable]
+name = "Claude Fable 5.1"
+provider = "claude"
+model_id = "claude-fable-5-1"
+alias = "fable"
+tiers = []
+efforts = ["low", "medium", "high", "xhigh", "max"]
 
-[models.gpt-terra]
-name = "GPT-5.6 Terra"
-provider = "openai"
-model_id = "gpt-5.6-terra"
-
-[models.gpt-luna]
-name = "GPT-5.6 Luna"
-provider = "openai"
-model_id = "gpt-5.6-luna"
-
-[models.gpt-6-luna]
-name = "GPT-6 Luna"
-provider = "openai"
-model_id = "gpt-6-luna"
+# --- Codex (Codex CLI, login da conta ChatGPT) -----------------------------------------------
+# Só valem os modelos liberados para o plano da conta; o `doctor` confere em
+# ~/.codex/models_cache.json. Em 2026-09-25 a conta tinha gpt-6-luna, gpt-5.6-terra,
+# gpt-5.6-luna e gpt-5.5 — o gpt-6-sol não estava liberado, então o tier top cai no gpt-6-luna.
 
 [models.gpt-6-sol]
 name = "GPT-6 Sol"
-provider = "openai"
+provider = "codex"
 model_id = "gpt-6-sol"
+tiers = ["top"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
 
-# TODO: definir provider e ID do JEV antes de habilitá-lo.
-[models.jev]
-name = "JEV"
-provider = "other"
-model_id = "jev"
-router_only = true
+[models.gpt-6-luna]
+name = "GPT-6 Luna"
+provider = "codex"
+model_id = "gpt-6-luna"
+tiers = ["top", "mid"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[models.gpt-5-6-terra]
+name = "GPT-5.6 Terra"
+provider = "codex"
+model_id = "gpt-5.6-terra"
+tiers = ["mid"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[models.gpt-5-6-luna]
+name = "GPT-5.6 Luna"
+provider = "codex"
+model_id = "gpt-5.6-luna"
+tiers = ["fast"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
