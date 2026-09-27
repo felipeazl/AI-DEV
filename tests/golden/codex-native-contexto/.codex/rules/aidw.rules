@@ -1,0 +1,26 @@
+# Gerado por aidw.py apply a partir de [policies] e das permissões do contexto. Não edite.
+# forbidden = bloqueado · prompt = pede OK (nos agentes headless, vira recusa).
+
+prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")
+prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")
+prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden")
+prefix_rule(pattern=["git", "clean", "-f"], decision="forbidden")
+prefix_rule(pattern=["rm", "-rf"], decision="forbidden")
+prefix_rule(pattern=["sqlcmd"], decision="prompt")
+prefix_rule(pattern=["git", "commit"], decision="prompt")
+prefix_rule(pattern=["git", "push"], decision="prompt")
+prefix_rule(pattern=["git", "branch", "-D"], decision="prompt")
+
+# O orquestrador roda o delegate sem prompt e fora do sandbox (o agente precisa de rede).
+prefix_rule(pattern=["python", "aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["python", "aidw.py", "record"], decision="allow")
+prefix_rule(pattern=["py", "aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["py", "aidw.py", "record"], decision="allow")
+prefix_rule(pattern=["python", "<ROOT>/aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["python", "<ROOT>/aidw.py", "record"], decision="allow")
+prefix_rule(pattern=["py", "<ROOT>/aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["py", "<ROOT>/aidw.py", "record"], decision="allow")
+prefix_rule(pattern=["python", "<ROOT>\\aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["python", "<ROOT>\\aidw.py", "record"], decision="allow")
+prefix_rule(pattern=["py", "<ROOT>\\aidw.py", "delegate"], decision="allow")
+prefix_rule(pattern=["py", "<ROOT>\\aidw.py", "record"], decision="allow")

@@ -1,0 +1,47 @@
+# Gerado por aidw.py apply — config do projeto para o Codex (vale quando o projeto é
+# confiável: o setup oferece marcar). `python aidw.py chat` passa os mesmos valores por flag.
+
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+project_doc_max_bytes = 98304
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["C:\\pasta-de-teste-inexistente", "<TMP>\\wt"]
+
+# GIT_CONFIG_*: safe.directory para o sandbox do Windows (ver codex_git_env).
+[shell_environment_policy.set]
+MCP_TIMEOUT = "60000"
+GIT_CONFIG_COUNT = "4"
+GIT_CONFIG_KEY_0 = "safe.directory"
+GIT_CONFIG_VALUE_0 = "<ROOT>/*"
+GIT_CONFIG_KEY_1 = "safe.directory"
+GIT_CONFIG_VALUE_1 = "C:/pasta-de-teste-inexistente/*"
+GIT_CONFIG_KEY_2 = "safe.directory"
+GIT_CONFIG_VALUE_2 = "<TMP>/wt/*"
+GIT_CONFIG_KEY_3 = "safe.directory"
+GIT_CONFIG_VALUE_3 = "<ROOT>"
+
+# Subagentes nativos: o spawn_agent do multi-agente v2 aceita modelo e effort por chamada.
+[features]
+multi_agent_v2 = true
+
+[agents]
+max_concurrent_threads_per_session = 4
+
+[mcp_servers.playwright]
+command = "cmd"
+args = ["/c", "npx", "-y", "@playwright/mcp@latest"]
+
+[mcp_servers.chrome-devtools]
+command = "cmd"
+args = ["/c", "npx", "-y", "chrome-devtools-mcp@latest"]
+
+[mcp_servers.figma]
+url = "https://mcp.figma.com/mcp"
+
+[mcp_servers.context7]
+command = "cmd"
+args = ["/c", "npx", "-y", "@upstash/context7-mcp"]

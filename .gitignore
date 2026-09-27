@@ -1,6 +1,9 @@
 # Contextos de trabalho: cada um é um repositório Git próprio e privado
 contexts/*/
 
+# Configuração da máquina (o setup cria; o modelo versionado é aidw.config.example.toml)
+/aidw.config.toml
+
 # Gerados por `python aidw.py apply` (cada máquina gera os seus)
 /CLAUDE.md
 /AGENTS.md

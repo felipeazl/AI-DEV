@@ -106,7 +106,7 @@ bug-hunter = "high"
 security = "high"
 
 [effort.levels.complexa.models]
-# Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+# Política (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
 # Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
 reviewer = "opus"
 bug-hunter = "opus"
@@ -123,7 +123,7 @@ bug-hunter = "xhigh"
 security = "xhigh"
 
 [effort.levels.critica.models]
-# Política do Felipe (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
+# Política (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
 # Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
 reviewer = "opus"
 bug-hunter = "opus"

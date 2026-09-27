@@ -1,0 +1,122 @@
+{
+  "generated_by": "aidw.py apply",
+  "root": "<ROOT>",
+  "provider": "codex",
+  "delegation": "native",
+  "context": "exemplo",
+  "state_dir": "<ROOT>/contexts/exemplo/demandas",
+  "agents": {
+    "orchestrator": {
+      "name": "orquestrador",
+      "display": "Orquestrador",
+      "enabled": true,
+      "model": "gpt-6-sol",
+      "model_id": "gpt-6-sol",
+      "effort": "high",
+      "skills": [
+        "to-spec",
+        "verificar-premissa",
+        "preparar-worktree",
+        "skill-exemplo"
+      ],
+      "preload": []
+    },
+    "coder": {
+      "name": "codificador",
+      "display": "Codificador",
+      "enabled": true,
+      "model": "gpt-6-sol",
+      "model_id": "gpt-6-sol",
+      "effort": "medium",
+      "skills": [
+        "preparar-worktree",
+        "skill-exemplo"
+      ],
+      "preload": []
+    },
+    "reviewer": {
+      "name": "revisor",
+      "display": "Revisor",
+      "enabled": true,
+      "model": "gpt-6-luna",
+      "model_id": "gpt-6-luna",
+      "effort": "high",
+      "skills": [
+        "code-review",
+        "verificar-premissa"
+      ],
+      "preload": [
+        "code-review"
+      ]
+    },
+    "api-db": {
+      "name": "api",
+      "display": "API",
+      "enabled": true,
+      "model": "gpt-6-luna",
+      "model_id": "gpt-6-luna",
+      "effort": "medium",
+      "skills": [
+        "database-safe"
+      ],
+      "preload": []
+    },
+    "qa": {
+      "name": "qa",
+      "display": "QA",
+      "enabled": false,
+      "model": "gpt-6-luna",
+      "model_id": "gpt-6-luna",
+      "effort": "medium",
+      "skills": [],
+      "preload": []
+    },
+    "documenter": {
+      "name": "documentador",
+      "display": "Documentador",
+      "enabled": true,
+      "model": "gpt-5-6-luna",
+      "model_id": "gpt-5.6-luna",
+      "effort": "medium",
+      "skills": [],
+      "preload": []
+    },
+    "bug-hunter": {
+      "name": "bugs",
+      "display": "Bugs",
+      "enabled": true,
+      "model": "gpt-6-luna",
+      "model_id": "gpt-6-luna",
+      "effort": "high",
+      "skills": [
+        "bug-hunt",
+        "verificar-premissa"
+      ],
+      "preload": [
+        "bug-hunt"
+      ]
+    },
+    "security": {
+      "name": "seguranca",
+      "display": "Seguranca",
+      "enabled": true,
+      "model": "gpt-6-luna",
+      "model_id": "gpt-6-luna",
+      "effort": "high",
+      "skills": [
+        "security-audit",
+        "verificar-premissa"
+      ],
+      "preload": [
+        "security-audit"
+      ]
+    }
+  },
+  "mcp": [
+    "playwright",
+    "chrome-devtools",
+    "figma",
+    "context7"
+  ],
+  "claude_settings": {}
+}

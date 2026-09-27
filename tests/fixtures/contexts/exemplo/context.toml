@@ -1,0 +1,71 @@
+# Contexto de teste do AiDW (tests/test_apply.py). Exercita cada chave que o apply lê;
+# o conteúdo é neutro de propósito.
+
+name = "exemplo"
+description = "Contexto de exemplo para os testes"
+
+state_dir = "contexts/exemplo/demandas"
+
+additional_dirs = ["C:/pasta-de-teste-inexistente"]
+
+required_env = ["AIDW_TESTE_VARIAVEL"]
+required_mcp = ["servidor-exemplo"]
+
+[env]
+MCP_TIMEOUT = "60000"
+
+[mcp.servidor-exemplo]
+add = "claude mcp add --scope user servidor-exemplo -- npx -y servidor-exemplo"
+add_codex = "codex mcp add servidor-exemplo -- npx -y servidor-exemplo"
+
+# Worktree por demanda (`aidw.py worktree create`): branch `<prefixo><número>-<slug>` e junctions de dependências
+# de build que o git não versiona (padrão: packages, node_modules).
+[worktree]
+branch_prefix = "feature/"
+link = ["packages", "node_modules"]
+
+[permissions]
+allow = [
+    "Bash(git *)",
+    'PowerShell({{context}}\tools\consulta.ps1 *)',
+]
+git_ask = ["commit", "push", "branch -D"]
+ask = ["Bash(sqlcmd *)"]
+deny = ["Bash(rm -rf *)"]
+
+[systems.sistema-a]
+name = "Sistema A"
+repos = ["C:/repo-de-teste-inexistente/SistemaA"]
+stack = ".NET 10"
+depends_on = ["sistema-b"]
+build = "dotnet build '<repo>' -v q"
+test = "dotnet test '<repo>' -v q"
+notes = ["Nota do sistema A."]
+
+[systems.sistema-b]
+name = "Sistema B"
+repos = ["C:/repo-de-teste-inexistente/SistemaB"]
+stack = "Vue"
+build = "npm run build"
+test = "npm test"
+
+[agents.orchestrator]
+include = ["agents/orchestrator.md"]
+reference = [
+    { path = "reference/orquestrador/etapa.md", when = "na etapa de exemplo" },
+]
+skills = ["skill-exemplo"]
+
+[agents.coder]
+include = ["shared/guia.md", "agents/coder.md"]
+skills = ["skill-exemplo"]
+disallowed_tools = ["mcp__servidor-exemplo__escrever"]
+reference = [
+    { path = "reference/ref.md", when = "precisar da referência de exemplo" },
+]
+
+[agents.reviewer]
+include = ["shared/guia.md"]
+reference = [
+    { path = "reference/ref.md", when = "precisar da referência de exemplo" },
+]
