@@ -1,30 +1,30 @@
 ---
 name: preparar-worktree
-description: Create an isolated git worktree and feature branch for a demand from the right base (including an unmerged branch it depends on), link untracked build dependencies such as .NET Framework packages/, and remove it at the end. Use when the user's working copy has other work in progress, or for a simulation/rework from an old base.
+description: Create, inspect and remove the git worktree of a demand with `aidw.py worktree` — right base (including an unmerged branch it depends on, or an old commit for a simulation/rework), feature branch, junctions for untracked build dependencies (packages/, node_modules/), registry and demand.json. Use whenever a demand changes code.
 ---
 
 # preparar-worktree
 
-1. **Decide the base** — the plan's *Branch and PR* section: the development branch, or the
-   unmerged branch of another demand this one depends on, or (simulation/rework) the commit before
-   the change being redone. `git fetch` first; confirm the base exists (`git rev-parse --verify`).
-2. **Create** next to the repo, never inside it:
+The AiDW command does the git work, the junctions and the registry; the agents never edit the main
+working copy (a hook blocks it). Run it by the absolute path of `aidw.py` shown in your Runtime section.
+
+1. **Decide the base** — the plan's *Branch and PR*: the development branch, the unmerged branch of
+   another demand this one depends on, or (simulation/rework) the commit before the change being redone.
+2. **Create:**
    ```
-   git -C <repo> worktree add -b feature/<id>-<slug> <repo>-wt-<id> <base>
+   python "<aidw root>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base> --json
    ```
-   `worktree add` is local and allowed; do not `checkout`/`switch` the user's working copy.
-   If the branch already exists, reuse it with `git -C <repo> worktree add <path> feature/<id>-<slug>`.
-3. **Untracked build dependencies** — anything the build needs that git does not version:
-   - .NET Framework `packages/` (NuGet): link it instead of restoring,
-     `New-Item -ItemType Junction -Path <wt>\packages -Target <repo>\packages`
-     (PowerShell) or `cmd /c mklink /J <wt>\packages <repo>\packages`;
-   - other local-only files the *Systems* build needs (e.g. a local config the project documents)
-     — copy only what the build requires, never secrets into the demand folder.
+   It fetches, creates `<worktree root>/<repo>/<tipo-id>` on branch `<prefix><id>-<slug>` (prefix from the
+   context), reuses the branch if it already exists, links `packages/`/`node_modules/` and writes
+   `demand.json`. Running it again returns the same worktree. If `main_dirty` is true, tell the user once
+   that the main working copy's local changes are not in the worktree.
+3. **Enter it (Claude):** `EnterWorktree` with name `<tipo-id>` — the AiDW hook returns this same worktree, so
+   the chat, its commands and the diff pane work there. A demand with more than one repository: one
+   `create` per repository; enter the main one and pass the others by absolute path.
 4. **Validate** with the build command of *Systems*, pointing at the worktree. A failure here is
    environment, not code: report it.
-5. **Hand over** the worktree path and branch to the tasks (every `file:line` and build command
-   uses the worktree path).
-6. **Clean up** at the end, only after the work is committed or explicitly discarded:
-   remove the junction first (`Remove-Item <wt>\packages` removes the link, not the target — never
-   delete recursively through a junction), then `git -C <repo> worktree remove <wt>`.
-   Deleting the branch is a locked git action: propose it, do not run it.
+5. **Hand over** the worktree path and branch in every task (`file:line` and build commands use it).
+6. **Inspect / clean up:** `worktree list`, `worktree inspect <tipo-id>`. At the end, only after the work is
+   pushed or explicitly discarded: `worktree remove <tipo-id>` — it refuses local changes and unpublished
+   commits, removes the junctions first and keeps the branch (deleting a branch is a locked git action:
+   propose it, do not run it). `worktree cleanup` drops entries whose folder is gone.
