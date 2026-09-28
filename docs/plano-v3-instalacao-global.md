@@ -334,7 +334,22 @@ Veredito: **segue**. O plugin atende o lado Claude; o Codex fica com instalaçã
   1. **Build impossível no sandbox:** o `node` da máquina é um link do nvm dentro do perfil do usuário, que o sandbox do Codex não lê, e o `npm` nem iniciava. O perfil `aidw` passa a pôr na frente do PATH um Node fora do perfil (o `install` mostra qual e a versão; o `doctor` avisa se não houver).
   2. **O orquestrador tratou o bloqueio de ambiente como falha do agente:** subiu o effort até crítica e ficou em laço. O núcleo agora diz que `environment_blocked` não é falha, e que o `max_retries` vale também para a revisão do plano. Isso vale para os dois provedores.
   3. **Métricas com modelos do Claude e sem tokens:** corrigido pelo `record` acima.
-- **Pendente:** refazer o teste no Codex com as correções, para confirmar a equivalência (critério 7). Atenção à cota: o plano do Codex desta máquina chegou a 75% do mês nessa execução.
+- **Reteste com as correções (2026-09-28, `us-131192-cx2`): equivalente ao Claude — critério 7 atendido.**
+  Instalação real: hooks aprovados, sem `--dangerously-bypass-hook-trust`.
+
+  | | Claude (F5) | Codex antes | Codex depois |
+  |---|---|---|---|
+  | Tempo | 34 min | 110 min | 44 min |
+  | Etapas | 11 | 33 | 11 (mesma sequência) |
+  | Plano revisado | 2× | 8× | 2× |
+  | Diff | 2 arquivos, +70 (código + README) | 6 arquivos, +151 | 1 arquivo, +40 (o mesmo `LoginView.vue`) |
+  | Build/type-check | validado | nunca rodou | validado (exit 0) |
+  | Revisão de código | 2 rodadas | — | 1 rodada, sem achado |
+  | Passada de segurança | risco da URL → rascunho de dívida | — | mesmo risco (CPF na query antes da limpeza) → rascunho de dívida |
+
+  - A única diferença de conteúdo: o documentador do Claude também atualizou o README; o do Codex só gerou o plano de testes.
+  - As métricas saíram com o modelo e os tokens reais do Codex.
+  - Cota: o plano do Codex desta máquina foi de 80% para 87% do mês nessa execução.
 
 ## Resultado da F7 (2026-09-28)
 
