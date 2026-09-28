@@ -73,7 +73,8 @@ def make_sandbox(tmp: Path, provider: str, mode: str, context: str, copy_context
 
 def run_aidw(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
     env = {**os.environ, "CODEX_HOME": str(root.parent / "codex-home"), "PYTHONIOENCODING": "utf-8",
-           "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home"), **(env_extra or {})}  # nunca o ~/.claude real
+           "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home"),  # nunca o ~/.claude real
+           "AIDW_CODEX_SKILLS_DIR": str(root.parent / "agents-skills"), **(env_extra or {})}  # nem o ~/.agents
     return subprocess.run([sys.executable, str(root / "aidw.py"), *args], cwd=root, env=env,
                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
 
@@ -348,7 +349,8 @@ class WorktreeTest(unittest.TestCase):
         return repo
 
     def aidw_json(self, root: Path, *args: str, stdin: str | None = None) -> tuple[int, dict | str]:
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home")}
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home"),
+               "CODEX_HOME": str(root.parent / "codex-home"), "AIDW_CODEX_SKILLS_DIR": str(root.parent / "agents-skills")}
         proc = subprocess.run([sys.executable, str(root / "aidw.py"), *args], cwd=root, env=env, input=stdin,
                               capture_output=True, text=True, encoding="utf-8", timeout=120)
         try:
@@ -397,6 +399,12 @@ class WorktreeTest(unittest.TestCase):
                      "cwd": str(repo)}
             self.assertIn('"deny"', self.guard(root, {**coder, "tool_input": {"file_path": str(repo / "app.txt")}}))
             self.assertEqual(self.guard(root, {**coder, "tool_input": {"file_path": str(path / "app.txt")}}), "")
+            codex = {"hook_event_name": "PreToolUse", "agent_type": "aidw-codificador", "tool_name": "apply_patch",
+                     "cwd": str(repo)}
+            patch = lambda f: "*** Begin Patch\n*** Update File: " + f + "\n@@\n-v1\n+v2\n*** End Patch"  # noqa: E731
+            self.assertIn('"deny"', self.guard(root, {**codex, "tool_input": {"command": patch("app.txt")}}),
+                          "caminho relativo do patch, resolvido pelo cwd (working copy principal)")
+            self.assertEqual(self.guard(root, {**codex, "tool_input": {"command": patch(str(path / "app.txt"))}}), "")
             self.assertEqual(self.guard(root, {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
                                                "tool_input": {"file_path": str(repo / "app.txt")}}), "",
                              "a conversa principal não tem regra")
@@ -509,6 +517,12 @@ class SessionModeTest(unittest.TestCase):
             self.assertLess(len(ctx.encode()), 2000, "o hook só injeta ~2 KB")
             self.assertEqual(hook({"session_id": "s2", "hook_event_name": "SessionStart", "source": "compact"}), "")
             hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:sair"})
+            cx = {"session_id": "c1", "cwd": str(tmp)}
+            hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-orquestrar us-7"})
+            out = json.loads(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}))
+            ctx_codex = out["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("aidw-orquestrar/SKILL.md", ctx_codex)
+            self.assertIn("$aidw-sair", ctx_codex)
             self.assertEqual(hook({**base, "hook_event_name": "SessionStart", "source": "resume"}), "")
 
 
@@ -633,6 +647,101 @@ class PluginMigrationTest(unittest.TestCase):
             self.assertIn(["plugin", "install", "aidw@aidw-local"], calls)
             manifest = json.loads((root / ".aidw" / "install-manifest.json").read_text(encoding="utf-8"))
             self.assertEqual((manifest["plugins"], manifest["context"]), (["aidw@aidw-local"], "exemplo"))
+
+
+class CodexInstallTest(unittest.TestCase):
+    """install/uninstall --provider codex: arquivos aidw-*, perfil aidw, hooks.json por merge, confiança preservada."""
+
+    def test_install_uninstall_codex(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            home, skills = tmp / "codex-home", tmp / "agents-skills"
+            home.mkdir()
+            user_hook = {"hooks": [{"type": "command", "command": "echo meu-hook"}]}
+            (home / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [user_hook]}}), encoding="utf-8")
+
+            proc = run_aidw(root, "install", "--provider", "codex")
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertTrue((home / "agents" / "aidw-codificador.toml").is_file())
+            orq = (skills / "aidw-orquestrar" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-orquestrar", orq)
+            self.assertIn("$aidw-sair", orq)
+            self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
+            self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
+            self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
+            self.assertIn("forbidden", (home / "rules" / "aidw.rules").read_text(encoding="utf-8"))
+            profile = (home / "aidw.config.toml").read_text(encoding="utf-8")
+            self.assertIn("multi_agent_v2 = true", profile)
+            self.assertIn(str(tmp / "wt").replace("\\", "\\\\"), profile, "raiz dos worktrees gravável no perfil")
+            hooks = json.loads((home / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+            self.assertEqual(hooks["Stop"], [user_hook], "o hook do usuário fica")
+            self.assertEqual(hooks["PreToolUse"][0]["matcher"], "apply_patch")
+
+            before = (home / "hooks.json").read_text(encoding="utf-8")
+            again = run_aidw(root, "install", "--provider", "codex")
+            self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+            self.assertEqual((home / "hooks.json").read_text(encoding="utf-8"), before, "hooks.json idempotente")
+
+            # confiança: o Codex grava no config.toml do usuário (nunca no perfil); o AiDW não toca nele
+            os.environ["CODEX_HOME"], os.environ["AIDW_CODEX_SKILLS_DIR"] = str(home), str(skills)
+            try:
+                aidw = load_aidw(root)
+            finally:
+                os.environ.pop("CODEX_HOME"), os.environ.pop("AIDW_CODEX_SKILLS_DIR")
+            keys = aidw.aidw_hook_keys()
+            self.assertEqual(len(keys), 3)
+            self.assertIsNotNone(aidw.codex_hooks_trusted())
+            self.assertFalse(aidw.codex_hooks_trusted(), "sem confiança gravada")
+            trust = lambda h: "\n".join(f"[hooks.state.{json.dumps(k)}]\ntrusted_hash = {json.dumps(h)}\n"  # noqa: E731
+                                        for k in keys)
+            (home / "config.toml").write_text(trust("sha256:abc"), encoding="utf-8")
+            self.assertTrue(aidw.codex_hooks_trusted())
+            manifest_path = root / ".aidw" / "install-manifest.json"
+            m = json.loads(manifest_path.read_text(encoding="utf-8"))
+            m["codex"]["hooks_signature"] = "assinatura-antiga"  # como se os hooks tivessem mudado neste install
+            manifest_path.write_text(json.dumps(m), encoding="utf-8")
+            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
+            self.assertFalse(aidw.codex_hooks_trusted(), "hash de antes da mudança não vale mais")
+            (home / "config.toml").write_text(trust("sha256:novo"), encoding="utf-8")  # o usuário reaprovou
+            self.assertTrue(aidw.codex_hooks_trusted())
+            self.assertIn("sha256:novo", (home / "config.toml").read_text(encoding="utf-8"), "config.toml intocado")
+
+            gone = run_aidw(root, "uninstall", "--provider", "codex")
+            self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)
+            self.assertEqual(json.loads((home / "hooks.json").read_text(encoding="utf-8")), {"hooks": {"Stop": [user_hook]}})
+            self.assertFalse((home / "aidw.config.toml").exists())
+            self.assertFalse((home / "agents" / "aidw-codificador.toml").exists())
+            self.assertFalse((skills / "aidw-orquestrar").exists())
+            code = run_aidw(root, "open", "--provider", "codex", "--path", str(tmp), "--print")
+            self.assertIn("--profile aidw", code.stdout)
+
+
+class CodexNodeTest(unittest.TestCase):
+    """O sandbox do Codex não lê o perfil do usuário: um node do PATH que mora lá (nvm) é trocado por um de fora."""
+
+    def test_node_fora_do_perfil(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "")
+            aidw = load_aidw(root)
+            home, pf = tmp / "home", tmp / "pf"
+            for d in (home / "nvm", pf):
+                d.mkdir(parents=True)
+                (d / "node.exe").write_bytes(b"")
+            aidw.Path.home = staticmethod(lambda: home)
+            old_path = os.environ["PATH"]
+            try:
+                os.environ["PATH"] = os.pathsep.join([str(home / "nvm"), str(pf)])
+                self.assertEqual(aidw.codex_node_path()[0], str(pf))
+                os.environ["PATH"] = str(home / "nvm")
+                node_dir, note = aidw.codex_node_path()
+                self.assertIsNone(node_dir)
+                self.assertIn("instale um Node", note)
+                os.environ["PATH"] = str(pf)
+                self.assertEqual(aidw.codex_node_path(), (None, ""), "node fora do perfil: nada a fazer")
+            finally:
+                os.environ["PATH"] = old_path
 
 
 class SetupDoctorTest(unittest.TestCase):

@@ -33,7 +33,9 @@ The model of each agent is fixed; **you choose the effort** with the *Effort per
 Classify the demand in the plan (`Nível: <level> — <reason>`); a ticket may take another level when
 its scope clearly fits it (say so in the ticket); if unsure between two levels, pick the lower.
 Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down;
-escalate one level when the table's escalation rules apply. Never change a model on your own — only
+escalate one level when the table's escalation rules apply. An `environment_blocked` result is **not** an agent
+failure: never escalate or redo the task for it — fix the environment yourself when you can, otherwise stop and
+take it to the user. Never change a model on your own — only
 when the user asks or the table gives that level another model.
 
 # WORKFLOW
@@ -46,7 +48,8 @@ triaged by rule → Documentation ({{agent:documenter}}) → Final review (user)
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
-then, in Claude, call `EnterWorktree` with name `<tipo-id>` so this chat and the diff pane work in it. Every
+then work inside it — in Claude, `EnterWorktree` with name `<tipo-id>` (the chat and the diff pane follow);
+in Codex there is no such tool, so every command and task uses the worktree's absolute path. Every
 task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main working copy; shell
 commands are not checked, so tasks must point only to the worktree.
 
@@ -65,7 +68,8 @@ explicit.
 
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in `orchestrator/config/routing.toml`;
 apply that rule exactly. A missing or unknown `state` is a failed result: delegate once more asking
-only for the missing JSON. Actions: `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
+only for the missing JSON. `max_retries` (routing.toml) counts rounds of the same loop — plan review ⇄ plan
+fix as well as review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
 `PLAN_FIX` (fix the plan, bump its version, fresh review of only the changes), `TICKETS`,
 `IMPLEMENT`, `TEST`, `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`, `DOCS`, `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).

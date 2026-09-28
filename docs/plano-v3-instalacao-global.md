@@ -309,6 +309,33 @@ Veredito: **segue**. O plugin atende o lado Claude; o Codex fica com instalaçã
 - **PowerShell:** a ferramenta PowerShell do Claude Code nesta máquina falha às vezes com "Linha de comando muito longa", também fora do AiDW (F1). O modelo cai para o Bash sozinho.
 - **Revisão:** rodada 1 com 1 CRITICO (demanda de outro contexto dividindo a pasta `state/`) e 4 IMPORTANTES; rodada 2 aprovada. 16 testes.
 
+## Resultado da F6 (2026-09-28)
+
+**Entregue: `install --provider codex|all` e `uninstall --provider …`, com nomes `aidw-*`.**
+- **Arquivos instalados no Codex:**
+  - skills em `~/.agents/skills/aidw-*`; a `aidw-orquestrar` e a `aidw-sair` com `allow_implicit_invocation: false`;
+  - agentes em `~/.codex/agents/aidw-*.toml`;
+  - `~/.codex/rules/aidw.rules`;
+  - `~/.codex/hooks.json` por merge, mantendo os hooks do usuário;
+  - perfil próprio `~/.codex/aidw.config.toml`.
+- **O que o perfil faz:** libera escrita no AiDW, nos projetos e nos worktrees, liga o multi-agente, os MCPs e o `safe.directory`. O `config.toml` do usuário não é tocado.
+- **`aidw.py open --provider codex --demand <id>`:** abre o Codex com o perfil, já no worktree da demanda.
+- **Guard único para os dois provedores:** o `aidw_guard.py` entende o `apply_patch` (caminhos dos cabeçalhos `*** Add/Update/Delete File:`) e o `$aidw-orquestrar`.
+- **Confiança dos hooks:**
+  - o Codex exige aprovação única no terminal; ela fica em `[hooks.state]` do `config.toml` e é invalidada se o comando ou o matcher do hook mudar;
+  - o manifest guarda a assinatura dos hooks, e o `doctor` só diz "aprovados" com um hash válido.
+- **`record` com `--codex-task`:** usa o Codex (modelo e tokens reais da sessão do subagente), mesmo numa máquina com a config do Claude.
+- **Revisão:** rodada 1 com 1 CRITICO (confiança "aprovada" mesmo depois de invalidada) e 2 IMPORTANTES; rodada 2 aprovada. 20 testes.
+
+**Teste de ponta a ponta no Codex** (a mesma melhoria de front da F2/F5, em simulação, com o MCP do board desligado):
+- ✅ **O fluxo completo funcionou:** `$aidw-orquestrar`, abertura da demanda, trabalho no worktree pelo caminho absoluto, agentes `aidw-*` com `spawn_agent`, revisões, passadas extras, documentação e revisão final. O working copy principal continuou limpo, e os hooks rodaram depois da aprovação.
+- ❌ **O resultado não foi equivalente ao do Claude:** 110 min, contra 34; 33 etapas, contra 11; o plano revisado 8 vezes; diff com 6 arquivos, contra 2.
+- **Causas, todas corrigidas:**
+  1. **Build impossível no sandbox:** o `node` da máquina é um link do nvm dentro do perfil do usuário, que o sandbox do Codex não lê, e o `npm` nem iniciava. O perfil `aidw` passa a pôr na frente do PATH um Node fora do perfil (o `install` mostra qual e a versão; o `doctor` avisa se não houver).
+  2. **O orquestrador tratou o bloqueio de ambiente como falha do agente:** subiu o effort até crítica e ficou em laço. O núcleo agora diz que `environment_blocked` não é falha, e que o `max_retries` vale também para a revisão do plano. Isso vale para os dois provedores.
+  3. **Métricas com modelos do Claude e sem tokens:** corrigido pelo `record` acima.
+- **Pendente:** refazer o teste no Codex com as correções, para confirmar a equivalência (critério 7). Atenção à cota: o plano do Codex desta máquina chegou a 75% do mês nessa execução.
+
 ## 7. Fases
 
 Cada fase tem critério de saída. O modo atual (`apply` em `C:\AiDW`) continua funcionando até a F5 ser aceita.
