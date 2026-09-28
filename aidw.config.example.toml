@@ -1,4 +1,5 @@
-# Configuração do AiDW. Gerado por aidw.py configure em 2026-09-25.
+# Exemplo de configuração do AiDW (genérico, sem contexto). Cada máquina tem o seu aidw.config.toml, que
+# NÃO é versionado: o `setup` cria pelo wizard (ou copie este arquivo e ajuste).
 # Pode editar à mão; depois rode `python aidw.py apply` e abra um chat novo.
 # Atenção: `configure` reescreve este arquivo (comentários próprios são perdidos).
 
@@ -7,11 +8,17 @@
 name = "claude"
 
 [delegation]
+# "native"   = subagentes nativos do provedor (Claude: ferramenta Agent; Codex: spawn_agent)
+# "headless" = um processo do CLI por tarefa, via `python aidw.py delegate`
 mode = "native"
 
 [workspace]
 # Pastas dos seus projetos. Liberadas para o orquestrador e todos os agentes.
 project_dirs = []
+
+[worktree]
+# Onde ficam os worktrees das demandas (<raiz>/<repo>/<id>). Curta e fora de qualquer repositório.
+root = "C:/wt"
 
 [mcp]
 # Servidores de config/mcp.toml registrados no projeto. O orquestrador decide quando usar.
@@ -19,7 +26,7 @@ enabled = ["playwright", "chrome-devtools", "figma", "context7"]
 
 [context]
 # Pacote de regras de trabalho em contexts/<nome>/ ("" = nenhum).
-active = "safeweb"
+active = ""
 
 [policies]
 # deny = bloqueado sempre · ask = sempre pede confirmação (vence qualquer allow).
@@ -63,7 +70,6 @@ skills = ["preparar-worktree"]
 enabled = true
 effort = "high"
 skills = ["code-review", "verificar-premissa"]
-# preload = injetada inteira em toda execução; as demais o agente chama quando precisa.
 preload = ["code-review"]
 
 [agents.api-db]
@@ -80,15 +86,12 @@ skills = []
 
 [agents.documenter]
 # name = "documentador"
-# Sonnet em vez de Haiku (Felipe, 2026-09-25): prompt longo, regras sob demanda e redação de US.
-model = "sonnet"
 enabled = true
 effort = "medium"
 skills = []
 
 [agents.bug-hunter]
 # name = "bugs"
-# Sob demanda: o orquestrador decide quando a passada vale o custo (ORCHESTRATOR.md).
 enabled = true
 effort = "high"
 skills = ["bug-hunt", "verificar-premissa"]
@@ -96,7 +99,6 @@ preload = ["bug-hunt"]
 
 [agents.security]
 # name = "seguranca"
-# Sob demanda, como o de bugs.
 enabled = true
 effort = "high"
 skills = ["security-audit", "verificar-premissa"]

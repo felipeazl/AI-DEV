@@ -5,7 +5,15 @@ Uso:
     python aidw.py setup [--reconfigure]   # pré-requisitos + wizard + apply + doctor
     python aidw.py configure [--defaults]  # só o wizard; grava aidw.config.toml
     python aidw.py apply [--dry-run]       # gera o ambiente a partir da config (idempotente)
-    python aidw.py doctor                  # verifica o ambiente
+    python aidw.py doctor                  # verifica tudo e diz se o ambiente está pronto
+    python aidw.py install [--dry-run]     # AiDW em qualquer pasta no Claude (plugin aidw)
+    python aidw.py uninstall [--dry-run]   # remove só o que o install acrescentou
+    python aidw.py install --provider codex|all   # também no Codex (skills, agentes, hooks, rules, perfil aidw)
+    python aidw.py open [--provider codex] [--demand <id>]   # abre o chat no worktree da demanda
+    python aidw.py worktree create --repo <pasta> --demand <id> [--slug s] [--base b]   # e list/inspect/remove/cleanup
+    python aidw.py project detect [--path <pasta>] [--json]
+    python aidw.py context list | check <nome> | use <nome> | create <nome> --description d
+    python aidw.py demand set <id> [--step S] [--status active|paused|done] [--note n]   # e show/list
     python aidw.py show                    # agentes, nomes, modelos e efforts resolvidos
     python aidw.py chat                    # abre o orquestrador no CLI do provedor
     python aidw.py delegate --agent <papel|nome> --effort <e> --task <arq> --demand <pasta>
@@ -17,6 +25,8 @@ tarefa, com o modelo do agente e o effort que o orquestrador escolher para aquel
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
@@ -39,6 +49,7 @@ MODELS_FILE = ROOT / "config" / "models.toml"
 MCP_CATALOG_FILE = ROOT / "config" / "mcp.toml"
 ROUTING_FILE = ROOT / "orchestrator" / "config" / "routing.toml"
 ORCHESTRATOR_MD = ROOT / "orchestrator" / "ORCHESTRATOR.md"
+ORCH_REF_DIR = ROOT / "orchestrator" / "reference"   # lidas sob demanda pelo orquestrador
 POLICIES_DIR = ROOT / "orchestrator" / "policies"
 AGENTS_DIR = ROOT / "agents"
 SKILLS_DIR = ROOT / "skills"
@@ -49,6 +60,7 @@ GEN_DIR = ROOT / ".aidw"                       # gerado, independente do provedo
 GEN_AGENTS_DIR = GEN_DIR / "agents"            # definição de cada agente (markdown)
 CLAUDE_AGENTS_JSON = GEN_DIR / "claude-agents.json"
 RUNTIME_FILE = GEN_DIR / "runtime.json"
+GEN_REF_DIR = GEN_DIR / "reference"           # referências do orquestrador, já renderizadas
 
 # Claude Code
 CLAUDE_MD = ROOT / "CLAUDE.md"
@@ -63,10 +75,35 @@ CODEX_RULES = ROOT / ".codex" / "rules" / "aidw.rules"
 CODEX_SUBAGENTS = ROOT / ".codex" / "agents"     # papéis nativos do Codex (modo native)
 CODEX_SKILLS = ROOT / ".agents" / "skills"
 CODEX_HOME = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+# Instalação global no Claude (aidw.py install): um plugin por contexto num marketplace local.
+CLAUDE_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+USER_SETTINGS = CLAUDE_HOME / "settings.json"
+MARKETPLACE_DIR = GEN_DIR / "marketplace"
+MARKETPLACE_NAME = "aidw-local"
+INSTALL_MANIFEST = GEN_DIR / "install-manifest.json"
+PLUGIN_VERSION_BASE = "3.0.0"
+# Instalação global no Codex (aidw.py install --provider codex): arquivos próprios do AiDW, nomes `aidw-*`.
+CODEX_NS = "aidw-"
+CODEX_SKILLS_HOME = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
+CODEX_AGENTS_HOME = CODEX_HOME / "agents"
+CODEX_GLOBAL_RULES = CODEX_HOME / "rules" / "aidw.rules"
+CODEX_HOOKS_FILE = CODEX_HOME / "hooks.json"
+CODEX_PROFILE_NAME = "aidw"
+CODEX_PROFILE = CODEX_HOME / f"{CODEX_PROFILE_NAME}.config.toml"
+# Descrições do plugin entram em toda sessão: o aviso evita que o Claude use o AiDW fora de uma demanda.
+PLUGIN_GUARD = "[AiDW] Só dentro de uma demanda conduzida pelo orquestrador AiDW."
+ADMIN_GUARD = "[AiDW] Administração do AiDW."  # skills com `aidw: admin` (contextos): valem fora de uma demanda
 # O Codex corta o AGENTS.md em 32 KiB por padrão; o AiDW sobe o limite do orquestrador.
 CODEX_DOC_MAX_BYTES = 98304
 
 IS_WINDOWS = os.name == "nt"
+# Raiz dos worktrees das demandas: curta (MSBuild legado e MAX_PATH) e fora de qualquer repositório.
+DEFAULT_WORKTREE_ROOT = "C:/wt" if IS_WINDOWS else "~/wt"
+REGISTRY_FILE = ROOT / "state" / "worktrees.json"   # registro dos worktrees das demandas (o git é a verdade)
+GUARD_SCRIPT = ROOT / "aidw_guard.py"               # hook PreToolUse do plugin
+# Dependências de build fora do git que o worktree recebe por junction (se existirem no working copy).
+DEFAULT_WORKTREE_LINKS = ["packages", "node_modules"]
+DEMAND_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
 GENERATED_MARK = "Gerado por aidw.py"
 ORCHESTRATOR = "orchestrator"
 PROVIDERS = ("claude", "codex")
@@ -230,6 +267,7 @@ def default_config(provider: str = "claude") -> dict:
         "provider": {"name": provider},
         "delegation": {"mode": "native"},
         "workspace": {"project_dirs": []},
+        "worktree": {"root": DEFAULT_WORKTREE_ROOT},
         "mcp": {"enabled": list(DEFAULT_MCP)},
         "context": {"active": ""},
         "policies": {"deny": list(DEFAULT_DENY), "ask": []},
@@ -243,7 +281,7 @@ def load_config() -> dict | None:
         return None
     cfg = load_toml(CONFIG_FILE)
     base = default_config()
-    for section in ("provider", "delegation", "workspace", "mcp", "context", "policies"):
+    for section in ("provider", "delegation", "workspace", "worktree", "mcp", "context", "policies"):
         base[section].update(cfg.get(section, {}))
     if "agents" in cfg:
         base["agents"] = {}
@@ -302,6 +340,10 @@ def render_config(cfg: dict) -> str:
         "[workspace]",
         "# Pastas dos seus projetos. Liberadas para o orquestrador e todos os agentes.",
         f"project_dirs = {toml_value(cfg['workspace']['project_dirs'])}",
+        "",
+        "[worktree]",
+        "# Onde ficam os worktrees das demandas (<raiz>/<repo>/<id>). Curta e fora de qualquer repositório.",
+        f"root = {toml_value(cfg['worktree']['root'])}",
         "",
         "[mcp]",
         "# Servidores de config/mcp.toml registrados no projeto. O orquestrador decide quando usar.",
@@ -409,6 +451,21 @@ def state_dir(ctx: dict | None) -> Path:
     return ROOT / (ctx.get("state_dir", "state") if ctx else "state")
 
 
+def worktree_root(cfg: dict) -> Path:
+    return Path(os.path.expanduser(cfg["worktree"]["root"]))
+
+
+def required_folders(cfg: dict, ctx: dict | None) -> list[tuple[Path, str]]:
+    """Pastas que o AiDW precisa e que o setup cria quando faltam."""
+    return [(CONTEXTS_DIR, "contextos de trabalho"), (state_dir(ctx), "estado das demandas"),
+            (worktree_root(cfg), "worktrees das demandas")]
+
+
+def code_dirs(cfg: dict, ctx: dict | None) -> list[str]:
+    """Onde os agentes mexem em código: as pastas de projeto e a raiz dos worktrees das demandas."""
+    return list(dict.fromkeys([*project_dirs(cfg, ctx), worktree_root(cfg).as_posix()]))
+
+
 def project_dirs(cfg: dict, ctx: dict | None) -> list[str]:
     """Pastas liberadas: as do workspace (máquina) + as do contexto, sem repetição."""
     dirs = [*cfg["workspace"]["project_dirs"], *(ctx.get("additional_dirs", []) if ctx else [])]
@@ -431,6 +488,11 @@ def context_files(ctx: dict | None, role: str) -> list[Path]:
     if not ctx:
         return []
     return [ctx["dir"] / inc for inc in ctx.get("agents", {}).get(role, {}).get("include", [])]
+
+
+def orchestrator_policy_refs(ctx: dict | None) -> list[tuple[Path, str]]:
+    """Policies que o orquestrador lê sob demanda (frontmatter `orchestrator_when`)."""
+    return [(f, w) for f in policy_files(ctx) if (w := read_frontmatter(f)[0].get("orchestrator_when"))]
 
 
 def policy_files(ctx: dict | None) -> list[Path]:
@@ -826,6 +888,11 @@ def create_context(name: str, description: str, required_mcp: list[str], require
         "",
         "[env]",
         "",
+        "# Worktree por demanda: branch `<prefixo><número>-<slug>` e junctions de dependências fora do git.",
+        "[worktree]",
+        'branch_prefix = "feature/"',
+        'link = ["packages", "node_modules"]',
+        "",
         "[permissions]",
         "# Sintaxe do Claude Code. allow = sem prompt · ask = sempre pede OK · deny = bloqueado.",
         "# git_ask = subcomandos git que sempre pedem OK.",
@@ -881,8 +948,9 @@ def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
 class Templater:
     """{{agent:<papel>}} → nome do agente; {{root}}/{{context}} → caminhos. Papel desconhecido é erro."""
 
-    def __init__(self, resolved: dict, ctx: dict | None, rep: Report) -> None:
-        self.names = {role: a["name"] for role, a in resolved.items()}
+    def __init__(self, resolved: dict, ctx: dict | None, rep: Report, ns: str = "") -> None:
+        self.names = {role: ns + a["name"] for role, a in resolved.items()}
+        self.ns = ns
         self.vars = path_vars(ctx["dir"] if ctx else None)
         self.rep = rep
 
@@ -897,7 +965,7 @@ class Templater:
         return expand_vars(PLACEHOLDER_RE.sub(repl, text), self.vars)
 
     def include(self, path: Path) -> str:
-        return f"<!-- fonte: {rel(path)} -->\n\n{self.render(path.read_text(encoding='utf-8').strip(), path)}"
+        return f"<!-- fonte: {rel(path)} -->\n\n{self.render(read_frontmatter(path)[1].strip(), path)}"
 
 
 def csv_field(value: str) -> list[str]:
@@ -980,7 +1048,7 @@ def reference_section(ctx: dict | None, role: str) -> str:
 
 
 def skills_section(names: list[str], skills: dict[str, Path], provider: str,
-                   preload: list[str] | None = None) -> str:
+                   preload: list[str] | None = None, ns: str = "") -> str:
     if not names:
         return ""
     preload = preload or []
@@ -988,7 +1056,7 @@ def skills_section(names: list[str], skills: dict[str, Path], provider: str,
            "in your context — do not invoke them again." if provider == "claude" else
            "Codex may list them as skills; if not, read the `SKILL.md` below and follow it.")
     rows = ["## Skills", "", f"Procedures you use in your process. {how}", ""]
-    rows += [f"- `{n}` — `{(skills[n] / 'SKILL.md').as_posix()}`" + (" (*loaded*)" if n in preload else "")
+    rows += [f"- `{ns}{n}` — `{(skills[n] / 'SKILL.md').as_posix()}`" + (" (*loaded*)" if n in preload else "")
              for n in names if n in skills]
     return "\n".join(rows)
 
@@ -1011,35 +1079,31 @@ def mcp_agent_section(servers: dict, role: str) -> str:
 def mcp_orchestrator_section(servers: dict, resolved: dict) -> str:
     if not servers:
         return "## MCP tools\n\nNo MCP servers enabled."
-    rows = ["| Server | Use when | Triggers | Agents |", "|---|---|---|---|"]
+    rows = ["| Server | Triggers | Agents |", "|---|---|---|"]
     for key, s in servers.items():
         agents = ", ".join(f"`{resolved[r]['name']}`" for r in s.get("agents", []) if r in resolved) or "all"
-        rows.append(f"| {s['name']} (`{key}`) | {s['use_when']} | {'; '.join(s.get('triggers', []))} | {agents} |")
+        rows.append(f"| {s['name']} (`{key}`) | {'; '.join(s.get('triggers', []))} | {agents} |")
     return "\n".join([
         "## MCP tools", "",
-        "You decide which MCP servers each delegated task needs. Before every delegation:", "",
-        "1. Match the ticket against the triggers below. A server is needed only when at least one "
-        "trigger clearly applies.",
-        "2. Pick only servers listed for the agent that will receive the task (the agent only has those).",
-        "3. Name them explicitly in the task, with the goal — e.g. \"Use the Playwright MCP to walk "
-        "through the checkout flow and confirm acceptance criteria 2 and 3\".",
-        "4. If no trigger applies, write \"No MCP tools needed\" in the task. Never add a server "
-        "speculatively.",
+        "Before every delegation, name in the task only the servers whose trigger clearly applies and "
+        "that the receiving agent has, with the goal (e.g. \"Use the Playwright MCP to confirm acceptance "
+        "criteria 2 and 3\"); if none applies, write \"No MCP tools needed\". Never add one speculatively.",
         "", *rows,
     ])
 
 
 def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
-                 skills: dict, routing: dict) -> tuple[dict, str]:
+                 skills: dict, routing: dict, ns: str = "") -> tuple[dict, str]:
     """(frontmatter, markdown) da definição do agente — a mesma para Claude e Codex."""
     source = AGENTS_DIR / role / "AGENT.md"
     meta, body = read_frontmatter(source)
     provider = cfg["provider"]["name"]
     orch = tpl.names[ORCHESTRATOR]
     sources = [source, *policy_files(ctx), *context_files(ctx, role)]
+    cmd = "install" if ns else "apply"
     parts = [
-        f"<!-- {GENERATED_MARK} apply a partir de: {', '.join(rel(s) for s in sources)}.\n"
-        "     Não edite: altere as fontes e rode `python aidw.py apply`. -->",
+        f"<!-- {GENERATED_MARK} {cmd} a partir de: {', '.join(rel(s) for s in sources)}.\n"
+        f"     Não edite: altere as fontes e rode `python aidw.py {cmd}`. -->",
         tpl.render(body.strip(), source),
         "\n".join(["## Runtime", "",
                    f"- You are `{a['name']}` — {a['display']} (role `{role}`), a sub-agent of "
@@ -1051,7 +1115,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    "report the failure `state` of your OUTPUT)",
                    "- Put the whole result in your final message: the orchestrator only receives that.",
                    *runtime_lines(cfg, ctx)]),
-        skills_section(a["skills"], skills, provider, a["preload"]),
+        skills_section(a["skills"], skills, provider, a["preload"], ns),
         mcp_agent_section(servers, role),
         systems_section(ctx, detailed=True),
         reference_section(ctx, role),
@@ -1083,14 +1147,14 @@ def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, ser
     return entry
 
 
-def effort_table(resolved: dict, routing: dict, cfg: dict) -> str:
+def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     eff = routing.get("effort", {})
     levels = eff.get("levels", {})
     roles = [r for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
     if not levels or not roles:
         return ""
     claude_native = cfg["provider"]["name"] == "claude" and cfg["delegation"]["mode"] == "native"
-    rows = ["| Level | When | " + " | ".join(f"`{resolved[r]['name']}`" for r in roles) + " |",
+    rows = ["| Level | When | " + " | ".join(f"`{ns}{resolved[r]['name']}`" for r in roles) + " |",
             "|---|---|" + "---|" * len(roles)]
     for lvl, spec in levels.items():
         cells = []
@@ -1098,7 +1162,7 @@ def effort_table(resolved: dict, routing: dict, cfg: dict) -> str:
             a = resolved[r]
             model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
             if claude_native:
-                cells.append(f"`{variant_name(a, model, effort)}`")
+                cells.append(f"`{ns}{variant_name(a, model, effort)}`")
             elif model["key"] != a["model"]["key"]:
                 cells.append(f"{effort or '—'} + model `{model['key']}` (`{model['model_id']}`)")
             else:
@@ -1121,26 +1185,19 @@ def effort_table(resolved: dict, routing: dict, cfg: dict) -> str:
     return "\n".join(lines)
 
 
-def record_hint(codex: bool) -> str:
+def aidw_command(global_mode: bool) -> str:
+    """Como chamar o aidw.py: relativo no modo projeto (o chat está na raiz), absoluto no plugin."""
+    return f'python "{ROOT.as_posix()}/aidw.py"' if global_mode else "python aidw.py"
+
+
+def record_hint(codex: bool, global_mode: bool = False) -> str:
     usage = ("--codex-task <task_name>" if codex else
              "--tokens <subagent_tokens> --tool-uses <tool_uses> --duration-ms <duration_ms>")
-    return (f"python aidw.py record --agent <name> [--effort <effort>] --level <level> --label <label> "
+    return (f"{aidw_command(global_mode)} record --agent <name> [--effort <effort>] --level <level> --label <label> "
             f"--demand <demand dir> --state <state> {usage}")
 
 
-COMMON_DELEGATION = [
-    "- Write the task file first (`tarefa-<agente>-<assunto>.md` in the demand folder): SPEC + TICKET + "
-    "files in scope with `file:line` + the build/test command + paths of the diff, plan and previous "
-    "review. The message to the agent only points to it — never paste large inputs.",
-    "- The agent ends with the JSON of its OUTPUT section; decide the next step from its `state`.",
-    "- Locked actions the agent could not run come back as proposals (`approvals`, denials): take them "
-    "to the user, never retry them another way.",
-    "- Independent tickets may run in parallel; tickets on the same files run in sequence. Each "
-    "delegation is a fresh agent.",
-]
-
-
-def delegation_section(cfg: dict, resolved: dict) -> str:
+def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> str:
     provider, mode = cfg["provider"]["name"], cfg["delegation"]["mode"]
     agents = [a for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
     example = agents[0]["name"] if agents else "codificador"
@@ -1156,17 +1213,37 @@ def delegation_section(cfg: dict, resolved: dict) -> str:
             "for another model.",
             "- `prompt`: `Tarefa: <task file>. Pasta da demanda: <demand dir>. Nível: <level>.` plus the MCP "
             "choice (see *MCP tools*).",
-            *COMMON_DELEGATION,
             "- Parallel tickets: several `Agent` calls in the same message, or `run_in_background`.",
             "- After **every** subagent returns, record it — this appends `metricas.md` and prints the "
             "`header` and `resumo` you must show (*SHOWING RESULTS*):",
-            "", "```", record_hint(codex=False), "```", "",
+            "", "```", record_hint(codex=False, global_mode=global_mode), "```", "",
             "  `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the "
             "ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.",
             "- Cheap exploration: the built-in `Explore` subagent (read-only) for sweeping code and "
             "returning `file:line` pointers.",
         ]
         return "\n".join(lines)
+    if global_mode:
+        return "\n".join([
+            "## How to delegate", "",
+            "The agents are **native Codex sub-agents** installed as roles (`~/.codex/agents/aidw-*.toml`): spawn "
+            "them with `spawn_agent`.", "",
+            "- `agent_type`: the agent name from the Team table (e.g. `aidw-codificador`) — the role carries the "
+            "agent's standing instructions.",
+            "- `fork_turns: \"none\"` (a full-history fork rejects `agent_type`, `model` and `reasoning_effort`).",
+            "- `model`: the agent's model from the Team table. `reasoning_effort`: the cell of the *Effort per task* "
+            "table — that is how you choose the effort.",
+            "- `task_name`: `<agent>-<label>` (e.g. `aidw-codificador-t1-r1`), unique in the demand.",
+            "- `message`: `Task: <task file>. Demand folder: <demand dir>. Worktree: <path>. Level: <level>, effort "
+            "<effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
+            "- Sub-agents inherit your sandbox, rules and MCP servers; the `aidw` profile makes the worktree root "
+            "writable. Only the agents allowed to edit code may edit it (their definition says so).",
+            "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the sub-agent "
+            "session, appends `metricas.md` and prints the `header` and `resumo` you must show:",
+            "", "```", record_hint(codex=True, global_mode=True), "```", "",
+            f"- There is no exploration role: for broad code exploration spawn `{example}` at level `trivial` asking "
+            "for `file:line` pointers, or read short excerpts yourself.",
+        ])
     lines = [
         "## How to delegate", "",
         "The agents are **native Codex sub-agents**: spawn them with `spawn_agent` (multi-agent).", "",
@@ -1179,12 +1256,11 @@ def delegation_section(cfg: dict, resolved: dict) -> str:
         "effort <effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
         "- If your spawn tool also takes an agent type/role, pass the agent name too (roles are defined "
         "in `.codex/agents/`).",
-        *COMMON_DELEGATION,
         "- Sub-agents inherit your sandbox, rules and MCP servers: the task must say which MCP to use, and "
         "only the agents allowed to edit code may edit it (their definition says so).",
         "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the "
         "sub-agent session, appends `metricas.md` and prints the `header` and `resumo` you must show:",
-        "", "```", record_hint(codex=True), "```", "",
+        "", "```", record_hint(codex=True, global_mode=global_mode), "```", "",
         f"- There is no exploration role: for broad code exploration spawn `{example}` at level `trivial` "
         "asking for `file:line` pointers, or read short excerpts yourself.",
         "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
@@ -1209,7 +1285,6 @@ def headless_delegation_section(provider: str, example: str) -> str:
         "only for models marked `—`.",
         "- `--model <key>`: only when the user asked for another model for this task (a level whose "
         "*Effort per task* cell names a model already gets it without `--model`).",
-        *COMMON_DELEGATION,
         "- The command prints one JSON line: `header`, `resumo`, `state`, `output` (the agent's final "
         "JSON), `result_file`, `denials`, tokens and duration. The full answer is in `result_file` — read "
         "it only when needed. The same JSON is saved next to it (`resultado-<agent>-<label>.json`): if you "
@@ -1249,42 +1324,84 @@ CODEX_SUBAGENT_GUARD = (
     "only that definition.")
 
 
+def orchestrator_references(ctx: dict | None, tpl: Templater) -> dict[str, dict]:
+    """{nome: {when, source, content}}: as genéricas (orchestrator/reference, `when` no frontmatter) e as
+    do contexto ([agents.orchestrator] reference). Lidas só na etapa que precisa, fora do CLAUDE.md."""
+    refs: dict[str, dict] = {}
+    sources = [(f, read_frontmatter(f)[0].get("when", "")) for f in sorted(ORCH_REF_DIR.glob("*.md"))] \
+        if ORCH_REF_DIR.is_dir() else []
+    if ctx:
+        sources += [(ctx["dir"] / r["path"], r.get("when", ""))
+                    for r in ctx.get("agents", {}).get(ORCHESTRATOR, {}).get("reference", [])]
+    sources += orchestrator_policy_refs(ctx)
+    cmd = "install" if tpl.ns else "apply"
+    for path, when in sources:
+        if path.stem in refs:
+            tpl.rep.error(f"referência do orquestrador com nome repetido {path.stem!r}: {rel(refs[path.stem]['source'])} "
+                          f"e {rel(path)} (renomeie uma delas)")
+            continue
+        body = read_frontmatter(path)[1]
+        header = (f"<!-- {GENERATED_MARK} {cmd} a partir de {rel(path)}; não edite: altere a fonte e rode "
+                  f"`python aidw.py {cmd}`. -->")
+        refs[path.stem] = {"when": when, "source": path,
+                           "content": header + "\n\n" + tpl.render(body.strip(), path) + "\n"}
+    return refs
+
+
+def orchestrator_reference_section(refs: dict[str, dict], ref_dir: Path = GEN_REF_DIR) -> str:
+    if not refs:
+        return ""
+    rows = ["## Reference (read on demand)", "",
+            "Not in your context until you read it. Read a file when its moment comes (the workflow names "
+            "it) — and again after a context compaction, if you are in that step.", ""]
+    rows += [f"- *{name}* `{(ref_dir / (name + '.md')).as_posix()}` — {r['when']}" for name, r in refs.items()]
+    return "\n".join(rows)
+
+
 def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
-                        skills: dict, routing: dict) -> str:
+                        skills: dict, routing: dict, refs: dict[str, dict] | None = None, ns: str = "",
+                        ref_dir: Path = GEN_REF_DIR) -> str:
     orch = resolved[ORCHESTRATOR]
     provider, mode = cfg["provider"]["name"], cfg["delegation"]["mode"]
     codex_native = provider == "codex" and mode == "native"
     first_col = {"headless": "Agent (`--agent`)", "native": "Agent"}[mode]
-    team = [f"| {first_col} | Display name | Role | Model | Default effort | Definition | Status |",
-            "|---|---|---|---|---|---|---|"]
+    with_definition = not (provider == "claude" and mode == "native")
+    team = [f"| {first_col} | Display name | Role | Model | Default effort |"
+            + (" Definition |" if with_definition else "") + " Status |",
+            "|---|---|---|---|---|" + ("---|" if with_definition else "") + "---|"]
     for role, a in resolved.items():
         if role == ORCHESTRATOR:
             continue
         status = "enabled" if a["enabled"] else "disabled — do not delegate"
         eff = a["effort"] if a["model"].get("efforts") else "—"
         definition = f"`{(GEN_AGENTS_DIR / (a['name'] + '.md')).as_posix()}`" if a["enabled"] else "—"
-        team.append(f"| `{a['name']}` | {a['display']} | {role} | {a['model']['name']} "
-                    f"(`{a['model']['model_id']}`) | {eff} | {definition} | {status} |")
+        team.append(f"| `{ns}{a['name']}` | {a['display']} | {role} | {a['model']['name']} "
+                    f"(`{a['model']['model_id']}`) | {eff} |" + (f" {definition} |" if with_definition else "")
+                    + f" {status} |")
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
+    cmd = "install" if ns else "apply"
     parts = [
-        f"<!-- {GENERATED_MARK} apply — {source_file} do orquestrador; não edite. Fontes: "
-        "orchestrator/ORCHESTRATOR.md, orchestrator/policies/ e o contexto ativo; rode "
-        "`python aidw.py apply` após alterá-las. -->",
+        f"<!-- {GENERATED_MARK} {cmd} — {'skill orquestrar' if ns else source_file + ' do orquestrador'}; "
+        "não edite. Fontes: orchestrator/ORCHESTRATOR.md, orchestrator/policies/ e o contexto ativo; rode "
+        f"`python aidw.py {cmd}` após alterá-las. -->",
         CODEX_SUBAGENT_GUARD if codex_native else "",
         tpl.include(ORCHESTRATOR_MD),
         "\n".join(["## Runtime", "",
                    f"- You are `{orch['name']}` — {orch['display']} (role `orchestrator`), the main chat.",
                    f"- Your model: {model_label(orch)}",
                    f"- Delegation mode: **{mode}**",
-                   *runtime_lines(cfg, ctx)]),
+                   *runtime_lines(cfg, ctx),
+                   *([f"- This chat may be in any folder: run the AiDW commands by absolute path "
+                      f"(`{aidw_command(True)} ...`)."] if ns else [])]),
         "\n".join(["## Team", "", *team]),
-        delegation_section(cfg, resolved),
-        effort_table(resolved, routing, cfg),
-        skills_section(orch["skills"], skills, provider),
+        delegation_section(cfg, resolved, global_mode=bool(ns)),
+        effort_table(resolved, routing, cfg, ns),
+        skills_section(orch["skills"], skills, provider, ns=ns),
         mcp_orchestrator_section(servers, resolved),
         systems_section(ctx, detailed=False),
+        orchestrator_reference_section(refs or {}, ref_dir),
         "# Policies",
-        *[tpl.include(p) for p in policy_files(ctx)],
+        *[tpl.include(p) for p in policy_files(ctx) if p not in {r["source"] for r in (refs or {}).values()}],
     ]
     parts = [x for x in parts if x]
     if context_files(ctx, ORCHESTRATOR):
@@ -1294,25 +1411,30 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
 
 
 def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: str, name: str,
-                           ctx: dict | None, servers: dict, model: dict | None = None) -> str:
+                           ctx: dict | None, servers: dict, model: dict | None = None, ns: str = "",
+                           guard: str = "") -> str:
     model = model or a["model"]
     entry = claude_agent_entry(role, meta, prompt, ctx, servers)
     description = meta["description"]
+    # Variantes: descrição de uma linha. O orquestrador escolhe pela tabela Effort per task, e a lista
+    # de agentes com as descrições entra em toda sessão (a descrição completa fica só no agente base).
     if model["key"] != a["model"]["key"]:
-        description = (f"{a['display']} com {model['name']} e effort {effort or '—'}. {description} Use esta "
-                       "variante só quando a tabela Effort per task a indicar para o nível da tarefa.")
+        description = (f"{a['display']} com {model['name']}, effort {effort or '—'}: mesmo papel de "
+                       f"{ns}{a['name']}. Só quando a tabela Effort per task indicar.")
         prompt = prompt.replace(f"- Model: {a['model']['name']} (`{a['model']['model_id']}`).",
                                 f"- Model: {model['name']} (`{model['model_id']}`).")
     elif name != a["name"]:
-        description = (f"{a['display']} com effort {effort}. {description} Use esta variante só quando o "
-                       f"orquestrador escolher effort {effort} para a tarefa.")
+        description = (f"{a['display']}, effort {effort}: mesmo papel de {ns}{a['name']}. "
+                       "Só quando a tabela Effort per task indicar.")
+    if guard:
+        description = f"{guard} {description}"
     front = ["---", f"name: {name}", f"description: {json.dumps(description, ensure_ascii=False)}",
              f"model: {model.get('alias') or model['model_id']}"]
     if effort:
         front.append(f"effort: {effort}")
     front.append("omitClaudeMd: true")
     if a["preload"]:
-        front += ["skills:", *[f"  - {x}" for x in a["preload"]]]
+        front += ["skills:", *[f"  - {ns}{x}" for x in a["preload"]]]
     if entry.get("tools"):
         front.append("tools: " + ", ".join(entry["tools"]))
     if entry.get("disallowedTools"):
@@ -1571,7 +1693,7 @@ def render_codex_config(resolved: dict, cfg: dict, ctx: dict | None, servers: di
         "",
         "[sandbox_workspace_write]",
         "network_access = true",
-        f"writable_roots = {toml_value([win(d) for d in project_dirs(cfg, ctx)])}",
+        f"writable_roots = {toml_value([win(d) for d in code_dirs(cfg, ctx)])}",
     ]
     env = {**({k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {}), **codex_git_env(cfg, ctx)}
     lines += ["", "# GIT_CONFIG_*: safe.directory para o sandbox do Windows (ver codex_git_env).",
@@ -1614,7 +1736,7 @@ def check_workflows(resolved: dict, skills: dict, rep: Report) -> None:
                 rep.warn(f"{rel(wf)}: skill desconhecida {skill!r}")
 
 
-def build(cfg: dict, catalog: dict, rep: Report) -> dict | None:
+def build(cfg: dict, catalog: dict, rep: Report, ns: str = "", ref_dir: Path = GEN_REF_DIR) -> dict | None:
     """Valida e renderiza tudo em memória (nada é gravado)."""
     ctx = load_context(cfg, rep)
     skills = available_skills(ctx, rep)
@@ -1627,17 +1749,18 @@ def build(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     servers = resolve_mcp(cfg, rep)
     if rep.errors:
         return None
-    tpl = Templater(resolved, ctx, rep)
+    tpl = Templater(resolved, ctx, rep, ns)
     agents = {}
     for role, a in resolved.items():
         if role != ORCHESTRATOR and a["enabled"]:
-            meta, prompt = render_agent(role, a, cfg, ctx, tpl, servers, skills, routing)
+            meta, prompt = render_agent(role, a, cfg, ctx, tpl, servers, skills, routing, ns)
             agents[role] = {"meta": meta, "prompt": prompt}
-    orchestrator_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing)
+    refs = orchestrator_references(ctx, tpl)
+    orchestrator_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir)
     if rep.errors:
         return None
     return {"ctx": ctx, "skills": skills, "resolved": resolved, "routing": routing, "servers": servers,
-            "agents": agents, "orchestrator_md": orchestrator_md}
+            "agents": agents, "orchestrator_md": orchestrator_md, "orchestrator_refs": refs}
 
 
 def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
@@ -1675,6 +1798,10 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         for f in GEN_AGENTS_DIR.glob("*.md"):
             if f.stem not in files:
                 remove_generated(f, dry, rep, "agente renomeado, desabilitado ou removido")
+    refs = b["orchestrator_refs"]
+    sync_generated_dir(GEN_REF_DIR, {n: r["content"] for n, r in refs.items()}, ".md", dry, rep)
+    if refs:
+        rep.info(f"referências do orquestrador (lidas sob demanda): {', '.join(refs)}")
 
     if provider == "claude":
         heading("Claude Code (CLAUDE.md, .claude/, .mcp.json)")
@@ -1707,7 +1834,7 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
             "ask": list(dict.fromkeys([*cfg["policies"]["ask"], *ctx_perms.get("ask", []),
                                        *expand_git_ask(ctx_perms.get("git_ask", []))])),
             "deny": list(dict.fromkeys([*cfg["policies"]["deny"], *ctx_perms.get("deny", [])])),
-            "additionalDirectories": project_dirs(cfg, ctx),
+            "additionalDirectories": code_dirs(cfg, ctx),  # projetos + raiz dos worktrees
             "env": {k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {},
         }
         sync_claude_settings(managed, prev.get("claude_settings", {}), dry, rep)
@@ -1765,6 +1892,1496 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
           f"{f' com {len(rep.warnings)} aviso(s)' if rep.warnings else ''}. Abra um chat novo na raiz do AiDW.")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Instalação global no Claude: plugin por contexto (aidw.py install / uninstall)
+# ---------------------------------------------------------------------------
+
+def plugin_name(ctx: dict | None = None) -> str:
+    """Sempre `aidw`: comandos e agentes têm o mesmo nome em qualquer máquina e contexto (o contexto ativo muda
+    o conteúdo do plugin — regras, sistemas, políticas —, não o nome)."""
+    return "aidw"
+
+
+def sha(content: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(content).hexdigest()
+
+
+def is_admin_skill(path: Path) -> bool:
+    return read_frontmatter(path)[0].get("aidw") == "admin"
+
+
+def guard_skill(text: str) -> str:
+    """Põe o aviso do AiDW no começo da descrição do SKILL.md, tira a marca `aidw:` do frontmatter e resolve
+    `{{root}}` (a skill roda em qualquer pasta e chama o aidw.py pelo caminho absoluto)."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return text
+    end = next((i for i, line in enumerate(lines[1:], 1) if line.strip() == "---"), len(lines))
+    admin = any(line.strip() == "aidw: admin" for line in lines[1:end])
+    guard = ADMIN_GUARD if admin else PLUGIN_GUARD
+    for i in range(1, end):
+        if lines[i].startswith("description:"):
+            value = lines[i][len("description:"):].strip()
+            quote = value[:1] if value[:1] in "\"'" else ""
+            value = value[1:] if quote else value
+            lines[i] = f"description: {quote}{guard} {value}"
+    lines = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("aidw:"))]
+    return "\n".join(lines).replace("{{root}}", ROOT.as_posix())
+
+
+def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
+                       provider: str = "claude") -> str:
+    aidw = aidw_command(True)
+    codex = provider == "codex"
+    leave = "$aidw-sair" if codex else f"/{plugin}:sair"
+    workspace = ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
+                 "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
+                 "do Codex deixa só leitura: peça aprovação (escalada) para esse comando. Se a raiz dos worktrees não for "
+                 "gravável (sessão aberta sem o "
+                 f"perfil `{CODEX_PROFILE_NAME}`), peça ao usuário para reabrir com `{aidw} open --provider codex "
+                 "--demand <id>`." if codex else
+                 "6. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda — "
+                 "exceto se a sessão já abriu dentro dele (`demand` no `project detect`, ex.: `aidw open --demand`).")
+    description = (f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
+                   "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
+    return "\n".join([
+        "---", f"name: {CODEX_NS + 'orquestrar' if codex else 'orquestrar'}",
+        f"description: {json.dumps(description, ensure_ascii=False)}",
+        *([] if codex else ["disable-model-invocation: true"]), "---", "",
+        f"<!-- {GENERATED_MARK} install; não edite: altere as fontes e rode `python aidw.py install`. -->", "",
+        "# Modo orquestrador AiDW", "",
+        f"A partir desta mensagem você é o orquestrador AiDW nesta sessão, até o usuário chamar "
+        f"`{leave}` ou pedir para parar. Pedido do usuário (pode estar vazio): " +
+        ("o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"), "",
+        f"Depois de uma compactação da conversa, releia `{skill_path.as_posix()}` antes de continuar.", "",
+        "## Ao ser chamado: abrir ou retomar a demanda", "",
+        f"1. Rode `{aidw} project detect --json` (pasta atual) e `{aidw} demand list --active --json`.",
+        "2. **Qual demanda:** a do pedido, se ele citar uma (ex.: `1234` → `us-1234`, `bug-5678`); senão "
+        "a da pasta (`demand`, quando o chat está num worktree); senão a única ativa deste repositório. Mais de "
+        "uma candidata, ou nenhuma e sem pedido: pergunte ao usuário, com as opções.",
+        "3. **Retomar:** se a demanda já tem `demand.json`, **não recomece** — leia a pasta dela (plano, triagens, "
+        "reviews, `estado.md`) e continue da etapa gravada (`step`).",
+        f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
+        "o fluxo.",
+        f"5. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
+        "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda.",
+        workspace, "",
+        orchestrator_md.strip(), "",
+    ])
+
+
+def exit_skill(plugin: str, provider: str = "claude") -> str:
+    codex = provider == "codex"
+    description = f"{PLUGIN_GUARD} Encerra o modo orquestrador AiDW nesta sessão."
+    return "\n".join([
+        "---", f"name: {CODEX_NS + 'sair' if codex else 'sair'}", f"description: {json.dumps(description, ensure_ascii=False)}",
+        *([] if codex else ["disable-model-invocation: true"]), "---", "",
+        "Saia do modo orquestrador AiDW. Se há uma demanda aberta nesta sessão, grave onde parou: "
+        f"`{aidw_command(True)} demand set <id> --status paused --note \"<próximo passo>\"` e, se ajudar, um "
+        "`estado.md` curto na pasta dela. Depois responda normalmente, sem as regras do orquestrador, até "
+        f"`{'$aidw-orquestrar' if codex else '/' + plugin + ':orquestrar'}` ser chamado de novo (ele retoma da etapa "
+        "gravada).", "",
+    ])
+
+
+def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
+    """Renderiza o marketplace local com o plugin `aidw` (conteúdo do contexto ativo): {caminho relativo: bytes}."""
+    if cfg["provider"]["name"] != "claude":
+        rep.error("a instalação global por plugin é do Claude; no Codex ela vem na F6 do plano v3")
+        return None
+    if cfg["delegation"]["mode"] != "native":
+        rep.error('a instalação global usa subagentes nativos: use [delegation] mode = "native" '
+                  "(o modo headless continua disponível pelo `apply`, na raiz do AiDW)")
+        return None
+    ctx = load_context(cfg, rep)
+    plugin = plugin_name(ctx)
+    base = f"plugins/{plugin}"
+    plugin_dir = MARKETPLACE_DIR / base
+    b = build(cfg, catalog, rep, ns=f"{plugin}:", ref_dir=plugin_dir / "reference")
+    if b is None:
+        return None
+    resolved, ctx = b["resolved"], b["ctx"]
+    files: dict[str, bytes] = {}
+
+    def put(rel_path: str, text: str) -> None:
+        files[rel_path] = text.encode("utf-8")
+
+    for role, g in b["agents"].items():
+        a = resolved[role]
+        for name, v in a["variants"].items():
+            put(f"{base}/agents/{name}.md",
+                render_claude_subagent(role, a, g["meta"], g["prompt"], v["effort"], name, ctx, b["servers"],
+                                       v["model"], ns=f"{plugin}:", guard=PLUGIN_GUARD))
+    used = set(resolved[ORCHESTRATOR]["skills"])
+    for a in resolved.values():
+        if a["enabled"]:
+            used |= set(a["skills"])
+    used |= {n for n, d in b["skills"].items() if is_admin_skill(d / "SKILL.md")}
+    for name in sorted(used & set(b["skills"])):
+        src = b["skills"][name]
+        for f in sorted(src.rglob("*")):
+            if f.is_file():
+                data = f.read_bytes()
+                if f.name == "SKILL.md":
+                    data = guard_skill(data.decode("utf-8")).encode("utf-8")
+                files[f"{base}/skills/{name}/{f.relative_to(src).as_posix()}"] = data
+    put(f"{base}/skills/orquestrar/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "orquestrar" / "SKILL.md"))
+    put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
+    for name, r in b["orchestrator_refs"].items():
+        put(f"{base}/reference/{name}.md", r["content"])
+    py = f'python "{ROOT.as_posix()}/aidw.py"'
+    put(f"{base}/hooks/hooks.json", json.dumps({"hooks": {
+        "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+                        "hooks": [{"type": "command", "command": f'python "{GUARD_SCRIPT.as_posix()}"'}]}],
+        "UserPromptSubmit": [{"hooks": [{"type": "command", "command": f'python "{GUARD_SCRIPT.as_posix()}"'}]}],
+        "SessionStart": [{"matcher": "compact|resume",
+                          "hooks": [{"type": "command", "command": f'python "{GUARD_SCRIPT.as_posix()}"'}]}],
+        "WorktreeCreate": [{"hooks": [{"type": "command", "command": f"{py} worktree hook-create"}]}],
+        "WorktreeRemove": [{"hooks": [{"type": "command", "command": f"{py} worktree hook-remove"}]}],
+    }}, indent=2, ensure_ascii=False) + "\n")
+    version = f"{PLUGIN_VERSION_BASE}-{sha(b''.join(k.encode() + v for k, v in sorted(files.items())))[:10]}"
+    description = "AiDW — orquestrador e agentes especializados"
+    put(f"{base}/.claude-plugin/plugin.json", json.dumps(
+        {"name": plugin, "version": version, "description": description, "author": {"name": "AiDW"}},
+        indent=2, ensure_ascii=False) + "\n")
+    put(".claude-plugin/marketplace.json", json.dumps(
+        {"name": MARKETPLACE_NAME, "owner": {"name": "AiDW"},
+         "description": "Plugins gerados pelo AiDW nesta máquina (python aidw.py install).",
+         "plugins": [{"name": plugin, "source": f"./{base}", "description": description}]},
+        indent=2, ensure_ascii=False) + "\n")
+    return {"plugin": plugin, "version": version, "files": files, "ctx": ctx, "build": b}
+
+
+def global_managed_settings(cfg: dict, ctx: dict | None, servers: dict) -> dict:
+    """O que o AiDW acrescenta ao ~/.claude/settings.json (camada 1 da D3 do plano v3)."""
+    perms = ctx.get("permissions", {}) if ctx else {}
+    # As grafias comuns do mesmo caminho (os modelos variam): com/sem aspas, / ou \, e /c/... no Git Bash.
+    posix, windows = (ROOT / "aidw.py").as_posix(), win(ROOT / "aidw.py")
+    drive = re.match(r"^([A-Za-z]):/(.*)$", posix)
+    gitbash = f"/{drive.group(1).lower()}/{drive.group(2)}" if drive else posix
+    forms = {"Bash": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', gitbash])),
+             "PowerShell": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', windows]))}
+    aidw_rules = [f"{tool}(python {form} {sub})" for tool, tool_forms in forms.items() for form in tool_forms
+                  for sub in ("record *", "show", "doctor", "project *", "demand *", "worktree *", "context *")]
+    return {
+        "allow": list(dict.fromkeys([*perms.get("allow", []), *aidw_rules,
+                                     *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
+        "ask": list(dict.fromkeys([*cfg["policies"]["ask"], *perms.get("ask", []),
+                                   *expand_git_ask(perms.get("git_ask", []))])),
+        "deny": list(dict.fromkeys([*cfg["policies"]["deny"], *perms.get("deny", [])])),
+        # a sessão pode estar em qualquer pasta: o AiDW (estado das demandas), os projetos e os worktrees
+        "additionalDirectories": list(dict.fromkeys([ROOT.as_posix(), *project_dirs(cfg, ctx),
+                                                     worktree_root(cfg).as_posix()])),
+        "env": {k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {},
+    }
+
+
+def merge_owned(existing: list, owned_before: list, managed: list) -> tuple[list, list]:
+    """(lista final, itens do AiDW). Um item que o usuário já tinha continua dele e nunca é removido."""
+    kept = [x for x in existing if x not in owned_before]
+    owned = [x for x in managed if x not in kept]
+    return kept + owned, owned
+
+
+def merge_user_settings(managed: dict, owned_before: dict, dry: bool, rep: Report) -> dict | None:
+    """Aplica no ~/.claude/settings.json só o que é do AiDW; devolve o que ficou sendo do AiDW."""
+    try:
+        data = json.loads(USER_SETTINGS.read_text(encoding="utf-8")) if USER_SETTINGS.exists() else {}
+    except json.JSONDecodeError:
+        rep.error(f"{USER_SETTINGS} não é JSON válido; corrija o arquivo antes de instalar")
+        return None
+    owned: dict = {}
+    perms = data.setdefault("permissions", {})
+    for key in ("allow", "ask", "deny", "additionalDirectories"):
+        merged, owned[key] = merge_owned(perms.get(key, []), owned_before.get(key, []), managed.get(key, []))
+        if merged:
+            perms[key] = merged
+        else:
+            perms.pop(key, None)
+    if not perms:
+        data.pop("permissions")
+    env = data.setdefault("env", {})
+    for k, v in owned_before.get("env", {}).items():
+        if env.get(k) == v:
+            env.pop(k)
+    owned["env"] = {}
+    for k, v in managed.get("env", {}).items():
+        if k not in env:  # valor que o usuário já definiu vence
+            env[k] = v
+            owned["env"][k] = v
+    if not env:
+        data.pop("env")
+    write_if_changed(USER_SETTINGS, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry, rep)
+    return owned
+
+
+def load_manifest() -> dict:
+    try:
+        return json.loads(INSTALL_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def installed_plugins() -> dict[str, str]:
+    """{"plugin@marketplace": versão} do ~/.claude/plugins/installed_plugins.json."""
+    try:
+        data = json.loads((CLAUDE_HOME / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: (v[0].get("version") if isinstance(v, list) and v else "") for k, v in data.get("plugins", {}).items()}
+
+
+def known_marketplaces() -> set[str]:
+    try:
+        return set(json.loads((CLAUDE_HOME / "plugins" / "known_marketplaces.json").read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def claude_cli(args: list[str], rep: Report, dry: bool) -> bool:
+    shown = "claude " + " ".join(args)
+    if dry:
+        rep.info(f"(dry-run) {shown}")
+        return True
+    exe = shutil.which("claude")
+    if not exe:
+        rep.error(f"CLI `claude` não encontrado; não foi possível rodar `{shown}`")
+        return False
+    proc = subprocess.run([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=300, cwd=Path.home())
+    if proc.returncode != 0:
+        rep.error(f"`{shown}` falhou: {(proc.stderr or proc.stdout).strip()[-300:]}")
+        return False
+    rep.ok(shown)
+    return True
+
+
+def user_mcp_servers() -> dict[str, str] | None:
+    """Servidores MCP visíveis fora de qualquer projeto (escopo do usuário)."""
+    out = run(["claude", "mcp", "list"], cwd=Path.home())
+    if out is None:
+        return None
+    return {m.group(1): m.group(3) for line in out.splitlines()
+            if (m := re.match(r"^(.+?): (.+) - (.+)$", line.strip()))}
+
+
+def mcp_add_args(key: str, s: dict) -> list[str]:
+    if s["type"] == "http":
+        return ["mcp", "add", "--scope", "user", "--transport", "http", key, s["url"]]
+    env = [x for k, v in s.get("env", {}).items() for x in ("-e", f"{k}={v}")]
+    return ["mcp", "add", "--scope", "user", *env, key, "--", s["command"], *s.get("args", [])]
+
+
+def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, with_mcp: bool = False) -> bool:
+    heading("Instalação global no Claude" + (" (dry-run)" if dry else ""))
+    rep = Report()
+    plug = build_plugin(cfg, catalog, rep)
+    if plug is None:
+        print("\nCorrija os erros acima e rode novamente.")
+        return False
+    manifest = load_manifest()
+    if not manifest and MARKETPLACE_DIR.is_dir():
+        rep.warn(f"{rel(MARKETPLACE_DIR)} existe, mas o manifest sumiu: não há como saber o que foi alterado à mão "
+                 "nem quais regras das settings eram do AiDW; confira o ~/.claude/settings.json")
+    plugin, version, files = plug["plugin"], plug["version"], plug["files"]
+    rep.ok(f"plugin {plugin} {version}: {sum(1 for k in files if '/agents/' in k)} agentes, "
+           f"{len({k.split('/')[3] for k in files if '/skills/' in k})} skills")
+
+    heading("Marketplace local (.aidw/marketplace)")
+    old_hashes = manifest.get("files", {})
+    conflicts = [k for k, h in old_hashes.items()
+                 if (MARKETPLACE_DIR / k).is_file() and sha((MARKETPLACE_DIR / k).read_bytes()) != h]
+    if conflicts and not force:
+        for k in conflicts:
+            rep.error(f"{k} foi alterado fora do AiDW; altere as fontes (o arquivo é gerado) ou rode com --force")
+        return False
+    for k, content in files.items():
+        path = MARKETPLACE_DIR / k
+        if path.is_file() and path.read_bytes() == content:
+            continue
+        if dry:
+            rep.info(f"(dry-run) {'atualizar' if path.exists() else 'criar'} {k}")
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    for k in old_hashes:
+        if k not in files and (MARKETPLACE_DIR / k).is_file():
+            if dry:
+                rep.info(f"(dry-run) remover {k}")
+            else:
+                (MARKETPLACE_DIR / k).unlink()
+    if not dry:
+        for d in sorted((x for x in MARKETPLACE_DIR.rglob("*") if x.is_dir()), key=lambda x: -len(x.parts)):
+            if not any(d.iterdir()):
+                d.rmdir()
+
+    heading(f"Settings do usuário ({USER_SETTINGS})")
+    owned = merge_user_settings(global_managed_settings(cfg, plug["ctx"], plug["build"]["servers"]),
+                                manifest.get("settings", {}), dry, rep)
+    if owned is None:
+        return False
+    rep.info("regras: " + ", ".join(f"{len(owned[k])} {k}" for k in ("allow", "ask", "deny")) +
+             f"; pastas liberadas: {len(owned['additionalDirectories'])}")
+
+    mcp_added = list(manifest.get("mcp_added", []))
+
+    def save_manifest(cli_done: bool) -> None:
+        if dry:
+            return
+        plugins = list(dict.fromkeys([*manifest.get("plugins", []), f"{plugin}@{MARKETPLACE_NAME}"]))
+        if cli_done:  # os plugins de contextos anteriores já foram desinstalados
+            plugins = [f"{plugin}@{MARKETPLACE_NAME}"]
+        write_if_changed(INSTALL_MANIFEST, json.dumps({
+            "generated_by": "aidw.py install", "plugin": plugin, "version": version, "plugins": plugins,
+            "marketplace": MARKETPLACE_NAME, "context": plug["ctx"]["name"] if plug["ctx"] else None,
+            "files": {k: sha(v) for k, v in files.items()}, "settings": owned,
+            "mcp_added": sorted(set(mcp_added)), "cli": not skip_cli, "cli_done": cli_done,
+        }, indent=2, ensure_ascii=False) + "\n", dry, Report(quiet=True))
+
+    save_manifest(cli_done=skip_cli)
+    if not skip_cli:
+        heading("Claude Code (plugin e MCPs)")
+        key = f"{plugin}@{MARKETPLACE_NAME}"
+        installed = installed_plugins()
+        for old in manifest.get("plugins", []):
+            if old != key and old in installed:
+                claude_cli(["plugin", "uninstall", old], rep, dry)
+        if MARKETPLACE_NAME not in known_marketplaces():
+            claude_cli(["plugin", "marketplace", "add", str(MARKETPLACE_DIR)], rep, dry)
+        elif installed.get(key) != version:
+            claude_cli(["plugin", "marketplace", "update", MARKETPLACE_NAME], rep, dry)
+        if key not in installed:
+            claude_cli(["plugin", "install", key], rep, dry)
+        elif installed[key] != version:
+            claude_cli(["plugin", "update", key], rep, dry)
+        else:
+            rep.ok(f"plugin {key} já está na versão {version}")
+        present = user_mcp_servers()
+        if present is None:
+            rep.warn("não foi possível rodar `claude mcp list`; MCPs do usuário não conferidos")
+        else:
+            missing = [k for k in plug["build"]["servers"] if k not in present]
+            # MCP no escopo do usuário sobe em TODA sessão do Claude, não só no AiDW: só com --mcp.
+            if missing and not with_mcp:
+                rep.info(f"MCPs do catálogo fora do escopo do usuário: {', '.join(missing)}. Fora do AiDW os agentes "
+                         "ficam sem eles; `install --mcp` registra (sobem em toda sessão do Claude)")
+            for k in missing if with_mcp else []:
+                if claude_cli(mcp_add_args(k, plug["build"]["servers"][k]), rep, dry) and not dry:
+                    mcp_added.append(k)
+    if rep.errors:
+        save_manifest(cli_done=False)
+        print(f"\n{len(rep.errors)} erro(s) no Claude Code. Arquivos e settings já registrados no manifest; "
+              "corrija e rode `install` de novo (ou `uninstall` para desfazer).")
+        return False
+    save_manifest(cli_done=True)
+    print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}. Em qualquer pasta, abra um chat novo e "
+          f"chame /{plugin}:orquestrar <demanda>.")
+    return True
+
+
+def uninstall(dry: bool, skip_cli: bool) -> bool:
+    heading("Desinstalação global do Claude" + (" (dry-run)" if dry else ""))
+    rep = Report()
+    manifest = load_manifest()
+    if not manifest:
+        if MARKETPLACE_DIR.is_dir() or INSTALL_MANIFEST.exists():
+            where = rel(MARKETPLACE_DIR) if MARKETPLACE_DIR.is_dir() else rel(INSTALL_MANIFEST)
+            rep.warn(f"manifest ausente ou ilegível ({rel(INSTALL_MANIFEST)}), e há restos da instalação em {where}: "
+                     "sem ele não dá para saber o que é do AiDW. Remova à mão o plugin (`claude plugin uninstall`), "
+                     f"o marketplace {MARKETPLACE_NAME} e as regras do AiDW no ~/.claude/settings.json")
+            return False
+        rep.info("nada instalado pelo AiDW (sem .aidw/install-manifest.json)")
+        return True
+    if not skip_cli and manifest.get("cli", True):
+        installed = installed_plugins()
+        for key in manifest.get("plugins", []):
+            if key in installed:
+                claude_cli(["plugin", "uninstall", key], rep, dry)
+        if manifest.get("marketplace") in known_marketplaces():
+            claude_cli(["plugin", "marketplace", "remove", manifest["marketplace"]], rep, dry)
+        for k in manifest.get("mcp_added", []):
+            claude_cli(["mcp", "remove", "--scope", "user", k], rep, dry)
+        cache = CLAUDE_HOME / "plugins" / "cache" / MARKETPLACE_NAME
+        if cache.is_dir():
+            if dry:
+                rep.info(f"(dry-run) remover {cache}")
+            else:
+                shutil.rmtree(cache)
+                rep.ok(f"removido {cache}")
+    merge_user_settings({}, manifest.get("settings", {}), dry, rep)
+    if not dry:  # o `marketplace remove` deixa `extraKnownMarketplaces: {}` para trás
+        try:
+            data = json.loads(USER_SETTINGS.read_text(encoding="utf-8"))
+            if data.get("extraKnownMarketplaces") == {}:
+                data.pop("extraKnownMarketplaces")
+                write_if_changed(USER_SETTINGS, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry, rep)
+        except (OSError, json.JSONDecodeError):
+            pass
+    for k, h in manifest.get("files", {}).items():
+        path = MARKETPLACE_DIR / k
+        if not path.is_file():
+            continue
+        if sha(path.read_bytes()) != h:
+            rep.warn(f"{k} foi alterado fora do AiDW; mantido")
+        elif not dry:
+            path.unlink()
+    if not dry:
+        if MARKETPLACE_DIR.is_dir():
+            for d in sorted((x for x in MARKETPLACE_DIR.rglob("*") if x.is_dir()), key=lambda x: -len(x.parts)):
+                if not any(d.iterdir()):
+                    d.rmdir()
+            if not any(MARKETPLACE_DIR.iterdir()):
+                MARKETPLACE_DIR.rmdir()
+        if not rep.errors:
+            INSTALL_MANIFEST.unlink()
+    print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
+          f"{f' com {len(rep.errors)} erro(s)' if rep.errors else ''}.")
+    return not rep.errors
+
+
+def check_global_install(cfg: dict, catalog: dict, rep: Report) -> None:
+    heading("Instalação global (Claude)")
+    manifest = load_manifest()
+    if not manifest:
+        rep.info("não instalada (opcional): `python aidw.py install` deixa o AiDW disponível em qualquer pasta")
+        return
+    plugins = manifest.get("plugins") or []
+    if not plugins or not isinstance(manifest.get("settings"), dict):
+        rep.error(f"{rel(INSTALL_MANIFEST)} malformado — rode `python aidw.py install` de novo")
+        return
+    key = plugins[-1]
+    plug = build_plugin(cfg, catalog, Report(quiet=True))
+    if plug is None:
+        rep.error("a configuração tem erros — rode `python aidw.py install` para ver quais")
+        return
+    if plug["version"] != manifest.get("version"):
+        rep.warn(f"as fontes mudaram desde a instalação ({manifest.get('version')} → {plug['version']}) — "
+                 "rode `python aidw.py install`")
+    elif manifest.get("cli", True) and not manifest.get("cli_done", True):
+        rep.warn("a última instalação parou no Claude Code (plugin ou MCP) — rode `python aidw.py install`")
+    elif manifest.get("cli", True):
+        installed = installed_plugins().get(key)
+        if installed is None:
+            rep.warn(f"plugin {key} não aparece no Claude — rode `python aidw.py install`")
+        elif installed != manifest["version"]:
+            rep.warn(f"o Claude tem {key} {installed}, e o gerado é {manifest['version']} (o app desktop usa o "
+                     "cache) — rode `python aidw.py install`")
+        else:
+            rep.ok(f"plugin {key} {installed}, em dia com as fontes")
+    try:
+        data = json.loads(USER_SETTINGS.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    perms = data.get("permissions", {})
+    missing = [f"{k}: {x}" for k in ("allow", "ask", "deny", "additionalDirectories")
+               for x in manifest.get("settings", {}).get(k, []) if x not in perms.get(k, [])]
+    if missing:
+        rep.warn(f"{len(missing)} regra(s) do AiDW sumiram de {USER_SETTINGS} (ex.: {missing[0]}) — "
+                 "rode `python aidw.py install`")
+    else:
+        rep.ok(f"regras globais do AiDW presentes em {USER_SETTINGS}")
+
+
+# ---------------------------------------------------------------------------
+# Projeto, demanda e worktree (aidw.py project detect / worktree ...)
+# ---------------------------------------------------------------------------
+
+def norm_path(p: Path | str) -> str:
+    return os.path.normcase(os.path.abspath(str(p)))
+
+
+def path_inside(child: Path | str, parent: Path | str) -> bool:
+    c, par = norm_path(child), norm_path(parent)
+    return c == par or c.startswith(par.rstrip("\\/") + os.sep)
+
+
+def git_proc(repo: Path | str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=600)
+
+
+def git_out(repo: Path | str, *args: str) -> str | None:
+    proc = git_proc(repo, *args)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def repo_info(path: Path | str) -> dict | None:
+    """Raiz do working tree, repositório principal (mesmo de dentro de um worktree) e branch."""
+    top = git_out(path, "rev-parse", "--show-toplevel")
+    common = git_out(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if not top or not common:
+        return None
+    common_path = Path(common)
+    main = common_path.parent if common_path.name == ".git" else Path(top)
+    return {"root": Path(top).as_posix(), "main": main.as_posix(), "name": main.name,
+            "is_worktree": norm_path(top) != norm_path(main),
+            "branch": git_out(path, "rev-parse", "--abbrev-ref", "HEAD") or ""}
+
+
+def load_registry() -> dict:
+    try:
+        data = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    data.setdefault("worktrees", [])
+    return data
+
+
+def save_registry(reg: dict) -> None:
+    REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    REGISTRY_FILE.write_text(json.dumps(reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+
+
+def system_for(ctx: dict | None, main: str) -> str | None:
+    for key, sysdef in (ctx.get("systems", {}) if ctx else {}).items():
+        if any(norm_path(r) == norm_path(main) for r in sysdef.get("repos", [])):
+            return key
+    return None
+
+
+def write_json_atomic(path: Path, data) -> None:
+    """Grava num temporário e troca de uma vez: quem lê nunca vê um arquivo pela metade."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    os.replace(tmp, path)
+
+
+def demand_path(ctx: dict | None, demand: str) -> Path:
+    return state_dir(ctx) / demand / "demand.json"
+
+
+def load_demand(ctx: dict | None, demand: str) -> tuple[dict | None, str, str]:
+    """(dados, aviso, tipo do aviso: "" | "corrupt" | "context"). Arquivo ilegível vira .bak (nunca some em silêncio); demanda de outro contexto não é
+    desta sessão (dois contextos sem state_dir próprio dividem a pasta state/)."""
+    path = demand_path(ctx, demand)
+    if not path.exists():
+        return None, "", ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        backup = path.with_name(f"demand.json.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak")
+        os.replace(path, backup)
+        return None, f"demand.json ilegível; guardado em {backup.as_posix()} e recriado (confira o histórico)", "corrupt"
+    mine = ctx["name"] if ctx else None
+    if data.get("context", mine) != mine:
+        return None, f"a demanda {demand} é do contexto {data.get('context')!r}, não de {mine!r}", "context"
+    return data, "", ""
+
+
+def update_demand_file(ctx: dict | None, demand: str, repo_entry: dict) -> Path:
+    """demand.json na pasta da demanda: um item por repositório (demanda pode tocar mais de um)."""
+    data, _, _ = load_demand(ctx, demand)
+    data = data or {"id": demand, "context": ctx["name"] if ctx else None, "status": "active", "repos": []}
+    data["repos"] = [r for r in data.get("repos", []) if norm_path(r["repo"]) != norm_path(repo_entry["repo"])]
+    data["repos"].append(repo_entry)
+    data["updated"] = datetime.now().isoformat(timespec="seconds")
+    path = demand_path(ctx, demand)
+    write_json_atomic(path, data)
+    return path
+
+
+def default_base(main: Path) -> str:
+    """Branch padrão do remoto (origin/HEAD); sem remoto, a branch atual do working copy."""
+    head = git_out(main, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    return head or git_out(main, "rev-parse", "--abbrev-ref", "HEAD") or "HEAD"
+
+
+def find_worktree(reg: dict, target: str, repo: str | None = None) -> list[dict]:
+    """Entradas pelo caminho do worktree ou pelo id da demanda (opcionalmente só de um repositório)."""
+    hits = [e for e in reg["worktrees"] if norm_path(e["path"]) == norm_path(target)]
+    if not hits:
+        hits = [e for e in reg["worktrees"] if e["demand"] == target]
+    if repo:
+        main = (repo_info(repo) or {}).get("main", repo)
+        hits = [e for e in hits if norm_path(e["repo"]) == norm_path(main)]
+    return hits
+
+
+def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str = "") -> dict:
+    """Cria (ou devolve, se já existe) o worktree da demanda. {ok, path, branch, base, ...} ou {ok: False, error}."""
+    ctx = load_context(cfg, Report(quiet=True))
+    demand = demand.strip().lower()
+    if not DEMAND_RE.match(demand):
+        return {"ok": False, "error": f"id de demanda inválido {demand!r} (use letras minúsculas, números e -)"}
+    info = repo_info(repo)
+    if info is None:
+        return {"ok": False, "error": f"{repo} não é um repositório Git"}
+    main = Path(info["main"])
+    reg = load_registry()
+    for e in reg["worktrees"]:
+        if e["demand"] == demand and norm_path(e["repo"]) == norm_path(main) and Path(e["path"]).is_dir():
+            return {"ok": True, "created": False, **e}
+    path = worktree_root(cfg) / main.name / demand
+    if path.exists():
+        return {"ok": False, "error": f"{path.as_posix()} já existe e não está no registro do AiDW; confira e remova à mão"}
+    wt_cfg = ctx.get("worktree", {}) if ctx else {}
+    number = re.sub(r"^[a-z]+-", "", demand)
+    branch = f"{wt_cfg.get('branch_prefix', 'aidw/')}{number}" + (f"-{slugify(slug)[:40].strip('-')}" if slug else "")
+    if git_proc(main, "check-ref-format", "--branch", branch).returncode != 0:
+        return {"ok": False, "error": f"nome de branch inválido: {branch}"}
+    warnings = []
+    if git_out(main, "remote"):
+        if git_proc(main, "fetch", "-q", "origin").returncode != 0:
+            warnings.append("git fetch origin falhou; a base pode estar desatualizada")
+    base = base or default_base(main)
+    if git_proc(main, "rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
+        return {"ok": False, "error": f"base {base!r} não existe em {main.as_posix()}"}
+    main_dirty = bool(git_out(main, "status", "--porcelain"))
+    if main_dirty:
+        warnings.append("o working copy principal tem alterações locais; elas NÃO entram no worktree")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if git_proc(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0:
+        proc = git_proc(main, "worktree", "add", str(path), branch)  # branch já existe: reaproveita
+    else:
+        proc = git_proc(main, "worktree", "add", "-b", branch, str(path), base)
+    if proc.returncode != 0:
+        return {"ok": False, "error": f"git worktree add falhou: {(proc.stderr or proc.stdout).strip()[-400:]}"}
+    links = []
+    try:
+        for name in wt_cfg.get("link", DEFAULT_WORKTREE_LINKS):
+            src, dst = main / name, path / name
+            if src.is_dir() and not dst.exists():
+                make_link(dst, src)
+                links.append(name)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        for name in links:
+            if is_link(path / name):
+                remove_link(path / name)
+        undone = git_proc(main, "worktree", "remove", "--force", str(path)).returncode == 0
+        return {"ok": False, "error": f"falha ao criar a junction de dependências ({exc}); " + (
+            f"o worktree recém-criado foi desfeito (a branch {branch} ficou, sem commits novos)" if undone else
+            f"e não foi possível desfazer o worktree {path.as_posix()}: remova à mão (git worktree remove)")}
+    entry = {"demand": demand, "repo": main.as_posix(), "path": path.as_posix(), "branch": branch, "base": base,
+             "links": links, "status": "active", "context": ctx["name"] if ctx else None,
+             "system": system_for(ctx, main.as_posix()),
+             "created_at": datetime.now().isoformat(timespec="seconds")}
+    reg["worktrees"].append(entry)
+    save_registry(reg)
+    demand_file = update_demand_file(ctx, demand, {k: entry[k] for k in ("repo", "path", "branch", "base", "system")})
+    return {"ok": True, "created": True, "main_dirty": main_dirty, "warnings": warnings,
+            "demand_file": demand_file.as_posix(), **entry}
+
+
+def worktree_state(e: dict) -> dict:
+    """Situação atual: existe, alterações não commitadas, commits à frente/atrás da base, publicado."""
+    path = Path(e["path"])
+    if not path.is_dir():
+        return {"exists": False}
+    status = git_proc(path, "status", "--porcelain")
+    counts = git_proc(path, "rev-list", "--left-right", "--count", f"{e['base']}...HEAD")
+    parts = counts.stdout.split()
+    if status.returncode != 0 or counts.returncode != 0 or len(parts) != 2:
+        failed = status if status.returncode != 0 else counts
+        return {"exists": True, "error": f"não foi possível conferir o worktree (git: "
+                                         f"{(failed.stderr or failed.stdout).strip()[-200:] or 'saída inesperada'})"}
+    published = bool(git_out(e["repo"], "branch", "-r", "--contains", e["branch"]))  # falha = não publicado
+    return {"exists": True, "dirty": bool(status.stdout.strip()), "ahead": int(parts[1]), "behind": int(parts[0]),
+            "published": published}
+
+
+def worktree_remove(target: str, repo: str | None = None) -> dict:
+    """Remove só worktree limpo e integrado (sem alteração local; commits publicados ou nenhum à frente)."""
+    reg = load_registry()
+    hits = find_worktree(reg, target, repo)
+    if len(hits) != 1:
+        return {"ok": False, "error": ("nenhum worktree do AiDW com esse caminho ou demanda" if not hits else
+                                       "mais de um worktree para essa demanda; informe --repo")}
+    e = hits[0]
+    st = worktree_state(e)
+    if st.get("exists"):
+        if st.get("error"):
+            return {"ok": False, "error": f"{st['error']}; nada foi removido (confira à mão com git status/log)"}
+        if st["dirty"]:
+            return {"ok": False, "error": f"{e['path']} tem alterações não commitadas; commite ou descarte antes"}
+        if st["ahead"] and not st["published"]:
+            return {"ok": False, "error": f"a branch {e['branch']} tem {st['ahead']} commit(s) não publicados; "
+                                          "faça o push (ou descarte a branch) antes de remover"}
+        for name in e.get("links", []):  # junction primeiro: nunca apagar recursivamente através dela
+            link = Path(e["path"]) / name
+            if is_link(link):
+                remove_link(link)
+        proc = git_proc(e["repo"], "worktree", "remove", e["path"])
+        if proc.returncode != 0:
+            return {"ok": False, "error": f"git worktree remove falhou: {(proc.stderr or proc.stdout).strip()[-400:]}"}
+    else:
+        git_proc(e["repo"], "worktree", "prune")
+    reg["worktrees"] = [x for x in reg["worktrees"] if x is not e]
+    save_registry(reg)
+    return {"ok": True, "path": e["path"], "branch": e["branch"],
+            "note": f"a branch {e['branch']} foi mantida (apagar branch é ação travada)"}
+
+
+def worktree_cleanup() -> dict:
+    """Tira do registro os worktrees cuja pasta sumiu e roda `git worktree prune` nos repositórios deles."""
+    reg = load_registry()
+    gone = [e for e in reg["worktrees"] if not Path(e["path"]).is_dir()]
+    for repo in {e["repo"] for e in gone}:
+        git_proc(repo, "worktree", "prune")
+    reg["worktrees"] = [e for e in reg["worktrees"] if Path(e["path"]).is_dir()]
+    save_registry(reg)
+    return {"ok": True, "removed_from_registry": [e["path"] for e in gone]}
+
+
+def project_detect(cfg: dict, path: str) -> dict:
+    ctx = load_context(cfg, Report(quiet=True))
+    info = repo_info(path)
+    result = {"path": Path(path).resolve().as_posix(), "context": ctx["name"] if ctx else None, "git": bool(info)}
+    if not info:
+        return result
+    reg = load_registry()
+    active = [e for e in reg["worktrees"] if norm_path(e["repo"]) == norm_path(info["main"]) and e["status"] == "active"]
+    here = [e for e in active if path_inside(path, e["path"])]
+    result.update(info, system=system_for(ctx, info["main"]),
+                  demand=here[0]["demand"] if here else None,
+                  active_demands=[{"demand": e["demand"], "path": e["path"], "branch": e["branch"]} for e in active])
+    return result
+
+
+def worktree_hook_create() -> int:
+    """Hook WorktreeCreate (EnterWorktree / claude --worktree): imprime o caminho do worktree da demanda."""
+    try:
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))  # UTF-8, não a página do console
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        print("AiDW: entrada inválida no hook WorktreeCreate", file=sys.stderr)
+        return 1
+    name = slugify(str(data.get("name") or "")) or "sessao"
+    cwd = str(data.get("cwd") or os.getcwd())
+    reg = load_registry()
+    same = [e for e in reg["worktrees"] if e["demand"] == name and e["status"] == "active" and Path(e["path"]).is_dir()]
+    info = repo_info(cwd)
+    if info:
+        same = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])]
+    if len(same) == 1:  # criado antes pelo orquestrador (`worktree create`): a sessão só entra nele
+        print(Path(same[0]["path"]))
+        return 0
+    cfg = load_config()
+    if cfg is None:
+        print("AiDW: aidw.config.toml não encontrado", file=sys.stderr)
+        return 1
+    result = worktree_create(cfg, cwd, name)
+    if not result["ok"]:
+        print(f"AiDW: {result['error']}", file=sys.stderr)
+        return 1
+    print(Path(result["path"]))
+    return 0
+
+
+def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
+    action = args.wt_action
+    if action == "hook-create":
+        return worktree_hook_create()
+    if action == "hook-remove":  # o worktree fica; a remoção passa pelas checagens do `worktree remove`
+        print("AiDW: worktree mantido; remova com `python aidw.py worktree remove <demanda>`", file=sys.stderr)
+        return 0
+    if action == "create":
+        result = worktree_create(cfg, args.repo, args.demand, args.slug or "", args.base or "")
+    elif action == "remove":
+        result = worktree_remove(args.target, args.repo)
+    elif action == "cleanup":
+        result = worktree_cleanup()
+    elif action == "inspect":
+        hits = find_worktree(load_registry(), args.target, args.repo)
+        result = ({"ok": True, **hits[0], **worktree_state(hits[0])} if len(hits) == 1 else
+                  {"ok": False, "error": "nenhum ou mais de um worktree com esse caminho/demanda (use --repo)"})
+    else:  # list
+        result = {"ok": True, "worktrees": [{**e, **worktree_state(e)} for e in load_registry()["worktrees"]]}
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
+    if not result["ok"]:
+        print(f"[erro]  {result['error']}")
+        return 1
+    if action == "create":
+        print(f"[ok]    worktree {'criado' if result['created'] else 'já existente'}: {result['path']}")
+        print(f"        branch {result['branch']} (base {result['base']}); junctions: {', '.join(result['links']) or 'nenhuma'}")
+        for w in result.get("warnings", []):
+            print(f"[aviso] {w}")
+    elif action == "remove":
+        print(f"[ok]    removido {result['path']}; {result['note']}")
+    elif action == "cleanup":
+        print(f"[ok]    {len(result['removed_from_registry'])} worktree(s) órfão(s) tirado(s) do registro")
+    elif action == "inspect":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        if not result["worktrees"]:
+            print("Nenhum worktree de demanda registrado.")
+        for e in result["worktrees"]:
+            if not e["exists"]:
+                state = "órfão (pasta sumiu — rode `worktree cleanup`)"
+            else:
+                state = ("com alterações" if e["dirty"] else "limpo") + f", {e['ahead']} à frente da base" + \
+                        (" (publicado)" if e["ahead"] and e["published"] else "")
+            print(f"  {e['demand']:<14} {e['path']:<50} {e['branch']:<40} {state}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Demanda: estado para retomar (aidw.py demand set / show / list)
+# ---------------------------------------------------------------------------
+
+DEMAND_STATUS = ("active", "paused", "done")
+
+
+def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "") -> dict:
+    ctx = load_context(cfg, Report(quiet=True))
+    demand = demand.strip().lower()
+    if not DEMAND_RE.match(demand):
+        return {"ok": False, "error": f"id de demanda inválido {demand!r} (use letras minúsculas, números e -)"}
+    if step and step not in ACTIONS and step != "UNDERSTAND":
+        return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND ou uma ação de NEXT ACTION)"}
+    if status and status not in DEMAND_STATUS:
+        return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
+    data, warning, kind = load_demand(ctx, demand)
+    if kind == "context":
+        return {"ok": False, "error": warning}
+    data = data or {"id": demand, "context": ctx["name"] if ctx else None, "status": "active", "repos": []}
+    now = datetime.now().isoformat(timespec="seconds")
+    if step and step != data.get("step"):
+        data.setdefault("history", []).append({"step": step, "at": now})
+        data["step"] = step
+    for key, value in (("status", status), ("title", title), ("note", note)):
+        if value:
+            data[key] = value
+    data["updated"] = now
+    path = demand_path(ctx, demand)
+    write_json_atomic(path, data)
+    return {"ok": True, "folder": path.parent.as_posix(), **({"warning": warning} if warning else {}), **data}
+
+
+def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
+    ctx = load_context(cfg, Report(quiet=True))
+    base = state_dir(ctx)
+    out = []
+    for f in sorted(base.glob("*/demand.json")) if base.is_dir() else []:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if d.get("context", ctx["name"] if ctx else None) != (ctx["name"] if ctx else None):
+            continue  # outro contexto dividindo a pasta state/
+        if active_only and d.get("status") == "done":
+            continue
+        out.append({"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
+                    "title": d.get("title", ""), "note": d.get("note", ""), "updated": d.get("updated"),
+                    "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
+    return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
+
+
+def demand_command(cfg: dict, args: argparse.Namespace) -> int:
+    if args.dm_action == "set":
+        result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "")
+    elif args.dm_action == "show":
+        ctx = load_context(cfg, Report(quiet=True))
+        data, warning, _ = load_demand(ctx, args.id)
+        result = {"ok": True, "folder": demand_path(ctx, args.id).parent.as_posix(), **data} if data else \
+            {"ok": False, "error": warning or f"demanda {args.id!r} sem demand.json em {state_dir(ctx).as_posix()}"}
+    else:
+        result = {"ok": True, "demands": demand_list(cfg, args.active)}
+    if args.json or args.dm_action != "list":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif not result["demands"]:
+        print("Nenhuma demanda" + (" ativa." if args.active else "."))
+    else:
+        for d in result["demands"]:
+            print(f"  {d['id']:<18} {d['status'] or '—':<7} {d['step'] or '—':<15} {d['updated'] or '':<20} {d['title']}")
+    return 0 if result["ok"] else 1
+
+
+# ---------------------------------------------------------------------------
+# Instalação global no Codex (aidw.py install --provider codex)
+# ---------------------------------------------------------------------------
+
+CODEX_NO_IMPLICIT = "policy:\n  allow_implicit_invocation: false\n"  # agents/openai.yaml: só quando chamada
+
+
+def codex_skill_copy(text: str, name: str) -> str:
+    """SKILL.md para o Codex: nome `aidw-<nome>`, aviso do AiDW e {{root}} resolvido."""
+    text = guard_skill(text)
+    return re.sub(r"(?m)^name:\s*.*$", f"name: {CODEX_NS}{name}", text, count=1)
+
+
+def codex_node_path() -> tuple[str | None, str]:
+    """(pasta do Node para pôr na frente do PATH do Codex, aviso). O sandbox do Codex não lê o perfil do usuário:
+    um `node` que resolve para lá (ex.: nvm em %LOCALAPPDATA%) nem inicia. Usa um Node fora do perfil, se houver."""
+    home = norm_path(Path.home())
+    found = [Path(d) / "node.exe" if IS_WINDOWS else Path(d) / "node" for d in os.environ.get("PATH", "").split(os.pathsep) if d]
+    nodes = [n for n in dict.fromkeys(found) if n.is_file()]
+    if not nodes or not path_inside(os.path.realpath(nodes[0]), home):
+        return None, ""
+    outside = next((n for n in nodes if not path_inside(os.path.realpath(n), home)), None)
+    if outside is None:
+        return None, ("o `node` do PATH fica dentro do perfil do usuário e o sandbox do Codex não o executa; instale um Node "
+                      "fora do perfil (ex.: em Program Files) para os builds no Codex")
+    version = run([str(outside), "--version"]) or "?"
+    return str(outside.parent), (f"o `node` do PATH fica dentro do perfil do usuário (o sandbox do Codex não o executa); o perfil "
+                                 f"`{CODEX_PROFILE_NAME}` usa {outside.parent} ({version}) na frente do PATH")
+
+
+def codex_profile(cfg: dict, ctx: dict | None, resolved: dict, servers: dict) -> str:
+    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo só do AiDW. A confiança dos hooks o Codex grava no
+    config.toml do usuário (nunca no perfil), que o AiDW não toca."""
+    orch = resolved[ORCHESTRATOR]
+    writable = list(dict.fromkeys([ROOT.as_posix(), *code_dirs(cfg, ctx)]))
+    env = {**({k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {}), **codex_git_env(cfg, ctx)}
+    node_dir, _ = codex_node_path()
+    if node_dir:
+        env["PATH"] = node_dir + os.pathsep + os.environ.get("PATH", "")
+    lines = [
+        f"# {GENERATED_MARK} install — perfil `{CODEX_PROFILE_NAME}` do Codex (`codex --profile {CODEX_PROFILE_NAME}` ou "
+        "`python aidw.py open --provider codex`). Não edite: altere as fontes e rode o install.",
+        f"model = {toml_value(orch['model']['model_id'])}",
+        *([f"model_reasoning_effort = {toml_value(orch['effort'])}"] if orch["effort"] else []),
+        'approval_policy = "on-request"', 'sandbox_mode = "workspace-write"', "",
+        "[sandbox_workspace_write]", "network_access = true",
+        f"writable_roots = {toml_value([win(d) for d in writable])}", "",
+        "[shell_environment_policy.set]", *[f"{k} = {toml_value(v)}" for k, v in env.items()], "",
+        "[features]", "multi_agent_v2 = true", "",
+        "[agents]", "max_concurrent_threads_per_session = 4",
+    ]
+    for key, srv in servers.items():
+        lines += ["", f"[mcp_servers.{key}]", *[f"{k} = {toml_value(v)}" for k, v in codex_mcp_table(srv).items()]]
+    return "\n".join(lines) + "\n"
+
+
+def codex_hook_groups() -> dict[str, list]:
+    cmd = f'python "{GUARD_SCRIPT.as_posix()}"'
+    group = lambda matcher=None: {**({"matcher": matcher} if matcher else {}),  # noqa: E731
+                                  "hooks": [{"type": "command", "command": cmd}]}
+    return {"PreToolUse": [group("apply_patch")], "UserPromptSubmit": [group()],
+            "SessionStart": [group("compact|resume")]}
+
+
+def is_aidw_hook_group(g: dict) -> bool:
+    return any(GUARD_SCRIPT.name in str(h.get("command", "")) for h in g.get("hooks", []))
+
+
+def merge_codex_hooks(data: dict, add: bool) -> dict:
+    """Tira os grupos do AiDW do hooks.json e, com add, põe os atuais no fim (os do usuário ficam)."""
+    hooks = data.setdefault("hooks", {})
+    for event in list(hooks):
+        hooks[event] = [g for g in hooks[event] if not is_aidw_hook_group(g)]
+        if not hooks[event]:
+            hooks.pop(event)
+    if add:
+        for event, groups in codex_hook_groups().items():
+            hooks.setdefault(event, []).extend(groups)
+    if not hooks:
+        data.pop("hooks")
+    return data
+
+
+def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
+    """{arquivo: bytes} dos arquivos que são só do AiDW + o perfil (texto) — tudo com nomes `aidw-*`."""
+    ccfg = json.loads(json.dumps(cfg))
+    ccfg["provider"]["name"], ccfg["delegation"]["mode"] = "codex", "native"
+    ref_dir = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar" / "reference"
+    sub = Report(quiet=True)  # avisos de modelo de outro provedor são esperados aqui (vale o tier do Codex)
+    b = build(ccfg, catalog, sub, ns=CODEX_NS, ref_dir=ref_dir)
+    for e in sub.errors:
+        rep.error(e)
+    if b is None:
+        return None
+    resolved, ctx = b["resolved"], b["ctx"]
+    files: dict[Path, bytes] = {}
+    for role, g in b["agents"].items():
+        a = {**resolved[role], "name": CODEX_NS + resolved[role]["name"]}
+        meta = {**g["meta"], "description": f"{PLUGIN_GUARD} {g['meta']['description']}"}
+        files[CODEX_AGENTS_HOME / f"{a['name']}.toml"] = render_codex_role(a, meta, g["prompt"]).encode("utf-8")
+    used = set(resolved[ORCHESTRATOR]["skills"]) | {n for a in resolved.values() if a["enabled"] for n in a["skills"]}
+    used |= {n for n, d in b["skills"].items() if is_admin_skill(d / "SKILL.md")}
+    for name in sorted(used & set(b["skills"])):
+        src = b["skills"][name]
+        for f in sorted(src.rglob("*")):
+            if f.is_file():
+                data = f.read_bytes()
+                if f.name == "SKILL.md":
+                    data = codex_skill_copy(data.decode("utf-8"), name).encode("utf-8")
+                files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / f.relative_to(src)] = data
+    orq = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar"
+    files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
+                                                 provider="codex").encode("utf-8")
+    files[orq / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    for name, r in b["orchestrator_refs"].items():
+        files[ref_dir / f"{name}.md"] = r["content"].encode("utf-8")
+    sair = CODEX_SKILLS_HOME / f"{CODEX_NS}sair"
+    files[sair / "SKILL.md"] = exit_skill(plugin_name(), provider="codex").encode("utf-8")
+    files[sair / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    perms = ctx.get("permissions", {}) if ctx else {}
+    git_ask = [["git", *sub.split()] for sub in perms.get("git_ask", [])]
+    rules = codex_rules([*cfg["policies"]["deny"], *perms.get("deny", [])],
+                        [*cfg["policies"]["ask"], *perms.get("ask", []), *[f"Bash({' '.join(x)} *)" for x in git_ask]])
+    files[CODEX_GLOBAL_RULES] = rules.replace("apply a partir de", "install a partir de").encode("utf-8")
+    return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
+
+
+def codex_hook_signature() -> str:
+    return sha(json.dumps(codex_hook_groups(), sort_keys=True).encode("utf-8"))
+
+
+def codex_trust_state() -> dict:
+    """`[hooks.state]` do config.toml do Codex: onde o TUI grava a confiança (`trusted_hash`) de cada hook."""
+    try:
+        return load_toml(CODEX_HOME / "config.toml").get("hooks", {}).get("state", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def aidw_hook_keys() -> list[str]:
+    """As chaves de confiança dos grupos do AiDW no hooks.json (`<arquivo>:<evento_snake>:<grupo>:<handler>`)."""
+    try:
+        data = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    snake = lambda ev: re.sub(r"(?<!^)(?=[A-Z])", "_", ev).lower()  # noqa: E731 — PreToolUse → pre_tool_use
+    return [f"{CODEX_HOOKS_FILE}:{snake(ev)}:{i}:0" for ev, groups in data.get("hooks", {}).items()
+            for i, g in enumerate(groups) if is_aidw_hook_group(g)]
+
+
+def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
+    heading("Instalação global no Codex" + (" (dry-run)" if dry else ""))
+    rep = Report()
+    built = build_codex_install(cfg, catalog, rep)
+    if built is None:
+        print("\nCorrija os erros acima e rode novamente.")
+        return False
+    manifest = load_manifest()
+    old = manifest.get("codex", {})
+    files = built["files"]
+    conflicts = [k for k, h in old.get("files", {}).items() if Path(k).is_file() and sha(Path(k).read_bytes()) != h]
+    if conflicts and not force:
+        for k in conflicts:
+            rep.error(f"{k} foi alterado fora do AiDW; altere as fontes (o arquivo é gerado) ou rode com --force")
+        return False
+    changed = 0
+    for path, content in files.items():
+        if path.is_file() and path.read_bytes() == content:
+            continue
+        changed += 1
+        if not dry:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+    for k in old.get("files", {}):
+        if Path(k) not in files and Path(k).is_file():
+            changed += 1
+            if not dry:
+                Path(k).unlink()
+    agents = sum(1 for k in files if k.parent == CODEX_AGENTS_HOME)
+    skills = len({k.relative_to(CODEX_SKILLS_HOME).parts[0] for k in files if CODEX_SKILLS_HOME in k.parents})
+    rep.ok(f"{agents} agentes em {CODEX_AGENTS_HOME}, {skills} skills em {CODEX_SKILLS_HOME}, rules em "
+           f"{CODEX_GLOBAL_RULES.name} ({changed} arquivo(s) {'a mudar' if dry else 'mudaram'})")
+    profile = codex_profile(cfg, built["ctx"], built["resolved"], built["servers"])
+    write_if_changed(CODEX_PROFILE, profile, dry, rep)
+    try:
+        hooks = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")) if CODEX_HOOKS_FILE.exists() else {}
+    except json.JSONDecodeError:
+        rep.error(f"{CODEX_HOOKS_FILE} não é JSON válido; corrija antes de instalar")
+        return False
+    write_if_changed(CODEX_HOOKS_FILE, json.dumps(merge_codex_hooks(hooks, add=True), indent=2,
+                                                  ensure_ascii=False) + "\n", dry, rep)
+    signature = codex_hook_signature()
+    stale = dict(old.get("stale_trust", {}))
+    if old.get("hooks_signature") and old["hooks_signature"] != signature:
+        # o comando/matcher dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
+        ours = {norm_path(k) for k in aidw_hook_keys()}
+        stale.update({norm_path(k): v.get("trusted_hash") for k, v in codex_trust_state().items() if norm_path(k) in ours})
+    if not dry:
+        manifest["codex"] = {"files": {str(k): sha(v) for k, v in files.items()},
+                             "profile": str(CODEX_PROFILE), "hooks": str(CODEX_HOOKS_FILE),
+                             "hooks_signature": signature, "stale_trust": stale}
+        write_if_changed(INSTALL_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", dry, Report(quiet=True))
+    node_dir, node_note = codex_node_path()
+    if node_note:
+        (rep.info if node_dir else rep.warn)(node_note)
+    trusted = codex_hooks_trusted()
+    if trusted is False:
+        rep.warn("os hooks do AiDW no Codex só rodam depois de aprovados uma vez: abra `codex --profile "
+                 f"{CODEX_PROFILE_NAME}` num terminal e escolha \"Trust all and continue\"")
+    print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}. No Codex: `python aidw.py open --provider codex` "
+          "(ou `codex --profile aidw`) e chame $aidw-orquestrar <demanda>.")
+    return not rep.errors
+
+
+def uninstall_codex(dry: bool) -> bool:
+    heading("Desinstalação global do Codex" + (" (dry-run)" if dry else ""))
+    rep = Report()
+    manifest = load_manifest()
+    old = manifest.get("codex")
+    if not old:
+        rep.info("nada instalado pelo AiDW no Codex")
+        return True
+    for k, h in old.get("files", {}).items():
+        path = Path(k)
+        if not path.is_file():
+            continue
+        if sha(path.read_bytes()) != h:
+            rep.warn(f"{k} foi alterado fora do AiDW; mantido")
+        elif not dry:
+            path.unlink()
+    if not dry:
+        for d in sorted({Path(k).parent for k in old.get("files", {})}, key=lambda x: -len(x.parts)):
+            while d not in (CODEX_SKILLS_HOME, CODEX_AGENTS_HOME, CODEX_HOME, CODEX_GLOBAL_RULES.parent) and d.is_dir() \
+                    and not any(d.iterdir()):
+                d.rmdir()
+                d = d.parent
+        if CODEX_PROFILE.exists():
+            CODEX_PROFILE.unlink()
+        if CODEX_HOOKS_FILE.exists():
+            try:
+                data = merge_codex_hooks(json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")), add=False)
+                if data:
+                    write_if_changed(CODEX_HOOKS_FILE, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry, rep)
+                else:
+                    CODEX_HOOKS_FILE.unlink()
+            except json.JSONDecodeError:
+                rep.warn(f"{CODEX_HOOKS_FILE} não é JSON válido; tire os hooks do AiDW à mão")
+        manifest.pop("codex")
+        if manifest.get("plugins") or manifest.get("files"):
+            write_if_changed(INSTALL_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", dry, rep)
+        elif INSTALL_MANIFEST.exists():
+            INSTALL_MANIFEST.unlink()
+    print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}.")
+    return not rep.errors
+
+
+def codex_hooks_trusted() -> bool | None:
+    """True quando cada hook do AiDW tem confiança gravada que não ficou vencida (o Codex só roda o hook se o
+    `trusted_hash` bate com o hook atual; depois de uma mudança, o hash antigo não vale mais). None = sem hooks."""
+    keys = aidw_hook_keys()
+    if not keys:
+        return None
+    state = codex_trust_state()
+    stale = {norm_path(k): v for k, v in load_manifest().get("codex", {}).get("stale_trust", {}).items()}
+    for key in keys:
+        entry = next((v for k, v in state.items() if norm_path(k) == norm_path(key)), None)
+        if not entry or not entry.get("trusted_hash") or stale.get(norm_path(key)) == entry.get("trusted_hash"):
+            return False
+    return True
+
+
+def check_codex_install(rep: Report) -> None:
+    heading("Instalação global (Codex)")
+    old = load_manifest().get("codex")
+    if not old:
+        rep.info("não instalada (opcional): `python aidw.py install --provider codex`")
+        return
+    missing = [k for k in old.get("files", {}) if not Path(k).is_file()]
+    if missing:
+        rep.warn(f"{len(missing)} arquivo(s) do AiDW sumiram do Codex (ex.: {missing[0]}) — rode o install")
+    else:
+        rep.ok(f"{len(old.get('files', {}))} arquivos do AiDW no Codex; perfil {CODEX_PROFILE.name}")
+    node_dir, node_note = codex_node_path()
+    if node_note and not node_dir:
+        rep.warn(node_note)
+    trusted = codex_hooks_trusted()
+    if trusted:
+        rep.ok("hooks do AiDW aprovados no Codex")
+    elif trusted is False:
+        rep.warn(f"hooks do AiDW ainda não aprovados no Codex: abra `codex --profile {CODEX_PROFILE_NAME}` e escolha "
+                 "\"Trust all and continue\"")
+
+
+def demand_worktrees(demand: str) -> list[dict]:
+    """Worktrees ativos da demanda; `1234` também acha `us-1234`/`bug-1234`."""
+    demand = demand.strip().lower()
+    return [e for e in load_registry()["worktrees"] if e["status"] == "active" and
+            (e["demand"] == demand or (demand.isdigit() and e["demand"].endswith("-" + demand)))]
+
+
+def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True) -> int:
+    """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
+    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão)."""
+    target = Path(path).resolve() if path else Path.cwd()
+    folder = prompt = None
+    if demand:
+        hits = demand_worktrees(demand)
+        if len(hits) != 1:
+            print(f"[erro]  {'nenhum' if not hits else 'mais de um'} worktree ativo para a demanda {demand!r} "
+                  "(`aidw.py worktree list`)")
+            return 1
+        demand, target = hits[0]["demand"], Path(hits[0]["path"])
+        folder = state_dir(load_context(cfg, Report(quiet=True))) / demand
+        manifest = load_manifest()
+        installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
+        if orchestrate and installed:
+            prompt = f"$aidw-orquestrar {demand}" if provider == "codex" else f"/{plugin_name()}:orquestrar {demand}"
+        elif orchestrate:
+            print(f"[aviso] o AiDW não está instalado no {provider} (`aidw.py install --provider {provider}`): "
+                  "abrindo sem chamar o orquestrador")
+    exe = shutil.which(provider) or (provider if print_only else None)
+    if not exe:
+        print(f"[erro]  CLI `{provider}` não encontrado")
+        return 1
+    if provider == "codex":
+        cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
+    else:
+        cmd = [exe]
+    if folder:
+        cmd += ["--add-dir", str(folder)]
+    if prompt:
+        cmd.append(prompt)
+    print(f"Abrindo {provider} em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
+    if print_only:
+        return 0
+    return subprocess.run(cmd, cwd=target).returncode
+
+
+# ---------------------------------------------------------------------------
+# Visão geral: aidw.py status
+# ---------------------------------------------------------------------------
+
+def status_data(cfg: dict, catalog: dict) -> dict:
+    """Retrato rápido (sem chamar os CLIs): contexto, instalação, demandas ativas com o worktree de cada uma e o
+    que pede atenção. O diagnóstico completo é o `doctor`."""
+    ctx = load_context(cfg, Report(quiet=True))
+    manifest = load_manifest()
+    claude = {"installed": bool(manifest.get("plugins"))}
+    if claude["installed"]:
+        plug = build_plugin(cfg, catalog, Report(quiet=True)) if cfg["provider"]["name"] == "claude" else None
+        claude.update(version=manifest.get("version"), sources=plug["version"] if plug else None,
+                      cli=installed_plugins().get(manifest["plugins"][-1], "") if manifest.get("cli", True) else None,
+                      cli_done=manifest.get("cli_done", True), context=manifest.get("context"))
+    codex = {"installed": bool(manifest.get("codex"))}
+    if codex["installed"]:
+        files = manifest["codex"].get("files", {})
+        codex.update(files=len(files), missing=sum(not Path(k).is_file() for k in files),
+                     hooks_trusted=codex_hooks_trusted())
+    reg = load_registry()["worktrees"]
+    demands = demand_list(cfg, active_only=True)
+    known = {d["id"] for d in demand_list(cfg)}
+    for d in demands:
+        d["worktrees"] = [{**e, **worktree_state(e)} for e in reg if e["status"] == "active" and e["demand"] == d["id"]]
+    attention = []
+    active_ids = {d["id"] for d in demands}
+    for e in reg:
+        if e["status"] != "active" or e["demand"] in active_ids:
+            continue
+        state = worktree_state(e)
+        if not state["exists"]:
+            attention.append(f"worktree órfão de {e['demand']} (a pasta sumiu): `aidw.py worktree cleanup`")
+        elif e["demand"] in known:
+            pending = state.get("error") or ("tem alterações não commitadas" if state["dirty"] else
+                                             "tem commits não publicados" if state["ahead"] and not state["published"]
+                                             else "")
+            attention.append(f"worktree da demanda concluída {e['demand']} ({e['path']}) " +
+                             (f"{pending}: confira antes de remover" if pending else
+                              f"pode sair: `aidw.py worktree remove {e['demand']}`"))
+        elif e.get("context") == (ctx["name"] if ctx else None):
+            attention.append(f"worktree de {e['demand']} ({e['path']}) sem demand.json: "
+                             f"`aidw.py demand set {e['demand']} --status active` ou `worktree remove`")
+    if claude["installed"] and ctx and claude.get("context") != ctx["name"]:
+        attention.append(f"o plugin foi instalado com o contexto {claude.get('context')!r} e o ativo é {ctx['name']!r}: "
+                         "`aidw.py install`")
+    return {"context": {"name": ctx["name"], "description": ctx["description"]} if ctx else None,
+            "state_dir": state_dir(ctx).as_posix(), "claude": claude, "codex": codex, "demands": demands,
+            "attention": attention}
+
+
+def status_command(cfg: dict, catalog: dict, as_json: bool) -> int:
+    data = status_data(cfg, catalog)
+    if as_json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    ctx = data["context"]
+    print(f"AiDW — contexto {ctx['name']}: {ctx['description']}" if ctx else "AiDW — sem contexto ativo")
+    rep = Report()
+    heading("Instalação")
+    c = data["claude"]
+    if not c["installed"]:
+        rep.info("Claude: não instalado em qualquer pasta (`aidw.py install`)")
+    elif c.get("cli") is not None and not c["cli_done"]:
+        rep.warn("Claude: a última instalação parou no Claude Code (plugin ou MCP): `aidw.py install`")
+    elif c.get("sources") and c["sources"] != c["version"]:
+        rep.warn(f"Claude: as fontes mudaram desde a instalação ({c['version']} → {c['sources']}): `aidw.py install`")
+    elif c.get("cli") is not None and c["cli"] != c["version"]:
+        rep.warn(f"Claude: o Claude tem o plugin {c['cli'] or '(ausente)'} e o gerado é {c['version']}: `aidw.py install`")
+    else:
+        rep.ok(f"Claude: plugin {plugin_name()} {c['version']}, em dia")
+    x = data["codex"]
+    if not x["installed"]:
+        rep.info("Codex: não instalado (`aidw.py install --provider codex`)")
+    elif x["missing"]:
+        rep.warn(f"Codex: {x['missing']} de {x['files']} arquivos do AiDW sumiram: `aidw.py install --provider codex`")
+    elif x["hooks_trusted"] is None:
+        rep.warn(f"Codex: os hooks do AiDW sumiram de {CODEX_HOOKS_FILE}: `aidw.py install --provider codex`")
+    elif x["hooks_trusted"] is False:
+        rep.warn(f"Codex: instalado, hooks ainda não aprovados (abra `codex --profile {CODEX_PROFILE_NAME}` no terminal)")
+    else:
+        rep.ok(f"Codex: {x['files']} arquivos, hooks aprovados")
+    heading(f"Demandas ativas ({len(data['demands'])})")
+    if not data["demands"]:
+        print(f"  nenhuma em {data['state_dir']}")
+    for d in data["demands"]:
+        print(f"  {d['id']:<16} {d['status'] or '—':<7} {d['step'] or '—':<15} {(d['updated'] or '')[:16]:<17} {d['title']}")
+        if d.get("note"):
+            print(f"  {'':<16} nota: {d['note']}")
+        for w in d["worktrees"]:
+            if not w["exists"]:
+                state = "a pasta sumiu"
+            elif w.get("error"):
+                state = w["error"]
+            else:
+                state = ("com alterações" if w["dirty"] else "limpo") + f", {w['ahead']} commit(s) à frente da base" + \
+                        (" (publicado)" if w["ahead"] and w["published"] else "")
+            print(f"  {'':<16} {w['path']} ({w['branch']}): {state}")
+        if not d["worktrees"]:
+            print(f"  {'':<16} sem worktree (só leitura ou ainda não criado)")
+    if data["attention"]:
+        heading("Atenção")
+        for a in data["attention"]:
+            rep.warn(a)
+    if data["demands"]:
+        print("\nRetomar: `aidw.py open --demand <id>` (Claude) ou `--provider codex`.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Contextos: aidw.py context list / check / use / create (skills contexto-*)
+# ---------------------------------------------------------------------------
+
+def remote_host(url: str | None) -> str | None:
+    """Só o host do remoto: a URL pode ter usuário/token embutido e nunca é mostrada."""
+    if not url:
+        return None
+    if "://" not in url and "@" not in url and re.match(r"^([A-Za-z]:[\/]|/|\.)", url.strip()):
+        return "local"
+    m = re.match(r"^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)", url.strip())
+    return m.group(1) if m else "?"
+
+
+def context_status(cfg: dict, name: str) -> dict:
+    d = CONTEXTS_DIR / name
+    info = {"name": name, "active": cfg["context"]["active"] == name, "path": d.as_posix()}
+    try:
+        raw = load_toml(d / "context.toml")
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return {**info, "ok": False, "error": f"context.toml inválido: {exc}"}
+    info.update(description=raw.get("description", name), systems=sorted(raw.get("systems", {})),
+                state_dir=expand_vars(raw.get("state_dir", "state"), path_vars(d)))
+    info["git"] = (d / ".git").exists()
+    info["remote"] = remote_host(git_out(d, "remote", "get-url", "origin")) if info["git"] else None
+    ignored = run(["git", "check-ignore", "-q", rel(d)]) is not None
+    info["ignored_by_aidw"] = ignored or run(["git", "rev-parse", "--is-inside-work-tree"]) is None
+    manifest = load_manifest()
+    info["plugin_installed"] = bool(manifest) and manifest.get("context") == name
+    info["ok"] = True
+    return info
+
+
+def context_list(cfg: dict) -> list[dict]:
+    return [context_status(cfg, n) for n in list_contexts()]
+
+
+def context_check(cfg: dict, catalog: dict, name: str) -> dict:
+    """Valida um contexto como se estivesse ativo: build completo, repositório próprio, pasta de estado exclusiva."""
+    if name not in list_contexts():
+        return {"ok": False, "errors": [f"contexto {name!r} não existe em {rel(CONTEXTS_DIR)}/"], "warnings": []}
+    test_cfg = json.loads(json.dumps(cfg))
+    test_cfg["context"]["active"] = name
+    rep = Report(quiet=True)
+    build(test_cfg, catalog, rep)
+    errors, warnings = list(rep.errors), list(rep.warnings)
+    st = context_status(cfg, name)
+    if not st.get("git"):
+        warnings.append(f"{rel(CONTEXTS_DIR / name)} não é um repositório Git próprio (rode `git init` nele)")
+    if not st.get("ignored_by_aidw"):
+        errors.append(f"{rel(CONTEXTS_DIR / name)} NÃO está no .gitignore do AiDW (o conteúdo privado vazaria)")
+    mine = st.get("state_dir")
+    for other in list_contexts():
+        if other != name and context_status(cfg, other).get("state_dir") == mine:
+            errors.append(f"state_dir {mine!r} é o mesmo do contexto {other!r}: cada contexto precisa da sua pasta")
+    return {"ok": not errors, "errors": errors, "warnings": warnings, **{k: st.get(k) for k in ("description", "systems")}}
+
+
+def set_active_context(name: str) -> None:
+    """Troca só a linha `active` da seção [context] do aidw.config.toml (os comentários ficam)."""
+    text = CONFIG_FILE.read_text(encoding="utf-8")
+    pattern = re.compile(r"(^\[context\][^\[]*?^active\s*=\s*)\"[^\"]*\"", re.M | re.S)
+    if pattern.search(text):
+        text = pattern.sub(lambda m: m.group(1) + json.dumps(name), text, count=1)
+    else:
+        text = text.rstrip("\n") + f"\n\n[context]\nactive = {json.dumps(name)}\n"
+    CONFIG_FILE.write_text(text, encoding="utf-8", newline="\n")
+
+
+def context_command(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
+    action = args.ctx_action
+    if action == "list":
+        items = context_list(cfg)
+        if args.json:
+            print(json.dumps({"ok": True, "active": cfg["context"]["active"] or None, "contexts": items},
+                             ensure_ascii=False, indent=2))
+            return 0
+        if not items:
+            print("Nenhum contexto em contexts/. Crie um com a skill contexto-criar (ou `aidw.py context create`).")
+        for c in items:
+            mark = "*" if c["active"] else " "
+            if not c["ok"]:
+                print(f" {mark} {c['name']:<16} [erro] {c['error']}")
+                continue
+            repo = ("git próprio" + (f", remoto {c['remote']}" if c["remote"] else ", sem remoto")) if c["git"] else \
+                "SEM repositório git"
+            print(f" {mark} {c['name']:<16} {c['description']}")
+            print(f"   {'':<16} {repo}; sistemas: {', '.join(c['systems']) or 'nenhum'}; "
+                  f"plugin {'instalado' if c['plugin_installed'] else 'não instalado'}")
+        print(f"\nAtivo: {cfg['context']['active'] or 'nenhum'}")
+        return 0
+    if action == "check":
+        result = context_check(cfg, catalog, args.name)
+    elif action == "create":
+        name = args.name.strip().lower()
+        if not SLUG_RE.match(name) or name in RESERVED_NAMES:
+            result = {"ok": False, "errors": [f"nome inválido {name!r} (minúsculas, dígitos e hífen)"], "warnings": []}
+        elif (CONTEXTS_DIR / name).exists():
+            result = {"ok": False, "errors": [f"{rel(CONTEXTS_DIR / name)} já existe"], "warnings": []}
+        else:
+            d = create_context(name, args.description or name, split_answer(args.mcp or ""), split_answer(args.env or ""))
+            result = {"ok": True, "errors": [], "warnings": [], "path": d.as_posix(),
+                      "note": "repositório git próprio criado (sem remoto). Preencha o context.toml e rode "
+                              f"`aidw.py context check {name}`."}
+    else:  # use
+        check = context_check(cfg, catalog, args.name) if args.name else {"ok": True, "errors": [], "warnings": []}
+        previous = cfg["context"]["active"]
+        open_demands = [d["id"] for d in demand_list(cfg, active_only=True)] if previous != args.name else []
+        if open_demands:
+            check["warnings"].append(f"demandas ativas no contexto {previous!r} ficam pausadas: {', '.join(open_demands)}")
+        if not check["ok"]:
+            result = check
+        else:
+            set_active_context(args.name)
+            new_cfg = load_config()
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                applied = apply(new_cfg, catalog, dry=False)
+                installed = None
+                if applied and load_manifest() and not args.skip_install:
+                    installed = install(new_cfg, catalog, dry=False, force=False, skip_cli=args.skip_cli)
+            if not applied:  # o aidw.config.toml nunca fica apontando para um ambiente que não foi gerado
+                set_active_context(previous)
+            result = {"ok": applied and installed is not False,
+                      "errors": [] if applied else [f"apply falhou; contexto ativo mantido em {previous!r}"],
+                      "warnings": check["warnings"], "active": args.name or None,
+                      "plugin": plugin_name(load_context(new_cfg, Report(quiet=True))) if installed else None,
+                      "log_tail": out.getvalue().strip().splitlines()[-3:]}
+            if installed is False:
+                result["errors"].append("install falhou — rode `python aidw.py install` para ver o erro")
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        for e in result.get("errors", []):
+            print(f"[erro]  {e}")
+        for w in result.get("warnings", []):
+            print(f"[aviso] {w}")
+        if result["ok"]:
+            print(f"[ok]    {action} {args.name or ''}".rstrip() +
+                  (f" — {result['note']}" if result.get("note") else "") +
+                  (f" — plugin {result['plugin']}; abra um chat novo" if result.get("plugin") else "") +
+                  (" — abra um chat novo" if action == "use" and not result.get("plugin") else ""))
+    return 0 if result["ok"] else 1
 
 
 # ---------------------------------------------------------------------------
@@ -1918,13 +3535,19 @@ def codex_subagent_usage(task_name: str) -> dict | None:
 
 def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     """Registra uma delegação feita com subagente nativo: metricas.md + header e resumo."""
+    if getattr(args, "codex_task", None) and cfg["provider"]["name"] != "codex":
+        # delegação do Codex (instalação global) numa máquina cuja config é do Claude: modelos e tokens do Codex
+        cfg = json.loads(json.dumps(cfg))
+        cfg["provider"]["name"] = "codex"
     rep = Report(quiet=True)
     ctx = load_context(cfg, rep)
     resolved = resolve(cfg, catalog, ctx, available_skills(ctx, rep), rep)
     routing = load_routing(rep)
     provider = cfg["provider"]["name"]
     attach_variants(resolved, routing, catalog, rep)
-    wanted = slugify(args.agent)
+    wanted = slugify(args.agent.rsplit(":", 1)[-1])
+    if wanted.startswith(CODEX_NS) and not any(wanted in (r, a["name"]) for r, a in resolved.items()):
+        wanted = wanted[len(CODEX_NS):]
     role, effort, model = None, args.effort or "", None
     for r, a in resolved.items():
         if r == ORCHESTRATOR:
@@ -2034,7 +3657,7 @@ def codex_git_env(cfg: dict, ctx: dict | None) -> dict[str, str]:
     """O sandbox do Codex no Windows roda os comandos com outra identidade e o git recusa os
     repositórios ("dubious ownership"). Libera safe.directory só para as pastas do AiDW e dos
     projetos, e só nos comandos do Codex (variáveis GIT_CONFIG_*, sem tocar no .gitconfig)."""
-    dirs = [ROOT.as_posix(), *project_dirs(cfg, ctx)]
+    dirs = [ROOT.as_posix(), *code_dirs(cfg, ctx)]
     values = [d.rstrip("/") + "/*" for d in dirs] + [ROOT.as_posix()]
     env = {"GIT_CONFIG_COUNT": str(len(values))}
     for i, v in enumerate(values):
@@ -2076,7 +3699,7 @@ def run_codex(a: dict, role: str, model: dict, effort: str, prompt: str, args, c
         cmd += ["-c", "sandbox_workspace_write.network_access=true"]
     write_dirs = [str(Path(args.demand).resolve())]
     if profile.get("write") == "projects":
-        write_dirs += [win(d) for d in project_dirs(cfg, ctx)]
+        write_dirs += [win(d) for d in code_dirs(cfg, ctx)]
     for d in dict.fromkeys(write_dirs):
         if Path(d).is_dir():
             cmd += ["--add-dir", d]
@@ -2317,55 +3940,130 @@ def codex_trusted() -> bool:
     return any(key in line.lower() and "projects" in line for line in text.splitlines())
 
 
+def claude_login() -> bool | None:
+    """Login do Claude Code por `claude auth status` (JSON); None quando não dá para saber."""
+    out = run(["claude", "auth", "status"])
+    try:
+        return bool(json.loads(out).get("loggedIn")) if out else None
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
+def codex_login() -> bool:
+    return "logged in" in (run(["codex", "login", "status"]) or "").lower()
+
+
+def check_provider(provider: str, cfg: dict, resolved: dict, rep: Report) -> None:
+    """CLI, versão e login de um provedor. O ativo é obrigatório; o outro, opcional (só informa)."""
+    active = cfg["provider"]["name"] == provider
+    heading(f"{PROVIDER_LABEL[provider]} — {'provedor ativo' if active else 'opcional'}")
+    if not shutil.which(provider):
+        hint = INSTALL_HINTS[provider][platform_key()]
+        if active:
+            rep.error(f"CLI `{provider}` não encontrado — é ele que executa o orquestrador e os agentes. "
+                      f"Instale com: {hint}")
+        else:
+            rep.info(f"`{provider}` não instalado (opcional). Para instalar: {hint}")
+        return
+    version = run([provider, "--version"]) or "?"
+    rep.ok(f"{provider} {version.splitlines()[0]}")
+    logged = claude_login() if provider == "claude" else codex_login()
+    login_hint = "rode `claude` e autentique" if provider == "claude" else "rode `codex login`"
+    if logged:
+        rep.ok("login ativo")
+    elif logged is None:
+        rep.info("não foi possível confirmar o login (`claude auth status`)")
+    else:
+        (rep.warn if active else rep.info)(f"sem login — {login_hint}")
+    if not active:
+        return
+    for a in resolved.values():
+        need = a["model"].get("min_cli")
+        if need and version_tuple(version) < version_tuple(need):
+            rep.warn(f"{a['model']['name']} exige {provider} {need}+ (atual {version.split()[0]}); "
+                     f"rode `{provider} update`")
+            break
+    if provider != "codex":
+        return
+    available = codex_available_models()
+    for a in resolved.values():
+        if available and a["model"]["model_id"] not in available:
+            rep.warn(f"{a['name']}: {a['model']['model_id']} não está liberado para esta conta "
+                     f"(disponíveis: {', '.join(sorted(available))})")
+    if cfg["delegation"]["mode"] == "native":
+        features = run(["codex", "features", "list"]) or ""
+        if re.search(r"^multi_agent_v2\s", features, re.M):
+            rep.ok("multi_agent_v2 disponível (subagentes com modelo e effort por spawn)")
+        else:
+            rep.error("esta versão do Codex não tem multi_agent_v2 — atualize o Codex ou use "
+                      '[delegation] mode = "headless"')
+    if codex_trusted():
+        rep.ok("projeto marcado como confiável no Codex (.codex/config.toml vale no app)")
+    else:
+        rep.info("projeto não marcado como confiável no Codex: .codex/config.toml só vale via "
+                 "`python aidw.py chat` (o setup oferece marcar)")
+
+
+def inside_git_repo(path: Path) -> bool:
+    return path.is_dir() and run(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"]) == "true"
+
+
+def check_folders(cfg: dict, ctx: dict | None, rep: Report, created: tuple[Path, ...] = ()) -> None:
+    heading("Pastas")
+    for path, why in required_folders(cfg, ctx):
+        if path.is_dir():
+            rep.ok(f"{why}: {path.as_posix()}" + (" (criada)" if path in created else ""))
+        else:
+            rep.warn(f"{why}: {path.as_posix()} não existe — o `setup` cria")
+    root = worktree_root(cfg)
+    if inside_git_repo(root):
+        rep.warn(f"a raiz dos worktrees ({root.as_posix()}) está dentro de um repositório Git; "
+                 "use uma pasta fora de qualquer repositório ([worktree] root)")
+    for d in project_dirs(cfg, ctx):
+        if Path(d).is_dir():
+            rep.ok(f"pasta liberada {d}")
+        else:
+            rep.warn(f"pasta liberada {d} não existe (clone os repositórios ou ajuste a config)")
+
+
+def pending_apply(cfg: dict, catalog: dict) -> int | None:
+    """Quantos arquivos o `apply` mudaria agora; None se a config tem erro."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        ok = apply(cfg, catalog, dry=True)
+    # Só as linhas do relatório ("  [--]    (dry-run) criar …"), não o título da seção.
+    return sum(bool(re.match(r"\s+\[[^]]+\]\s+\(dry-run\) ", line))
+               for line in out.getvalue().splitlines()) if ok else None
+
+
+def one_line(msg: str) -> str:
+    """Mensagem de várias linhas (ex.: aviso com o comando de correção) numa linha só, para o resumo."""
+    return " ".join(part.strip() for part in msg.splitlines() if part.strip())
+
+
 def doctor(cfg: dict, catalog: dict) -> bool:
-    heading("Doctor")
+    """Verifica tudo e termina com o veredito: PRONTO ou NÃO PRONTO (com o que falta)."""
     rep = Report()
-    provider = cfg["provider"]["name"]
+    heading("Núcleo")
     rep.ok(f"Python {sys.version.split()[0]}")
     if shutil.which("git"):
         rep.ok(run(["git", "--version"]) or "git")
         if not run(["git", "config", "user.email"]):
             rep.warn("git user.email não configurado")
     else:
-        rep.error("git não encontrado no PATH")
+        rep.error(f"git não encontrado no PATH. Instale com: {INSTALL_HINTS['git'][platform_key()]}")
+    if shutil.which("npx"):
+        rep.ok(f"Node.js {run(['node', '--version']) or '?'} (npx para os MCPs locais)")
+    else:
+        rep.warn("npx não encontrado — os MCPs locais precisam do Node.js. "
+                 f"Instale com: {INSTALL_HINTS['npx'][platform_key()]}")
 
     b = build(cfg, catalog, Report(quiet=True))
     resolved = b["resolved"] if b else {}
-    version = run([provider, "--version"]) if shutil.which(provider) else None
-    if version is None:
-        rep.error(f"CLI `{provider}` não encontrado — é ele que executa o orquestrador e todos os agentes")
-    else:
-        rep.ok(f"{PROVIDER_LABEL[provider]} {version.splitlines()[0]}")
-        for a in resolved.values():
-            need = a["model"].get("min_cli")
-            if need and version_tuple(version) < version_tuple(need):
-                rep.warn(f"{a['model']['name']} exige {provider} {need}+ (atual {version.split()[0]}); "
-                         f"rode `{provider} update`")
-                break
-        if provider == "codex":
-            status = run(["codex", "login", "status"]) or ""
-            if "logged in" in status.lower():
-                rep.ok(f"Codex: {status.splitlines()[0]}")
-            else:
-                rep.warn("Codex sem login — rode `codex login`")
-            available = codex_available_models()
-            for a in resolved.values():
-                if available and a["model"]["model_id"] not in available:
-                    rep.warn(f"{a['name']}: {a['model']['model_id']} não está liberado para esta conta "
-                             f"(disponíveis: {', '.join(sorted(available))})")
-            if cfg["delegation"]["mode"] == "native":
-                features = run(["codex", "features", "list"]) or ""
-                if re.search(r"^multi_agent_v2\s", features, re.M):
-                    rep.ok("Codex: multi_agent_v2 disponível (subagentes com modelo e effort por spawn)")
-                else:
-                    rep.error("Codex: esta versão não tem multi_agent_v2 — atualize o Codex ou use "
-                              '[delegation] mode = "headless"')
-            if codex_trusted():
-                rep.ok("projeto marcado como confiável no Codex (.codex/config.toml vale no app)")
-            else:
-                rep.info("projeto não marcado como confiável no Codex: .codex/config.toml só vale via "
-                         "`python aidw.py chat` (o setup oferece marcar)")
+    for provider in PROVIDERS:
+        check_provider(provider, cfg, resolved, rep)
 
+    heading("Contexto")
     ctx = load_context(cfg, rep)
     if ctx:
         rep.ok(f"contexto {ctx['name']}: {ctx['description']}")
@@ -2383,18 +4081,40 @@ def doctor(cfg: dict, catalog: dict) -> bool:
                 rep.warn(f"variável {var} não definida (necessária para o contexto {ctx['name']})")
     else:
         rep.info("sem contexto de trabalho ativo")
+
+    heading("MCP")
     check_mcp(cfg, ctx, rep)
+    check_folders(cfg, ctx, rep)
 
-    for d in project_dirs(cfg, ctx):
-        (rep.ok if Path(d).is_dir() else rep.warn)(f"pasta liberada {d}" + ("" if Path(d).is_dir() else " não existe"))
+    if cfg["provider"]["name"] == "claude":
+        check_global_install(cfg, catalog, rep)
+    if shutil.which("codex") or load_manifest().get("codex"):
+        check_codex_install(rep)
 
-    orch_file = CLAUDE_MD if provider == "claude" else AGENTS_MD
-    if not RUNTIME_FILE.exists() or not orch_file.exists():
+    heading("Ambiente gerado")
+    pending = pending_apply(cfg, catalog)
+    if pending is None:
+        rep.error("a configuração tem erros — rode `python aidw.py apply` para ver quais")
+    elif not RUNTIME_FILE.exists():
         rep.warn("ambiente ainda não gerado — rode `python aidw.py apply`")
-    elif previous_runtime().get("provider") != provider:
-        rep.warn("o ambiente gerado é de outro provedor — rode `python aidw.py apply`")
+    elif pending:
+        rep.warn(f"{pending} arquivo(s) desatualizado(s) em relação às fontes — rode `python aidw.py apply` "
+                 "e abra um chat novo")
+    else:
+        rep.ok(f"em dia com as fontes ({PROVIDER_LABEL[cfg['provider']['name']]}, "
+               f"delegação {cfg['delegation']['mode']})")
 
-    print(f"\n{len(rep.errors)} erro(s), {len(rep.warnings)} aviso(s).")
+    heading("Resultado")
+    if rep.errors:
+        print(f"  NÃO PRONTO — {len(rep.errors)} erro(s) para corrigir:")
+        for msg in rep.errors:
+            print(f"    - {one_line(msg)}")
+        if rep.warnings:
+            print(f"  e {len(rep.warnings)} aviso(s):")
+    else:
+        print("  PRONTO para usar" + (f", com {len(rep.warnings)} aviso(s):" if rep.warnings else "."))
+    for msg in rep.warnings:
+        print(f"    - {one_line(msg)}")
     return not rep.errors
 
 
@@ -2413,25 +4133,40 @@ def platform_key() -> str:
     return "win" if IS_WINDOWS else ("mac" if sys.platform == "darwin" else "linux")
 
 
+def install_tool(tool: str, default: bool) -> None:
+    hint = INSTALL_HINTS[tool][platform_key()]
+    if confirm(f"  Instalar {tool} agora? ({hint})", default):
+        shell = ["powershell", "-NoProfile", "-Command", hint] if IS_WINDOWS else ["bash", "-lc", hint]
+        code = subprocess.run(shell).returncode
+        result = "instalado" if code == 0 else f"falhou (código {code})"
+        print(f"  {result} — se o comando não for encontrado, reabra o terminal e rode o setup de novo")
+
+
 def ensure_tools(provider: str) -> None:
+    """Git, Node e os dois CLIs. O provedor ativo é obrigatório; o outro é oferecido como opcional."""
     heading("Pré-requisitos")
-    for tool in ("git", "npx", provider):
+    for tool in ("git", "npx", *PROVIDERS):
         if shutil.which(tool):
             print(f"  [ok]    {tool}")
-            continue
-        hint = INSTALL_HINTS[tool][platform_key()]
-        print(f"  [falta] {tool} — instalar com: {hint}")
-        if confirm(f"  Instalar {tool} agora?", True):
-            shell = ["powershell", "-NoProfile", "-Command", hint] if IS_WINDOWS else ["bash", "-lc", hint]
-            code = subprocess.run(shell).returncode
-            print(f"  {'instalado' if code == 0 else f'falhou (código {code})'} — se o comando não for "
-                  "encontrado, reabra o terminal e rode o setup de novo")
-    if provider == "codex" and shutil.which("codex"):
-        status = run(["codex", "login", "status"]) or ""
-        if "logged in" not in status.lower():
-            print("  [--]    Codex sem login: rode `codex login` (conta ChatGPT)")
-    if provider == "claude" and shutil.which("claude"):
-        print("  [--]    Claude Code: se ainda não fez login, rode `claude` uma vez e autentique")
+        elif tool not in PROVIDERS or tool == provider:
+            print(f"  [falta] {tool}")
+            install_tool(tool, True)
+        else:
+            print(f"  [--]    {tool} não instalado (opcional: outro provedor)")
+            install_tool(tool, False)
+    if shutil.which("claude") and claude_login() is False:
+        print("  [--]    Claude Code sem login: rode `claude` uma vez e autentique")
+    if shutil.which("codex") and not codex_login():
+        print("  [--]    Codex sem login: rode `codex login` (conta ChatGPT)")
+
+
+def ensure_folders(cfg: dict) -> None:
+    """Cria as pastas que o AiDW precisa; as pastas de projeto só são conferidas."""
+    ctx = load_context(cfg, Report(quiet=True))
+    created = tuple(path for path, _ in required_folders(cfg, ctx) if not path.is_dir())
+    for path in created:
+        path.mkdir(parents=True, exist_ok=True)
+    check_folders(cfg, ctx, Report(), created)
 
 
 def offer_mcp_registration(cfg: dict) -> None:
@@ -2494,7 +4229,7 @@ def chat(cfg: dict, catalog: dict) -> int:
             cmd += ["-c", f"mcp_servers.{key}={toml_value(codex_mcp_table(s))}"]
         for k, v in codex_git_env(cfg, b["ctx"]).items():
             cmd += ["-c", f"shell_environment_policy.set.{k}={toml_value(v)}"]
-        for d in project_dirs(cfg, b["ctx"]):
+        for d in code_dirs(cfg, b["ctx"]):
             if Path(d).is_dir():
                 cmd += ["--add-dir", win(d)]
     print(f"Abrindo o orquestrador: {' '.join(Path(cmd[0]).stem if i == 0 else c for i, c in enumerate(cmd))}")
@@ -2531,7 +4266,79 @@ def main() -> int:
     p_conf.add_argument("--provider", choices=PROVIDERS, help="com --defaults: provedor da config padrão")
     p_apply = sub.add_parser("apply", help="gera o ambiente a partir de aidw.config.toml")
     p_apply.add_argument("--dry-run", action="store_true", help="mostra o que mudaria, sem alterar nada")
-    sub.add_parser("doctor", help="verifica o ambiente")
+    p_inst = sub.add_parser("install", help="instala o AiDW no Claude para qualquer pasta (plugin aidw, com o contexto ativo)")
+    p_inst.add_argument("--dry-run", action="store_true", help="mostra o que mudaria, sem alterar nada")
+    p_inst.add_argument("--force", action="store_true", help="sobrescreve arquivo gerado alterado à mão")
+    p_inst.add_argument("--mcp", action="store_true",
+                        help="registra no escopo do usuário os MCPs do catálogo que faltam (sobem em toda sessão)")
+    p_inst.add_argument("--skip-cli", action="store_true", help=argparse.SUPPRESS)  # testes: sem o CLI do Claude
+    p_inst.add_argument("--provider", choices=("claude", "codex", "all"), default="claude",
+                        help="onde instalar (padrão: claude)")
+    p_uninst = sub.add_parser("uninstall", help="remove do Claude só o que o install acrescentou")
+    p_uninst.add_argument("--dry-run", action="store_true", help="mostra o que mudaria, sem alterar nada")
+    p_uninst.add_argument("--skip-cli", action="store_true", help=argparse.SUPPRESS)
+    p_uninst.add_argument("--provider", choices=("claude", "codex", "all"), default="all")
+    p_open = sub.add_parser("open", help="abre o Claude ou o Codex na pasta (ou no worktree da demanda)")
+    p_open.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    p_open.add_argument("--demand", help="id da demanda: abre no worktree dela")
+    p_open.add_argument("--path", help="pasta (padrão: a atual)")
+    p_open.add_argument("--print", action="store_true", help="só mostra o comando")
+    p_open.add_argument("--no-orchestrate", action="store_true", help="com --demand: abre sem chamar o orquestrador")
+    p_status = sub.add_parser("status", help="visão rápida: instalação, demandas ativas, worktrees e pendências")
+    p_status.add_argument("--json", action="store_true")
+    p_wt = sub.add_parser("worktree", help="worktree por demanda: create, list, inspect, remove, cleanup")
+    wt = p_wt.add_subparsers(dest="wt_action", required=True)
+    w_create = wt.add_parser("create", help="cria (ou devolve) o worktree da demanda num repositório")
+    w_create.add_argument("--repo", required=True, help="pasta do repositório (ou de dentro dele)")
+    w_create.add_argument("--demand", required=True, help="id da demanda, ex.: us-1234")
+    w_create.add_argument("--slug", help="resumo curto para o nome da branch")
+    w_create.add_argument("--base", help="base do worktree (padrão: a branch padrão do origin)")
+    wt.add_parser("list", help="worktrees registrados e a situação de cada um")
+    for name, help_text in (("inspect", "detalhes de um worktree"), ("remove", "remove um worktree limpo e integrado")):
+        w = wt.add_parser(name, help=help_text)
+        w.add_argument("target", help="caminho do worktree ou id da demanda")
+        w.add_argument("--repo", help="repositório, quando a demanda tem mais de um")
+    wt.add_parser("cleanup", help="tira do registro os worktrees cuja pasta sumiu")
+    wt.add_parser("hook-create")  # hooks WorktreeCreate/WorktreeRemove do plugin (uso interno)
+    wt.add_parser("hook-remove")
+    for w in wt.choices.values():
+        w.add_argument("--json", action="store_true", help="saída em JSON")
+    p_ctx = sub.add_parser("context", help="contextos de trabalho: list, check, use, create")
+    cx = p_ctx.add_subparsers(dest="ctx_action", required=True)
+    cx.add_parser("list", help="contextos disponíveis e qual está ativo")
+    c_check = cx.add_parser("check", help="valida um contexto como se estivesse ativo")
+    c_check.add_argument("name")
+    c_use = cx.add_parser("use", help="ativa um contexto (apply e, se instalado, install)")
+    c_use.add_argument("name", nargs="?", default="", help="nome do contexto (vazio = nenhum)")
+    c_use.add_argument("--skip-install", action="store_true", help="não reinstala o plugin")
+    c_use.add_argument("--skip-cli", action="store_true", help=argparse.SUPPRESS)
+    c_create = cx.add_parser("create", help="cria contexts/<nome>/ com a estrutura mínima e git próprio")
+    c_create.add_argument("name")
+    c_create.add_argument("--description")
+    c_create.add_argument("--mcp", help="servidores MCP exigidos (vírgula)")
+    c_create.add_argument("--env", help="variáveis de ambiente exigidas (vírgula)")
+    for c in cx.choices.values():
+        c.add_argument("--json", action="store_true", help="saída em JSON")
+    p_dm = sub.add_parser("demand", help="estado da demanda para retomar: set, show, list")
+    dm = p_dm.add_subparsers(dest="dm_action", required=True)
+    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota)")
+    d_set.add_argument("id", help="id da demanda, ex.: us-1234")
+    d_set.add_argument("--step", help="etapa atual: UNDERSTAND ou uma ação de NEXT ACTION")
+    d_set.add_argument("--status", choices=("active", "paused", "done"))
+    d_set.add_argument("--title")
+    d_set.add_argument("--note", help="onde parou / próximo passo")
+    d_show = dm.add_parser("show", help="mostra o demand.json")
+    d_show.add_argument("id")
+    d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")
+    d_list.add_argument("--active", action="store_true", help="só as não concluídas")
+    for d in dm.choices.values():
+        d.add_argument("--json", action="store_true", help="saída em JSON")
+    p_proj = sub.add_parser("project", help="projeto da pasta: repositório, sistema, contexto e demanda")
+    proj = p_proj.add_subparsers(dest="proj_action", required=True)
+    p_detect = proj.add_parser("detect", help="detecta o projeto a partir de uma pasta")
+    p_detect.add_argument("--path", default=".", help="pasta (padrão: a atual)")
+    p_detect.add_argument("--json", action="store_true", help="saída em JSON")
+    sub.add_parser("doctor", help="verifica tudo e diz se o ambiente está pronto")
     sub.add_parser("show", help="mostra agentes, modelos e efforts")
     sub.add_parser("chat", help="abre o orquestrador no CLI do provedor")
     p_del = sub.add_parser("delegate", help="roda um agente headless para uma tarefa")
@@ -2583,6 +4390,7 @@ def main() -> int:
             save_config(cfg)
         if not args.skip_tools:
             ensure_tools(cfg["provider"]["name"])
+        ensure_folders(cfg)
         if not apply(cfg, catalog, dry=False):
             return 1
         offer_mcp_registration(cfg)
@@ -2596,6 +4404,39 @@ def main() -> int:
         return 1
     if command == "apply":
         return 0 if apply(cfg, catalog, dry=args.dry_run) else 1
+    if command == "worktree":
+        return worktree_command(cfg, args)
+    if command == "demand":
+        return demand_command(cfg, args)
+    if command == "context":
+        return context_command(cfg, catalog, args)
+    if command == "project":
+        result = project_detect(cfg, args.path)
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            for k, v in result.items():
+                print(f"  {k:<15} {v}")
+        return 0
+    if command == "install":
+        ok = True
+        if args.provider in ("claude", "all"):
+            ok = install(cfg, catalog, args.dry_run, args.force, args.skip_cli, args.mcp) and ok
+        if args.provider in ("codex", "all"):
+            ok = install_codex(cfg, catalog, args.dry_run, args.force) and ok
+        return 0 if ok else 1
+    if command == "uninstall":
+        ok = True
+        if args.provider in ("codex", "all"):
+            ok = uninstall_codex(args.dry_run) and ok
+        if args.provider in ("claude", "all"):
+            ok = uninstall(args.dry_run, args.skip_cli) and ok
+        return 0 if ok else 1
+    if command == "open":
+        return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print,
+                            not args.no_orchestrate)
+    if command == "status":
+        return status_command(cfg, catalog, args.json)
     if command == "doctor":
         return 0 if doctor(cfg, catalog) else 1
     if command == "show":

@@ -1,5 +1,5 @@
 # Setup do AiDW no Windows: garante o Python 3.11+ e chama `python aidw.py setup`, que cuida do
-# resto (Git, Node, CLI do provedor, wizard, geração do ambiente, MCPs e doctor).
+# resto (Git, Node, Claude e Codex, pastas, wizard, geração do ambiente, MCPs e doctor).
 # Argumentos são repassados, ex.: .\setup.ps1 --reconfigure
 $ErrorActionPreference = 'Stop'
 
