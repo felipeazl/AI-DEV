@@ -11,8 +11,9 @@ disable-model-invocation: true
 aspas: é a que as regras de permissão liberam.
 
 O usuário chama esta skill ao terminar uma tarefa. **Chamar é a autorização** para fazer commit e push do repositório do
-**contexto** (e só dele) na branch atual. Nada de commit, push ou merge nos repositórios do produto. Pedido do usuário
-(pode estar vazio): $ARGUMENTS
+**contexto** (e só dele) na branch atual, mesmo que seja a `main`: é o repositório privado de conhecimento do usuário, e
+não código de produto, por decisão dele. Nada de commit, push ou merge nos repositórios do produto. O pedido do usuário,
+se houver, está na mensagem que chamou esta skill.
 
 ## 1. O que foi a tarefa
 
@@ -66,8 +67,9 @@ Para cada fato, o lugar certo:
   Nunca adicione a pasta de estado das demandas (`demandas/` ou a `state_dir` do contexto), nem arquivo que você não
   editou.
 - Commit com uma mensagem curta: o que foi aprendido e em qual demanda. Termine com a linha de coautoria da sessão.
-- `git -C "<pasta do contexto>" push` na branch atual. Se falhar (sem remoto, sem permissão, branch à frente),
-  mostre a mensagem e pare. Não force, não faça rebase.
+- `git -C "<pasta do contexto>" push` na branch atual. Se falhar (sem remoto, sem permissão, branch protegida que exige
+  PR, branch atrás do remoto), mostre a mensagem e pare. Não force, não faça rebase, não crie outra branch para
+  contornar: o usuário decide.
 
 ## 5. Fechar a demanda
 
