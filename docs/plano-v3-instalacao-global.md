@@ -336,6 +336,23 @@ Veredito: **segue**. O plugin atende o lado Claude; o Codex fica com instalaçã
   3. **Métricas com modelos do Claude e sem tokens:** corrigido pelo `record` acima.
 - **Pendente:** refazer o teste no Codex com as correções, para confirmar a equivalência (critério 7). Atenção à cota: o plano do Codex desta máquina chegou a 75% do mês nessa execução.
 
+## Resultado da F7 (2026-09-28)
+
+- **`aidw status`:** um retrato em menos de 1 s, sem chamar os CLIs:
+  - o contexto ativo;
+  - a instalação no Claude (versão do plugin contra as fontes e contra o que o Claude tem) e no Codex (arquivos e aprovação dos hooks);
+  - as demandas ativas, com etapa, nota e a situação de cada worktree (alterações, commits à frente, publicado);
+  - o que pede atenção: worktree de demanda concluída (pronto para remover, ou com trabalho não publicado), worktree órfão, plugin instalado com outro contexto.
+
+  O `--json` serve ao orquestrador. O diagnóstico completo continua no `doctor`.
+- **`aidw open --demand <id>`:** abre o CLI no worktree da demanda, libera a pasta dela e já manda a primeira mensagem:
+  - `/aidw:orquestrar <id>` no Claude;
+  - `$aidw-orquestrar <id>` no Codex, com `--profile aidw`.
+
+  O orquestrador retoma da etapa gravada. `1234` acha `us-1234`. `--no-orchestrate` abre sem chamar o orquestrador. Sem o AiDW instalado naquele provedor, abre sem chamar e avisa.
+- **Por que não `claude --agent`:** o orquestrador é uma skill (D1) com saída (`/aidw:sair`). O `--agent` fixaria a sessão inteira como orquestrador, sem saída, e trocaria o prompt de sistema. Já a primeira mensagem passa pelo mesmo hook de modo que o texto digitado, então a retomada depois de compactação continua valendo.
+- **A skill do Claude** não chama `EnterWorktree` quando a sessão já abriu dentro do worktree da demanda (o `project detect` mostra `demand`).
+
 ## 7. Fases
 
 Cada fase tem critério de saída. O modo atual (`apply` em `C:\AiDW`) continua funcionando até a F5 ser aceita.
@@ -349,7 +366,7 @@ Cada fase tem critério de saída. O modo atual (`apply` em `C:\AiDW`) continua 
 | **F4 — Projetos e worktrees** | `project detect`, `demand.json`, `worktree *`, `WorktreeCreate`, `aidw guard` | Testes: raiz, subpasta, fora do git, base com alterações, branch existente, branch usada por outro worktree, worktree órfão |
 | **F5 — `/aidw:orquestrar` global** | A skill, o `/aidw:sair`, a retomada, o hook de compactação | Critérios de aceite abaixo; depois disso o `scope=project` vira alternativa |
 | **F6 — Paridade no Codex** | Plugin de skills, `~/.codex/agents`, hooks e rules pelo `install`, e `aidw open --provider codex` (`codex -C <wt> --add-dir <demanda>`) | A mesma demanda de teste com resultado equivalente |
-| **F7 — `open` / `status`** | `aidw open` (inclusive `claude --agent` no CLI) e `aidw status` | Uso real |
+| **F7 — `open` / `status`** | `aidw open --demand` (retoma chamando o orquestrador; ver o resultado da F7 sobre o `claude --agent`) e `aidw status` | Uso real |
 
 **Código:** o `aidw.py` continua sendo a entrada. Só o que precisa ser rápido ou isolado vira módulo:
 - `aidw_guard.py` (hook, só biblioteca padrão);

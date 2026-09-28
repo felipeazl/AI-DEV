@@ -115,7 +115,14 @@ Abra um chat — de preferência na pasta do repositório — e chame:
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, entra nele e
-segue o fluxo. Peça como pediria a um tech lead:
+segue o fluxo. Para ver tudo o que está em andamento e voltar a uma demanda pelo terminal:
+
+```text
+python aidw.py status                  ← instalação, demandas ativas (etapa, worktree, alterações) e pendências
+python aidw.py open --demand 1234      ← abre o Claude no worktree da demanda já chamando /aidw:orquestrar
+```
+
+Peça como pediria a um tech lead:
 
 | Você quer | Diga |
 |---|---|
@@ -176,7 +183,8 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `apply [--dry-run]` | Gera o modo projeto a partir da config (idempotente) |
 | `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugin `aidw` e regras globais; `--mcp` registra os MCPs do catálogo. Codex: skills `aidw-*` em `~/.agents/skills`, agentes `aidw-*` em `~/.codex/agents`, `aidw.rules`, hooks no `hooks.json` (merge) e o perfil `aidw` |
 | `uninstall [--provider claude\|codex\|all] [--dry-run]` | Remove só o que o `install` acrescentou (padrão: os dois) |
-| `open [--provider claude\|codex] [--demand <id> \| --path <pasta>] [--print]` | Abre o chat na pasta — no worktree da demanda, com `--demand`; o Codex com `--profile aidw` e a pasta da demanda liberada |
+| `status [--json]` | Visão rápida, sem chamar os CLIs: contexto, instalação (Claude e Codex), demandas ativas com etapa e situação do worktree, e o que pede atenção (worktree de demanda concluída, órfão, plugin de outro contexto) |
+| `open [--provider claude\|codex] [--demand <id> \| --path <pasta>] [--no-orchestrate] [--print]` | Abre o CLI na pasta; com `--demand` (`1234` acha `us-1234`), no worktree dela, com a pasta da demanda liberada e já chamando o orquestrador (`/aidw:orquestrar <id>` ou `$aidw-orquestrar <id>`); o Codex com `--profile aidw` |
 | `doctor` | Verifica núcleo, os dois CLIs e o login, contexto, variáveis, MCPs, pastas, instalação global e ambiente gerado; termina com **PRONTO** ou **NÃO PRONTO** |
 | `show` | Nome, papel, modelo e effort de cada agente |
 | `chat` | Abre o orquestrador do modo projeto no CLI do provedor |
