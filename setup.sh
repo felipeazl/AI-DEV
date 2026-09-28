@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Setup do AiDW no Linux/macOS: garante o Python 3.11+ e chama `python3 aidw.py setup`, que cuida
-# do resto (Git, Node, CLI do provedor, wizard, geração do ambiente, MCPs e doctor).
+# do resto (Git, Node, Claude e Codex, pastas, wizard, geração do ambiente, MCPs e doctor).
 # Argumentos são repassados, ex.: ./setup.sh --reconfigure
 set -euo pipefail
 
