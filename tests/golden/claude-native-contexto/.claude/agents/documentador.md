@@ -71,12 +71,12 @@ Use a server when the task names it. Use one the task does not name only when it
 
 ## Systems
 
-Where each system lives and how to validate it. Use these commands as given; do not search for other build tools.
+Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning.
 
 ### Sistema A (`sistema-a`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaA`
 - Stack: .NET 10
-- Depends on: `sistema-b` — when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning
+- Depends on: `sistema-b`
 - Build: `dotnet build '<repo>' -v q`
 - Test: `dotnet test '<repo>' -v q`
 - Notes:

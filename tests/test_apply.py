@@ -435,6 +435,52 @@ class WorktreeTest(unittest.TestCase):
             code, listed = self.aidw_json(root, "worktree", "list", "--json")
             self.assertEqual(listed["worktrees"], [])
 
+    def test_worktree_link_de_pastas_vizinhas(self) -> None:
+        """`worktree_link` do sistema: o caminho relativo que o código usa (HintPath `..\\..\\X`) vira junction ao
+        lado do worktree; fora da raiz dos worktrees é recusado; o remove não apaga a junction compartilhada."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            repo = self.make_repo(tmp)
+            (tmp / "repos" / "Vizinho" / "bin").mkdir(parents=True)
+            (tmp / "repos" / "Vizinho" / "bin" / "lib.dll").write_text("dll\n", encoding="utf-8")
+            with open(root / "contexts" / "exemplo" / "context.toml", "a", encoding="utf-8") as f:
+                f.write(f'\n[systems.app]\nname = "App"\nrepos = ["{repo.as_posix()}"]\n'
+                        'worktree_link = ["../Vizinho", "../../fora", "../../../escapa"]\n')
+            code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-5", "--json")
+            self.assertEqual(code, 0, wt)
+            self.assertEqual(wt["system"], "app")
+            self.assertEqual(wt["outside_links"], ["../Vizinho"])
+            vizinho = tmp / "wt" / "Aplicação" / "Vizinho"
+            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o HintPath ..\\Vizinho resolve a partir do worktree")
+            self.assertTrue(any("não existe" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertTrue(any("ignorado" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertFalse((tmp / "escapa").exists(), "nunca cria junction fora da raiz dos worktrees")
+            code, wt2 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-6", "--json")
+            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "reaproveita a junction de outro worktree")
+            (tmp / "outra").mkdir()
+            os.rmdir(vizinho)  # remove só a junction
+            load_aidw(root).make_link(vizinho, tmp / "outra")
+            code, wt3 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
+            self.assertEqual(wt3["outside_links"], [], "junction para outro lugar não é reaproveitada")
+            self.assertTrue(any("outro lugar" in w for w in wt3["warnings"]), wt3["warnings"])
+            os.rmdir(vizinho)
+            load_aidw(root).make_link(vizinho, tmp / "repos" / "Vizinho")
+
+            homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: ProjetosTFS/Hope x Legados/Hope)
+            homonimo.mkdir(parents=True)
+            git(homonimo, "init", "-q", "-b", "main")
+            (homonimo / "b.txt").write_text("b\n", encoding="utf-8")
+            git(homonimo, "add", ".")
+            git(homonimo, "commit", "-q", "-m", "inicial")
+            code, wt4 = self.aidw_json(root, "worktree", "create", "--repo", str(homonimo), "--demand", "us-5", "--json")
+            self.assertEqual(code, 0, wt4)
+            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "Aplicação.outros" / "us-5", "não invade a pasta do homônimo")
+            code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(repo), "--json")
+            self.assertEqual(code, 0, done)
+            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o remove não toca a junction compartilhada")
+            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file())
+
     def test_status_e_open(self) -> None:
         """F7: `status` junta demanda ativa e worktree e aponta o que pede atenção; `open --demand` abre no worktree
         chamando o orquestrador (só se o AiDW está instalado naquele provedor)."""

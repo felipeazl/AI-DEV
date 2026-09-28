@@ -191,7 +191,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `context list` · `check <nome>` · `use [<nome>]` · `create <nome> --description d` | Contextos: lista, valida, ativa (troca só a linha `active`), cria a estrutura com git próprio |
 | `project detect [--path p] [--json]` | Repositório principal, sistema do contexto e demanda de uma pasta |
 | `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n]` · `show <id>` · `list [--active]` | Estado da demanda para retomar (`demand.json`, com histórico das etapas) |
-| `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch `<prefixo><número>-<slug>`, junctions de `packages`/`node_modules` (idempotente) |
+| `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch `<prefixo><número>-<slug>`, junctions de `packages`/`node_modules` e das pastas vizinhas do `worktree_link` do sistema (idempotente) |
 | `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação dos worktrees; `remove` só com worktree limpo e publicado (mantém a branch); `cleanup` tira do registro o que sumiu |
 | `record --agent <a> --level <n> --label <x> --demand <pasta> --state <s> (--tokens --tool-uses --duration-ms \| --codex-task <t>)` | Registra uma delegação nativa no `metricas.md` e imprime cabeçalho e resumo (usado pelo orquestrador) |
 | `delegate --agent <a> --effort <e> --level <n> --task <arq> --demand <pasta>` | Roda um agente headless para uma tarefa (modo headless) |
@@ -283,6 +283,14 @@ contexts/<nome>/
   `diff-*.patch`, `review-*`, `triagem-*`, `checklist-revisao.md`, `metricas.md`, `revisao-final.md`.
 - **Worktree:** `<[worktree] root>/<repo>/<demanda>` (padrão `C:/wt`), branch `<prefixo do contexto><número>-<slug>`
   a partir da base do plano, com junctions de `packages/` e `node_modules/`. Registro em `state/worktrees.json`.
+  Dois repositórios com o mesmo nome (ex.: `ProjetosLegados/Hope` e `ProjetosTFS/Hope`) não dividem a pasta: o
+  que chegar depois fica em `<root>/<repo>.<pasta-mãe>/<demanda>`.
+- **Pastas vizinhas:** o código às vezes alcança outro repositório por caminho relativo, como o HintPath
+  `..\..\eCommerce\...\bin\x.dll`. Para isso, o sistema pode listar `worktree_link = ["../eCommerce"]` no `context.toml`.
+  - O `worktree create` cria, ao lado do worktree, uma junction com o mesmo caminho relativo para o que ele resolve a
+    partir do working copy principal (ex.: `C:/wt/Hope/eCommerce` → `C:/ProjetosLegados/eCommerce`).
+  - Essas junctions ficam na raiz dos worktrees e são compartilhadas entre os worktrees do mesmo repositório.
+  - O `remove` não mexe nelas.
 - **Retomar:** `/aidw:orquestrar` sem argumento na pasta do worktree (ou do repositório) acha a demanda e continua
   da etapa gravada. Depois de uma compactação da conversa, um hook lembra o orquestrador de reler as regras.
 - **Limpar:** `aidw.py worktree remove <id>` só remove worktree sem alteração local e com commits publicados;
