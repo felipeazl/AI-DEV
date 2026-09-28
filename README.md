@@ -132,10 +132,26 @@ Cada resultado de agente aparece com o cabeçalho e o resumo medidos:
 Codificador (padrao) | Claude Opus 5.5 | effort medium | 67.448 tokens | 156 s
 ```
 
+### Codex (qualquer pasta)
+
+Instale com `python aidw.py install --provider codex` e **aprove os hooks uma vez**: rode `codex --profile aidw`
+num terminal e escolha "Trust all and continue" (o `doctor` mostra se falta). Depois:
+
+```text
+python aidw.py open --provider codex --demand us-1234   ← abre o Codex no worktree da demanda, com o perfil aidw
+codex --profile aidw                                    ← ou abra você mesmo, na pasta do repositório
+$aidw-orquestrar 1234                                   ← mesmo fluxo do Claude
+$aidw-sair
+```
+
+O perfil `aidw` deixa a raiz dos worktrees gravável e liga o multi-agente. Como o Codex não tem `EnterWorktree`,
+o orquestrador trabalha pelo caminho absoluto do worktree; o `worktree create` pede aprovação (o sandbox deixa o
+`.git` só leitura).
+
 ### Modo projeto (Claude ou Codex)
 
 O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` gerados pelo `apply`), ou
-`python aidw.py chat`. Continua funcionando e é o único modo do Codex por enquanto (seção 11).
+`python aidw.py chat`. Continua funcionando como alternativa (seção 11).
 
 ---
 
@@ -158,8 +174,9 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `setup [--reconfigure] [--skip-tools]` | Pré-requisitos, wizard, pastas, apply, MCPs e doctor (é o que o `setup.ps1` chama) |
 | `configure [--defaults --provider codex]` | Só o wizard; reescreve o `aidw.config.toml` |
 | `apply [--dry-run]` | Gera o modo projeto a partir da config (idempotente) |
-| `install [--dry-run] [--force] [--mcp]` | Instala o plugin `aidw` no Claude e as regras globais; `--mcp` registra os MCPs do catálogo no escopo do usuário |
-| `uninstall [--dry-run]` | Remove só o que o `install` acrescentou (plugin, marketplace, cache, regras, MCPs registrados) |
+| `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugin `aidw` e regras globais; `--mcp` registra os MCPs do catálogo. Codex: skills `aidw-*` em `~/.agents/skills`, agentes `aidw-*` em `~/.codex/agents`, `aidw.rules`, hooks no `hooks.json` (merge) e o perfil `aidw` |
+| `uninstall [--provider claude\|codex\|all] [--dry-run]` | Remove só o que o `install` acrescentou (padrão: os dois) |
+| `open [--provider claude\|codex] [--demand <id> \| --path <pasta>] [--print]` | Abre o chat na pasta — no worktree da demanda, com `--demand`; o Codex com `--profile aidw` e a pasta da demanda liberada |
 | `doctor` | Verifica núcleo, os dois CLIs e o login, contexto, variáveis, MCPs, pastas, instalação global e ambiente gerado; termina com **PRONTO** ou **NÃO PRONTO** |
 | `show` | Nome, papel, modelo e effort de cada agente |
 | `chat` | Abre o orquestrador do modo projeto no CLI do provedor |
@@ -339,13 +356,15 @@ arquivo gerado alterado à mão faz o `install` parar (a não ser com `--force`)
 
 | | Claude | Codex |
 |---|---|---|
-| Em qualquer pasta | ✅ plugin `aidw` (`install`) | ⏳ ainda não (fase F6 do plano v3) |
+| Em qualquer pasta | ✅ plugin `aidw` (`install`) | ✅ `install --provider codex` + perfil `aidw` |
+| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:sair` | `$aidw-orquestrar`, `$aidw-sair` |
+| Agentes | `aidw:<agente>`, uma variante por effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
+| Abrir/retomar demanda | ✅ | ✅ |
+| Entrar no worktree | ✅ `EnterWorktree` + hook | pelo caminho absoluto; `aidw open --provider codex --demand <id>` abre o Codex nele |
+| Guard e lembrete depois de compactação | ✅ hooks do plugin | ✅ `hooks.json` (aprovação única no terminal) |
+| Regras globais | `~/.claude/settings.json` | `~/.codex/rules/aidw.rules` |
+| Pastas graváveis | as do settings | as do perfil `aidw` (AiDW, projetos, worktrees) |
 | Modo projeto (chat na raiz do AiDW) | ✅ | ✅ |
-| Subagentes nativos com effort por tarefa | ✅ uma variante por effort | ✅ `spawn_agent` com modelo e effort por chamada |
-| Abrir/retomar demanda (`orquestrar`) | ✅ | ⏳ F6 (`$aidw-orquestrar`) |
-| Worktree automático | ✅ `EnterWorktree` + hook | ⏳ o orquestrador cria o worktree pelo comando e passa o caminho; `aidw open` na F6 |
-| Guard (agente fora do working copy principal) | ✅ hook do plugin | ⏳ F6 (hooks do Codex exigem aprovação de confiança uma vez) |
-| Pastas graváveis | as do settings | projetos + raiz dos worktrees (`writable_roots`, `--add-dir`) |
 
 **Detalhes do modo native:** no Claude o effort é fixado no arquivo do subagente (daí as variantes) e o
 `omitClaudeMd` isola as regras do orquestrador; no Codex o `spawn_agent` exige `multi_agent_v2` (ligado pelo
@@ -355,8 +374,8 @@ arquivo gerado alterado à mão faz o `install` parar (a não ser com `--force`)
 `claude -p --agents … --agent <nome>` ou `codex exec` com a definição no stdin; as ações travadas voltam como
 `denials`. O plugin exige o modo native.
 
-**Limites do Codex:** o sandbox deixa o `.git` só leitura (os agentes não fazem commit nem `worktree add` — o
-orquestrador ou você fazem); no Windows o AiDW libera `safe.directory` só para as pastas do AiDW, dos projetos e dos
+**Limites do Codex:** o sandbox deixa o `.git` só leitura — o `worktree create` pede aprovação e os agentes não
+fazem commit (você faz); o app desktop do Codex não aprova hooks (só o terminal); no Windows o AiDW libera `safe.directory` só para as pastas do AiDW, dos projetos e dos
 worktrees, por variáveis `GIT_CONFIG_*`, sem tocar no `.gitconfig`.
 
 ---
@@ -399,6 +418,8 @@ O princípio: **o modelo nunca é a última barreira.**
 | O Claude pede aprovação para um comando do `aidw.py` | Caminho escrito numa forma não liberada | Use `python "<raiz>/aidw.py" …`; rode `install` se as regras sumiram |
 | Headless falha com "OAuth session expired" | Login do CLI expirou | `claude auth login` (o `doctor` mostra "sem login") |
 | Ferramenta PowerShell do Claude falha com "Linha de comando muito longa" | Problema do ambiente, também fora do AiDW | O modelo cai para o Bash; nada a fazer no AiDW |
+| No Codex, `npm`/`node` falham com `EPERM` em `C:\Users\<você>` | O `node` do PATH mora no perfil do usuário (ex.: nvm), que o sandbox do Codex não lê | O `install --provider codex` põe um Node de fora do perfil na frente do PATH do perfil `aidw`; se não houver, instale um (o `doctor` avisa) |
+| O Codex não roda os hooks do AiDW | Confiança não aprovada, ou invalidada por mudança no hook | `codex --profile aidw` num terminal → "Trust all and continue"; o `doctor` mostra o estado |
 | O agente segue regras do orquestrador | `CLAUDE.md` do modo projeto carregado no agente | Já tratado com `omitClaudeMd`/`claudeMdExcludes` |
 | `dubious ownership` num agente Codex | Repositório fora das pastas liberadas | Acrescente a pasta à config e rode `apply` |
 | `MCP figma precisa de autenticação` | OAuth não feito | Claude: `/mcp` → figma → Authenticate · Codex: `codex mcp login figma` |
