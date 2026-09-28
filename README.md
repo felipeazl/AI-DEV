@@ -112,6 +112,7 @@ Abra um chat — de preferência na pasta do repositório — e chame:
 /aidw:orquestrar 1234              ← a demanda (id do card, link ou descrição)
 /aidw:orquestrar                   ← sem argumento: retoma a demanda desta pasta (ou pergunta qual)
 /aidw:sair                         ← grava onde parou e devolve o chat ao modo normal
+/aidw:done                         ← fecha a tarefa: grava no contexto o que ela ensinou e faz commit e push dele
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, entra nele e
@@ -170,6 +171,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 |---|---|
 | `/aidw:orquestrar [demanda]` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
 | `/aidw:sair` | Grava a etapa e o próximo passo da demanda (`paused`) e volta o chat ao normal |
+| `/aidw:done` | Fecha a tarefa. Grava no contexto ativo só o que foi verificado e vale para as próximas demandas: build, bloqueios de ambiente e como destravar, dependências, armadilhas, convenções. Depois valida, reinstala, faz commit e push **só do repositório do contexto**, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal. |
 | `/aidw:contexto-listar` | Mostra os contextos, qual está ativo, repositório (git próprio, remoto só pelo host), sistemas e se o plugin está instalado |
 | `/aidw:contexto-usar <nome>` | Valida e ativa um contexto (regenera o ambiente e o plugin com as regras dele); avisa se há demanda ativa |
 | `/aidw:contexto-criar` | Cria um contexto novo: análise criteriosa dos repositórios indicados e **no mínimo 10 perguntas**, gera e valida (seção 7) |
@@ -191,7 +193,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `context list` · `check <nome>` · `use [<nome>]` · `create <nome> --description d` | Contextos: lista, valida, ativa (troca só a linha `active`), cria a estrutura com git próprio |
 | `project detect [--path p] [--json]` | Repositório principal, sistema do contexto e demanda de uma pasta |
 | `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n]` · `show <id>` · `list [--active]` | Estado da demanda para retomar (`demand.json`, com histórico das etapas) |
-| `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch `<prefixo><número>-<slug>`, junctions de `packages`/`node_modules` (idempotente) |
+| `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch `<prefixo><número>-<slug>`, junctions de `packages`/`node_modules` e das pastas vizinhas do `worktree_link` do sistema (idempotente) |
 | `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação dos worktrees; `remove` só com worktree limpo e publicado (mantém a branch); `cleanup` tira do registro o que sumiu |
 | `record --agent <a> --level <n> --label <x> --demand <pasta> --state <s> (--tokens --tool-uses --duration-ms \| --codex-task <t>)` | Registra uma delegação nativa no `metricas.md` e imprime cabeçalho e resumo (usado pelo orquestrador) |
 | `delegate --agent <a> --effort <e> --level <n> --task <arq> --demand <pasta>` | Roda um agente headless para uma tarefa (modo headless) |
@@ -233,6 +235,7 @@ Procedimentos que o orquestrador e os agentes seguem (no plugin, `aidw:<skill>`)
 |---|---|---|
 | `orquestrar` / `sair` | você | Entrar e sair do modo orquestrador (seção 3) |
 | `contexto-listar` / `contexto-usar` / `contexto-criar` | você | Administração dos contextos (seção 7) |
+| `done` | você, ao terminar uma tarefa | Leva para o contexto o que a demanda ensinou, com commit e push do contexto |
 | `to-spec` | orquestrador | Transforma o pedido num plano de execução persistente e depois em tickets autocontidos |
 | `verificar-premissa` | orquestrador, revisor, especialistas | Exige evidência antes de aceitar "não dá para corrigir aqui", "cobre todos os casos", "é a convenção" |
 | `preparar-worktree` | orquestrador, codificador | Cria, confere e remove o worktree da demanda com `aidw.py worktree` |
@@ -283,6 +286,14 @@ contexts/<nome>/
   `diff-*.patch`, `review-*`, `triagem-*`, `checklist-revisao.md`, `metricas.md`, `revisao-final.md`.
 - **Worktree:** `<[worktree] root>/<repo>/<demanda>` (padrão `C:/wt`), branch `<prefixo do contexto><número>-<slug>`
   a partir da base do plano, com junctions de `packages/` e `node_modules/`. Registro em `state/worktrees.json`.
+  Dois repositórios com o mesmo nome (ex.: `ProjetosLegados/Hope` e `ProjetosTFS/Hope`) não dividem a pasta: o
+  que chegar depois fica em `<root>/<repo>.<pasta-mãe>/<demanda>`.
+- **Pastas vizinhas:** o código às vezes alcança outro repositório por caminho relativo, como o HintPath
+  `..\..\eCommerce\...\bin\x.dll`. Para isso, o sistema pode listar `worktree_link = ["../eCommerce"]` no `context.toml`.
+  - O `worktree create` cria, ao lado do worktree, uma junction com o mesmo caminho relativo para o que ele resolve a
+    partir do working copy principal (ex.: `C:/wt/Hope/eCommerce` → `C:/ProjetosLegados/eCommerce`).
+  - Essas junctions ficam na raiz dos worktrees e são compartilhadas entre os worktrees do mesmo repositório.
+  - O `remove` não mexe nelas.
 - **Retomar:** `/aidw:orquestrar` sem argumento na pasta do worktree (ou do repositório) acha a demanda e continua
   da etapa gravada. Depois de uma compactação da conversa, um hook lembra o orquestrador de reler as regras.
 - **Limpar:** `aidw.py worktree remove <id>` só remove worktree sem alteração local e com commits publicados;
@@ -365,7 +376,7 @@ arquivo gerado alterado à mão faz o `install` parar (a não ser com `--force`)
 | | Claude | Codex |
 |---|---|---|
 | Em qualquer pasta | ✅ plugin `aidw` (`install`) | ✅ `install --provider codex` + perfil `aidw` |
-| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:sair` | `$aidw-orquestrar`, `$aidw-sair` |
+| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:sair`, `/aidw:done` | `$aidw-orquestrar`, `$aidw-sair`, `$aidw-done` |
 | Agentes | `aidw:<agente>`, uma variante por effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Abrir/retomar demanda | ✅ | ✅ |
 | Entrar no worktree | ✅ `EnterWorktree` + hook | pelo caminho absoluto; `aidw open --provider codex --demand <id>` abre o Codex nele |

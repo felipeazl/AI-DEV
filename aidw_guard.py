@@ -24,8 +24,8 @@ SESSIONS = ROOT / "state" / "sessions.json"
 RUNTIME = ROOT / ".aidw" / "runtime.json"
 MARKETPLACE = ROOT / ".aidw" / "marketplace"
 CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
-# Claude: /aidw:orquestrar · Codex: $aidw-orquestrar
-MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(orquestrar|sair)\b(.*)", re.S)
+# Claude: /aidw:orquestrar · Codex: $aidw-orquestrar; sair e done encerram o modo
+MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(orquestrar|sair|done)\b(.*)", re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
 
 

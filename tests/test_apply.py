@@ -257,6 +257,10 @@ class InstallTest(unittest.TestCase):
             self.assertIn(f"{(root / '.aidw' / 'marketplace' / base / 'reference').as_posix()}/etapa.md", orq)
             self.assertIn("[AiDW]", files[f"{base}/agents/codificador.md"].decode("utf-8"))
             self.assertIn("[AiDW]", files[f"{base}/skills/skill-exemplo/SKILL.md"].decode("utf-8"))
+            done = files[f"{base}/skills/done/SKILL.md"].decode("utf-8")
+            self.assertIn("disable-model-invocation: true", done, "/aidw:done só quando o usuário chamar")
+            self.assertIn(f'python "{root.as_posix()}/aidw.py" context check', done)
+            self.assertNotIn("aidw: admin", done)
             data = json.loads(settings.read_text(encoding="utf-8"))
             self.assertEqual(data["theme"], "dark")
             self.assertIn("Bash(rm -rf *)", data["permissions"]["deny"])
@@ -435,6 +439,52 @@ class WorktreeTest(unittest.TestCase):
             code, listed = self.aidw_json(root, "worktree", "list", "--json")
             self.assertEqual(listed["worktrees"], [])
 
+    def test_worktree_link_de_pastas_vizinhas(self) -> None:
+        """`worktree_link` do sistema: o caminho relativo que o código usa (HintPath `..\\..\\X`) vira junction ao
+        lado do worktree; fora da raiz dos worktrees é recusado; o remove não apaga a junction compartilhada."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            repo = self.make_repo(tmp)
+            (tmp / "repos" / "Vizinho" / "bin").mkdir(parents=True)
+            (tmp / "repos" / "Vizinho" / "bin" / "lib.dll").write_text("dll\n", encoding="utf-8")
+            with open(root / "contexts" / "exemplo" / "context.toml", "a", encoding="utf-8") as f:
+                f.write(f'\n[systems.app]\nname = "App"\nrepos = ["{repo.as_posix()}"]\n'
+                        'worktree_link = ["../Vizinho", "../../fora", "../../../escapa"]\n')
+            code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-5", "--json")
+            self.assertEqual(code, 0, wt)
+            self.assertEqual(wt["system"], "app")
+            self.assertEqual(wt["outside_links"], ["../Vizinho"])
+            vizinho = tmp / "wt" / "Aplicação" / "Vizinho"
+            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o HintPath ..\\Vizinho resolve a partir do worktree")
+            self.assertTrue(any("não existe" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertTrue(any("ignorado" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertFalse((tmp / "escapa").exists(), "nunca cria junction fora da raiz dos worktrees")
+            code, wt2 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-6", "--json")
+            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "reaproveita a junction de outro worktree")
+            (tmp / "outra").mkdir()
+            os.rmdir(vizinho)  # remove só a junction
+            load_aidw(root).make_link(vizinho, tmp / "outra")
+            code, wt3 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
+            self.assertEqual(wt3["outside_links"], [], "junction para outro lugar não é reaproveitada")
+            self.assertTrue(any("outro lugar" in w for w in wt3["warnings"]), wt3["warnings"])
+            os.rmdir(vizinho)
+            load_aidw(root).make_link(vizinho, tmp / "repos" / "Vizinho")
+
+            homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: ProjetosTFS/Hope x Legados/Hope)
+            homonimo.mkdir(parents=True)
+            git(homonimo, "init", "-q", "-b", "main")
+            (homonimo / "b.txt").write_text("b\n", encoding="utf-8")
+            git(homonimo, "add", ".")
+            git(homonimo, "commit", "-q", "-m", "inicial")
+            code, wt4 = self.aidw_json(root, "worktree", "create", "--repo", str(homonimo), "--demand", "us-5", "--json")
+            self.assertEqual(code, 0, wt4)
+            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "Aplicação.outros" / "us-5", "não invade a pasta do homônimo")
+            code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(repo), "--json")
+            self.assertEqual(code, 0, done)
+            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o remove não toca a junction compartilhada")
+            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file())
+
     def test_status_e_open(self) -> None:
         """F7: `status` junta demanda ativa e worktree e aponta o que pede atenção; `open --demand` abre no worktree
         chamando o orquestrador (só se o AiDW está instalado naquele provedor)."""
@@ -581,6 +631,9 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("aidw-orquestrar/SKILL.md", ctx_codex)
             self.assertIn("$aidw-sair", ctx_codex)
             self.assertEqual(hook({**base, "hook_event_name": "SessionStart", "source": "resume"}), "")
+            hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-done"})
+            self.assertEqual(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}), "",
+                             "o done fecha a tarefa e encerra o modo orquestrador, como o sair")
 
 
     def test_contexto_e_arquivo_corrompido(self) -> None:
@@ -727,6 +780,11 @@ class CodexInstallTest(unittest.TestCase):
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
+            done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-done", done)
+            self.assertNotIn("disable-model-invocation", done, "chave do Claude; no Codex vale o openai.yaml")
+            self.assertIn("allow_implicit_invocation: false", (skills / "aidw-done" / "agents" / "openai.yaml").read_text())
+            self.assertFalse((skills / "aidw-to-spec" / "agents" / "openai.yaml").exists())
             self.assertIn("forbidden", (home / "rules" / "aidw.rules").read_text(encoding="utf-8"))
             profile = (home / "aidw.config.toml").read_text(encoding="utf-8")
             self.assertIn("multi_agent_v2 = true", profile)

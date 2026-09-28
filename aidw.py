@@ -1015,7 +1015,9 @@ def systems_section(ctx: dict | None, detailed: bool) -> str:
         return ""
     lines = ["## Systems", "",
              "Where each system lives and how to validate it. Use these commands as given; do not "
-             "search for other build tools.", ""]
+             "search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is "
+             "none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, "
+             "events) in that repo before planning.", ""]
     for key, s in systems.items():
         lines.append(f"### {s.get('name', key)} (`{key}`)")
         if s.get("repos"):
@@ -1024,8 +1026,7 @@ def systems_section(ctx: dict | None, detailed: bool) -> str:
             lines.append(f"- Stack: {s['stack']}")
         if s.get("depends_on"):
             deps = ", ".join(f"`{d}`" for d in s["depends_on"])
-            lines.append(f"- Depends on: {deps} — when a change consumes one of these, inspect its "
-                         "contract (endpoints, enums, events) in that repo before planning")
+            lines.append(f"- Depends on: {deps}")
         if s.get("build"):
             lines.append(f"- Build: `{s['build']}`")
         if s.get("test"):
@@ -1954,7 +1955,8 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         f"<!-- {GENERATED_MARK} install; não edite: altere as fontes e rode `python aidw.py install`. -->", "",
         "# Modo orquestrador AiDW", "",
         f"A partir desta mensagem você é o orquestrador AiDW nesta sessão, até o usuário chamar "
-        f"`{leave}` ou pedir para parar. Pedido do usuário (pode estar vazio): " +
+        f"`{leave}`, fechar a tarefa com `{'$aidw-done' if codex else '/' + plugin + ':done'}` ou pedir para parar. "
+        "Pedido do usuário (pode estar vazio): " +
         ("o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"), "",
         f"Depois de uma compactação da conversa, releia `{skill_path.as_posix()}` antes de continuar.", "",
         "## Ao ser chamado: abrir ou retomar a demanda", "",
@@ -2516,7 +2518,11 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     for e in reg["worktrees"]:
         if e["demand"] == demand and norm_path(e["repo"]) == norm_path(main) and Path(e["path"]).is_dir():
             return {"ok": True, "created": False, **e}
-    path = worktree_root(cfg) / main.name / demand
+    folder = main.name
+    if any(Path(e["repo"]).name.lower() == folder.lower() and norm_path(e["repo"]) != norm_path(main)
+           for e in reg["worktrees"]):  # ex.: ProjetosLegados/Hope e ProjetosTFS/Hope: um não invade o outro
+        folder = f"{main.name}.{main.parent.name}"
+    path = worktree_root(cfg) / folder / demand
     if path.exists():
         return {"ok": False, "error": f"{path.as_posix()} já existe e não está no registro do AiDW; confira e remova à mão"}
     wt_cfg = ctx.get("worktree", {}) if ctx else {}
@@ -2556,15 +2562,47 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
         return {"ok": False, "error": f"falha ao criar a junction de dependências ({exc}); " + (
             f"o worktree recém-criado foi desfeito (a branch {branch} ficou, sem commits novos)" if undone else
             f"e não foi possível desfazer o worktree {path.as_posix()}: remova à mão (git worktree remove)")}
+    system = system_for(ctx, main.as_posix())
+    outside = link_outside(cfg, ctx, system, main, path, warnings)
     entry = {"demand": demand, "repo": main.as_posix(), "path": path.as_posix(), "branch": branch, "base": base,
-             "links": links, "status": "active", "context": ctx["name"] if ctx else None,
-             "system": system_for(ctx, main.as_posix()),
-             "created_at": datetime.now().isoformat(timespec="seconds")}
+             "links": links, "outside_links": outside, "status": "active", "context": ctx["name"] if ctx else None,
+             "system": system, "created_at": datetime.now().isoformat(timespec="seconds")}
     reg["worktrees"].append(entry)
     save_registry(reg)
     demand_file = update_demand_file(ctx, demand, {k: entry[k] for k in ("repo", "path", "branch", "base", "system")})
     return {"ok": True, "created": True, "main_dirty": main_dirty, "warnings": warnings,
             "demand_file": demand_file.as_posix(), **entry}
+
+
+def link_outside(cfg: dict, ctx: dict | None, system: str | None, main: Path, path: Path, warnings: list) -> list[str]:
+    """`worktree_link` do sistema: pastas vizinhas que o código alcança por caminho relativo (ex.: HintPath
+    `..\\..\\eCommerce\\...\\bin\\x.dll`). O mesmo caminho relativo, a partir do worktree, vira junction para o que ele
+    resolve a partir do working copy principal. Ficam na raiz dos worktrees, compartilhadas, e o `remove` não as
+    toca (estão fora do worktree)."""
+    made = []
+    rels = (ctx or {}).get("systems", {}).get(system or "", {}).get("worktree_link", [])
+    for rel in rels:
+        src, dst = Path(os.path.normpath(main / rel)), Path(os.path.normpath(path / rel))
+        if norm_path(src) == norm_path(main):
+            continue  # a lista vale para todos os repositórios do sistema; o próprio repositório não se liga
+        if not path_inside(dst, worktree_root(cfg)) or path_inside(dst, path) or path_inside(src, main):
+            warnings.append(f"worktree_link {rel!r} ignorado: precisa sair do repositório e ficar na raiz dos worktrees")
+        elif not src.is_dir():
+            warnings.append(f"worktree_link {rel!r}: {src.as_posix()} não existe; o build pode não achar essa dependência")
+        elif is_link(dst) and norm_path(os.path.realpath(dst)) == norm_path(os.path.realpath(src)):
+            made.append(rel)  # já criada por outro worktree do mesmo repositório
+        elif is_link(dst):  # aponta para outro lugar (config antiga, outro repositório) ou para nada
+            warnings.append(f"worktree_link {rel!r}: {dst.as_posix()} é junction para outro lugar; confira e remova à "
+                            f"mão para ela apontar para {src.as_posix()}")
+        elif dst.exists():
+            warnings.append(f"worktree_link {rel!r}: {dst.as_posix()} já existe e não é junction; nada foi feito")
+        else:
+            try:
+                make_link(dst, src)
+                made.append(rel)
+            except (OSError, subprocess.CalledProcessError) as exc:
+                warnings.append(f"worktree_link {rel!r}: falha ao criar a junction ({exc})")
+    return made
 
 
 def worktree_state(e: dict) -> dict:
@@ -2698,7 +2736,8 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
         return 1
     if action == "create":
         print(f"[ok]    worktree {'criado' if result['created'] else 'já existente'}: {result['path']}")
-        print(f"        branch {result['branch']} (base {result['base']}); junctions: {', '.join(result['links']) or 'nenhuma'}")
+        print(f"        branch {result['branch']} (base {result['base']}); junctions: "
+              f"{', '.join(result['links'] + result.get('outside_links', [])) or 'nenhuma'}")
         for w in result.get("warnings", []):
             print(f"[aviso] {w}")
     elif action == "remove":
@@ -2801,7 +2840,7 @@ CODEX_NO_IMPLICIT = "policy:\n  allow_implicit_invocation: false\n"  # agents/op
 
 def codex_skill_copy(text: str, name: str) -> str:
     """SKILL.md para o Codex: nome `aidw-<nome>`, aviso do AiDW e {{root}} resolvido."""
-    text = guard_skill(text)
+    text = re.sub(r"(?m)^disable-model-invocation:.*\n", "", guard_skill(text), count=1)  # no Codex: agents/openai.yaml
     return re.sub(r"(?m)^name:\s*.*$", f"name: {CODEX_NS}{name}", text, count=1)
 
 
@@ -2902,6 +2941,8 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 if f.name == "SKILL.md":
                     data = codex_skill_copy(data.decode("utf-8"), name).encode("utf-8")
                 files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / f.relative_to(src)] = data
+        if read_frontmatter(src / "SKILL.md")[0].get("disable-model-invocation") == "true":  # só quando chamada
+            files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     orq = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar"
     files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
                                                  provider="codex").encode("utf-8")
