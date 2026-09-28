@@ -435,6 +435,63 @@ class WorktreeTest(unittest.TestCase):
             code, listed = self.aidw_json(root, "worktree", "list", "--json")
             self.assertEqual(listed["worktrees"], [])
 
+    def test_status_e_open(self) -> None:
+        """F7: `status` junta demanda ativa e worktree e aponta o que pede atenção; `open --demand` abre no worktree
+        chamando o orquestrador (só se o AiDW está instalado naquele provedor)."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            repo = self.make_repo(tmp)
+            code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-1", "--json")
+            self.assertEqual(code, 0, wt)
+            self.aidw_json(root, "demand", "set", "us-1", "--step", "IMPLEMENT", "--title", "Teste")
+            code, st = self.aidw_json(root, "status", "--json")
+            self.assertEqual(code, 0, st)
+            self.assertEqual([(d["id"], d["step"]) for d in st["demands"]], [("us-1", "IMPLEMENT")])
+            w = st["demands"][0]["worktrees"][0]
+            self.assertEqual((w["path"], w["dirty"], w["ahead"]), (wt["path"], False, 0))
+            self.assertFalse(st["claude"]["installed"])
+            self.assertEqual(st["attention"], [])
+
+            code, out = self.aidw_json(root, "open", "--demand", "1", "--print")
+            self.assertEqual(code, 0, out)
+            self.assertIn(f"Abrindo claude em {Path(wt['path'])}", out)
+            self.assertIn("não está instalado", out)
+            self.assertNotIn("orquestrar", out.strip().splitlines()[-1], "sem o plugin, o comando não existe")
+            manifest = root / ".aidw" / "install-manifest.json"
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            manifest.write_text(json.dumps({"plugins": ["aidw@aidw-local"], "context": "exemplo", "codex": {"files": {}}}),
+                                encoding="utf-8")
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--print")
+            self.assertIn('"/aidw:orquestrar us-1"', out)
+            self.assertIn("--add-dir", out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--provider", "codex", "--print")
+            self.assertIn("--profile aidw -C", out)
+            self.assertIn('"$aidw-orquestrar us-1"', out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--no-orchestrate", "--print")
+            self.assertNotIn("orquestrar", out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-9", "--print")
+            self.assertEqual(code, 1)
+
+            self.aidw_json(root, "demand", "set", "us-1", "--status", "done")
+            (Path(wt["path"]) / "app.txt").write_text("v2\n", encoding="utf-8")
+            code, st = self.aidw_json(root, "status", "--json")
+            self.assertEqual(st["demands"], [])
+            self.assertEqual(len(st["attention"]), 1, st["attention"])
+            self.assertIn("não commitadas", st["attention"][0])
+            git(Path(wt["path"]), "checkout", "--", "app.txt")
+            code, st = self.aidw_json(root, "status", "--json")
+            self.assertIn("worktree remove us-1", st["attention"][0])
+            code, text = self.aidw_json(root, "status")
+            self.assertEqual(code, 0, text)
+            self.assertIn("Demandas ativas (0)", text)
+            (root / "contexts" / "exemplo" / "demandas" / "us-1" / "demand.json").unlink()
+            code, st = self.aidw_json(root, "status", "--json")
+            self.assertIn("sem demand.json", st["attention"][0], "worktree sem demand.json não pode sumir do status")
+            manifest.write_text(json.dumps({"plugins": ["aidw@aidw-local"], "context": "exemplo", "cli_done": False}),
+                                encoding="utf-8")
+            code, text = self.aidw_json(root, "status")
+            self.assertIn("a última instalação parou", text, "instalação incompleta não é 'em dia'")
 
     def test_cenarios_de_criacao_e_deteccao(self) -> None:
         """Critérios de saída da F4: subpasta, fora do git, branch existente, branch usada por outro worktree,

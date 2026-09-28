@@ -1943,7 +1943,8 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                  "gravável (sessão aberta sem o "
                  f"perfil `{CODEX_PROFILE_NAME}`), peça ao usuário para reabrir com `{aidw} open --provider codex "
                  "--demand <id>`." if codex else
-                 "6. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda.")
+                 "6. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda — "
+                 "exceto se a sessão já abriu dentro dele (`demand` no `project detect`, ex.: `aidw open --demand`).")
     description = (f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
                    "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
     return "\n".join([
@@ -2714,7 +2715,7 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
                 state = "órfão (pasta sumiu — rode `worktree cleanup`)"
             else:
                 state = ("com alterações" if e["dirty"] else "limpo") + f", {e['ahead']} à frente da base" + \
-                        (" (publicado)" if e["published"] else "")
+                        (" (publicado)" if e["ahead"] and e["published"] else "")
             print(f"  {e['demand']:<14} {e['path']:<50} {e['branch']:<40} {state}")
     return 0
 
@@ -3084,32 +3085,158 @@ def check_codex_install(rep: Report) -> None:
                  "\"Trust all and continue\"")
 
 
-def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool) -> int:
-    """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw`."""
+def demand_worktrees(demand: str) -> list[dict]:
+    """Worktrees ativos da demanda; `1234` também acha `us-1234`/`bug-1234`."""
+    demand = demand.strip().lower()
+    return [e for e in load_registry()["worktrees"] if e["status"] == "active" and
+            (e["demand"] == demand or (demand.isdigit() and e["demand"].endswith("-" + demand)))]
+
+
+def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True) -> int:
+    """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
+    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão)."""
     target = Path(path).resolve() if path else Path.cwd()
-    folder = None
+    folder = prompt = None
     if demand:
-        hits = [e for e in load_registry()["worktrees"] if e["demand"] == demand and e["status"] == "active"]
+        hits = demand_worktrees(demand)
         if len(hits) != 1:
             print(f"[erro]  {'nenhum' if not hits else 'mais de um'} worktree ativo para a demanda {demand!r} "
                   "(`aidw.py worktree list`)")
             return 1
-        target = Path(hits[0]["path"])
+        demand, target = hits[0]["demand"], Path(hits[0]["path"])
         folder = state_dir(load_context(cfg, Report(quiet=True))) / demand
-    exe = shutil.which(provider)
+        manifest = load_manifest()
+        installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
+        if orchestrate and installed:
+            prompt = f"$aidw-orquestrar {demand}" if provider == "codex" else f"/{plugin_name()}:orquestrar {demand}"
+        elif orchestrate:
+            print(f"[aviso] o AiDW não está instalado no {provider} (`aidw.py install --provider {provider}`): "
+                  "abrindo sem chamar o orquestrador")
+    exe = shutil.which(provider) or (provider if print_only else None)
     if not exe:
         print(f"[erro]  CLI `{provider}` não encontrado")
         return 1
     if provider == "codex":
         cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
-        if folder:
-            cmd += ["--add-dir", str(folder)]
     else:
         cmd = [exe]
-    print(f"Abrindo {provider} em {target}: {' '.join(Path(cmd[0]).stem if i == 0 else c for i, c in enumerate(cmd))}")
+    if folder:
+        cmd += ["--add-dir", str(folder)]
+    if prompt:
+        cmd.append(prompt)
+    print(f"Abrindo {provider} em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
     if print_only:
         return 0
     return subprocess.run(cmd, cwd=target).returncode
+
+
+# ---------------------------------------------------------------------------
+# Visão geral: aidw.py status
+# ---------------------------------------------------------------------------
+
+def status_data(cfg: dict, catalog: dict) -> dict:
+    """Retrato rápido (sem chamar os CLIs): contexto, instalação, demandas ativas com o worktree de cada uma e o
+    que pede atenção. O diagnóstico completo é o `doctor`."""
+    ctx = load_context(cfg, Report(quiet=True))
+    manifest = load_manifest()
+    claude = {"installed": bool(manifest.get("plugins"))}
+    if claude["installed"]:
+        plug = build_plugin(cfg, catalog, Report(quiet=True)) if cfg["provider"]["name"] == "claude" else None
+        claude.update(version=manifest.get("version"), sources=plug["version"] if plug else None,
+                      cli=installed_plugins().get(manifest["plugins"][-1], "") if manifest.get("cli", True) else None,
+                      cli_done=manifest.get("cli_done", True), context=manifest.get("context"))
+    codex = {"installed": bool(manifest.get("codex"))}
+    if codex["installed"]:
+        files = manifest["codex"].get("files", {})
+        codex.update(files=len(files), missing=sum(not Path(k).is_file() for k in files),
+                     hooks_trusted=codex_hooks_trusted())
+    reg = load_registry()["worktrees"]
+    demands = demand_list(cfg, active_only=True)
+    known = {d["id"] for d in demand_list(cfg)}
+    for d in demands:
+        d["worktrees"] = [{**e, **worktree_state(e)} for e in reg if e["status"] == "active" and e["demand"] == d["id"]]
+    attention = []
+    active_ids = {d["id"] for d in demands}
+    for e in reg:
+        if e["status"] != "active" or e["demand"] in active_ids:
+            continue
+        state = worktree_state(e)
+        if not state["exists"]:
+            attention.append(f"worktree órfão de {e['demand']} (a pasta sumiu): `aidw.py worktree cleanup`")
+        elif e["demand"] in known:
+            pending = state.get("error") or ("tem alterações não commitadas" if state["dirty"] else
+                                             "tem commits não publicados" if state["ahead"] and not state["published"]
+                                             else "")
+            attention.append(f"worktree da demanda concluída {e['demand']} ({e['path']}) " +
+                             (f"{pending}: confira antes de remover" if pending else
+                              f"pode sair: `aidw.py worktree remove {e['demand']}`"))
+        elif e.get("context") == (ctx["name"] if ctx else None):
+            attention.append(f"worktree de {e['demand']} ({e['path']}) sem demand.json: "
+                             f"`aidw.py demand set {e['demand']} --status active` ou `worktree remove`")
+    if claude["installed"] and ctx and claude.get("context") != ctx["name"]:
+        attention.append(f"o plugin foi instalado com o contexto {claude.get('context')!r} e o ativo é {ctx['name']!r}: "
+                         "`aidw.py install`")
+    return {"context": {"name": ctx["name"], "description": ctx["description"]} if ctx else None,
+            "state_dir": state_dir(ctx).as_posix(), "claude": claude, "codex": codex, "demands": demands,
+            "attention": attention}
+
+
+def status_command(cfg: dict, catalog: dict, as_json: bool) -> int:
+    data = status_data(cfg, catalog)
+    if as_json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    ctx = data["context"]
+    print(f"AiDW — contexto {ctx['name']}: {ctx['description']}" if ctx else "AiDW — sem contexto ativo")
+    rep = Report()
+    heading("Instalação")
+    c = data["claude"]
+    if not c["installed"]:
+        rep.info("Claude: não instalado em qualquer pasta (`aidw.py install`)")
+    elif c.get("cli") is not None and not c["cli_done"]:
+        rep.warn("Claude: a última instalação parou no Claude Code (plugin ou MCP): `aidw.py install`")
+    elif c.get("sources") and c["sources"] != c["version"]:
+        rep.warn(f"Claude: as fontes mudaram desde a instalação ({c['version']} → {c['sources']}): `aidw.py install`")
+    elif c.get("cli") is not None and c["cli"] != c["version"]:
+        rep.warn(f"Claude: o Claude tem o plugin {c['cli'] or '(ausente)'} e o gerado é {c['version']}: `aidw.py install`")
+    else:
+        rep.ok(f"Claude: plugin {plugin_name()} {c['version']}, em dia")
+    x = data["codex"]
+    if not x["installed"]:
+        rep.info("Codex: não instalado (`aidw.py install --provider codex`)")
+    elif x["missing"]:
+        rep.warn(f"Codex: {x['missing']} de {x['files']} arquivos do AiDW sumiram: `aidw.py install --provider codex`")
+    elif x["hooks_trusted"] is None:
+        rep.warn(f"Codex: os hooks do AiDW sumiram de {CODEX_HOOKS_FILE}: `aidw.py install --provider codex`")
+    elif x["hooks_trusted"] is False:
+        rep.warn(f"Codex: instalado, hooks ainda não aprovados (abra `codex --profile {CODEX_PROFILE_NAME}` no terminal)")
+    else:
+        rep.ok(f"Codex: {x['files']} arquivos, hooks aprovados")
+    heading(f"Demandas ativas ({len(data['demands'])})")
+    if not data["demands"]:
+        print(f"  nenhuma em {data['state_dir']}")
+    for d in data["demands"]:
+        print(f"  {d['id']:<16} {d['status'] or '—':<7} {d['step'] or '—':<15} {(d['updated'] or '')[:16]:<17} {d['title']}")
+        if d.get("note"):
+            print(f"  {'':<16} nota: {d['note']}")
+        for w in d["worktrees"]:
+            if not w["exists"]:
+                state = "a pasta sumiu"
+            elif w.get("error"):
+                state = w["error"]
+            else:
+                state = ("com alterações" if w["dirty"] else "limpo") + f", {w['ahead']} commit(s) à frente da base" + \
+                        (" (publicado)" if w["ahead"] and w["published"] else "")
+            print(f"  {'':<16} {w['path']} ({w['branch']}): {state}")
+        if not d["worktrees"]:
+            print(f"  {'':<16} sem worktree (só leitura ou ainda não criado)")
+    if data["attention"]:
+        heading("Atenção")
+        for a in data["attention"]:
+            rep.warn(a)
+    if data["demands"]:
+        print("\nRetomar: `aidw.py open --demand <id>` (Claude) ou `--provider codex`.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -4156,6 +4283,9 @@ def main() -> int:
     p_open.add_argument("--demand", help="id da demanda: abre no worktree dela")
     p_open.add_argument("--path", help="pasta (padrão: a atual)")
     p_open.add_argument("--print", action="store_true", help="só mostra o comando")
+    p_open.add_argument("--no-orchestrate", action="store_true", help="com --demand: abre sem chamar o orquestrador")
+    p_status = sub.add_parser("status", help="visão rápida: instalação, demandas ativas, worktrees e pendências")
+    p_status.add_argument("--json", action="store_true")
     p_wt = sub.add_parser("worktree", help="worktree por demanda: create, list, inspect, remove, cleanup")
     wt = p_wt.add_subparsers(dest="wt_action", required=True)
     w_create = wt.add_parser("create", help="cria (ou devolve) o worktree da demanda num repositório")
@@ -4303,7 +4433,10 @@ def main() -> int:
             ok = uninstall(args.dry_run, args.skip_cli) and ok
         return 0 if ok else 1
     if command == "open":
-        return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print)
+        return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print,
+                            not args.no_orchestrate)
+    if command == "status":
+        return status_command(cfg, catalog, args.json)
     if command == "doctor":
         return 0 if doctor(cfg, catalog) else 1
     if command == "show":
