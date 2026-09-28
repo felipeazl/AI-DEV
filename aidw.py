@@ -1955,7 +1955,8 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         f"<!-- {GENERATED_MARK} install; não edite: altere as fontes e rode `python aidw.py install`. -->", "",
         "# Modo orquestrador AiDW", "",
         f"A partir desta mensagem você é o orquestrador AiDW nesta sessão, até o usuário chamar "
-        f"`{leave}` ou pedir para parar. Pedido do usuário (pode estar vazio): " +
+        f"`{leave}`, fechar a tarefa com `{'$aidw-done' if codex else '/' + plugin + ':done'}` ou pedir para parar. "
+        "Pedido do usuário (pode estar vazio): " +
         ("o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"), "",
         f"Depois de uma compactação da conversa, releia `{skill_path.as_posix()}` antes de continuar.", "",
         "## Ao ser chamado: abrir ou retomar a demanda", "",
@@ -2839,7 +2840,7 @@ CODEX_NO_IMPLICIT = "policy:\n  allow_implicit_invocation: false\n"  # agents/op
 
 def codex_skill_copy(text: str, name: str) -> str:
     """SKILL.md para o Codex: nome `aidw-<nome>`, aviso do AiDW e {{root}} resolvido."""
-    text = guard_skill(text)
+    text = re.sub(r"(?m)^disable-model-invocation:.*\n", "", guard_skill(text), count=1)  # no Codex: agents/openai.yaml
     return re.sub(r"(?m)^name:\s*.*$", f"name: {CODEX_NS}{name}", text, count=1)
 
 
@@ -2940,6 +2941,8 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 if f.name == "SKILL.md":
                     data = codex_skill_copy(data.decode("utf-8"), name).encode("utf-8")
                 files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / f.relative_to(src)] = data
+        if read_frontmatter(src / "SKILL.md")[0].get("disable-model-invocation") == "true":  # só quando chamada
+            files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     orq = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar"
     files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
                                                  provider="codex").encode("utf-8")
