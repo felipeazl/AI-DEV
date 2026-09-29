@@ -523,6 +523,35 @@ class WorktreeTest(unittest.TestCase):
             code, out = self.aidw_json(root, "open", "--demand", "us-9", "--print")
             self.assertEqual(code, 1)
 
+            # back e front na mesma demanda: abre no primeiro worktree criado e o outro entra por --add-dir
+            front = tmp / "repos" / "Front"
+            front.mkdir(parents=True)
+            git(front, "init", "-q", "-b", "main")
+            (front / "a.txt").write_text("a\n", encoding="utf-8")
+            git(front, "add", ".")
+            git(front, "commit", "-q", "-m", "inicial")
+            code, wtf = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "us-1", "--json")
+            self.assertEqual(code, 0, wtf)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--print")
+            self.assertEqual(code, 0, out)
+            self.assertIn(f"Abrindo claude em {Path(wt['path'])}", out)
+            self.assertIn(f"--add-dir {Path(wtf['path'])}", out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Front", "--print")
+            self.assertIn(f"Abrindo claude em {Path(wtf['path'])}", out)
+            self.assertIn(f"--add-dir {Path(wt['path'])}", out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Nenhum", "--print")
+            self.assertEqual(code, 1, out)
+            code, wtb = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "bug-1",
+                                       "--slug", "outro", "--json")
+            self.assertEqual(code, 0, wtb)
+            code, out = self.aidw_json(root, "open", "--demand", "1", "--print")
+            self.assertEqual(code, 1, "1 casa us-1 e bug-1: não escolhe")
+            self.assertIn("mais de uma demanda", out)
+            for demand in ("us-1", "bug-1"):
+                code, rm = self.aidw_json(root, "worktree", "remove", demand, "--repo", str(front), "--json")
+                self.assertEqual(code, 0, rm)
+            self.aidw_json(root, "demand", "set", "bug-1", "--status", "done")
+
             self.aidw_json(root, "demand", "set", "us-1", "--status", "done")
             (Path(wt["path"]) / "app.txt").write_text("v2\n", encoding="utf-8")
             code, st = self.aidw_json(root, "status", "--json")
@@ -578,9 +607,9 @@ class WorktreeTest(unittest.TestCase):
 
             # chat aberto na raiz do AiDW (também um repositório): entra no worktree que a demanda já tem
             git(root, "init", "-q", "-b", "main")
-            code, err = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(root)}))
-            self.assertEqual(code, 1, "us-7 tem worktree em dois repositórios: a raiz não escolhe")
-            self.assertIn("abra o chat no repositório certo", err)
+            code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(root)}))
+            self.assertEqual((code, Path(hook.strip())), (0, Path(wt["path"])),
+                             "us-7 tem worktree em dois repositórios: a raiz entra no primeiro criado")
             code, wt9 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-9", "--json")
             self.assertEqual(code, 0, wt9)
             code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-9", "cwd": str(root)}))

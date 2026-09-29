@@ -2717,13 +2717,10 @@ def worktree_hook_create() -> int:
     here = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])] if info else same
     at_root = bool(info) and norm_path(info["main"]) == norm_path(ROOT)
     if at_root and not here and same:
-        # chat aberto na raiz do AiDW, que nunca é repositório de demanda: entra no worktree que a demanda já tem.
-        # Em outro repositório, criar é o certo (demanda com mais de um repositório, `claude --worktree <id>`).
-        if len(same) > 1:
-            print(f"AiDW: a demanda {name} tem worktrees em {len(same)} repositórios e nenhum é o desta pasta; "
-                  "abra o chat no repositório certo ou use `aidw open --demand`", file=sys.stderr)
-            return 1
-        here = same
+        # chat aberto na raiz do AiDW, que nunca é repositório de demanda: entra no worktree que a demanda já tem
+        # (com vários, no primeiro criado; o orquestrador leva os outros pelo caminho absoluto). Em outro
+        # repositório, criar é o certo (demanda com mais de um repositório, `claude --worktree <id>`).
+        here = same[:1]
     same = here
     if len(same) == 1:  # criado antes pelo orquestrador (`worktree create`): a sessão só entra nele
         print(Path(same[0]["path"]))
@@ -3174,18 +3171,33 @@ def demand_worktrees(demand: str) -> list[dict]:
             (e["demand"] == demand or (demand.isdigit() and e["demand"].endswith("-" + demand)))]
 
 
-def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True) -> int:
+def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True,
+                 repo: str = "") -> int:
     """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
-    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão)."""
+    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão). Demanda com mais de
+    um repositório: a sessão abre no worktree de `--repo` (padrão: o primeiro criado) e os outros entram por
+    `--add-dir`."""
     target = Path(path).resolve() if path else Path.cwd()
     folder = prompt = None
+    extra: list[Path] = []
     if demand:
         hits = demand_worktrees(demand)
-        if len(hits) != 1:
-            print(f"[erro]  {'nenhum' if not hits else 'mais de um'} worktree ativo para a demanda {demand!r} "
-                  "(`aidw.py worktree list`)")
+        ids = sorted({e["demand"] for e in hits})
+        if not hits or len(ids) > 1:
+            print(f"[erro]  {'nenhum worktree ativo' if not hits else 'mais de uma demanda (' + ', '.join(ids) + ')'} "
+                  f"para {demand!r} (`aidw.py worktree list`)")
             return 1
-        demand, target = hits[0]["demand"], Path(hits[0]["path"])
+        main = hits[0]
+        if repo:
+            chosen = [e for e in hits if norm_path(e["repo"]) == norm_path(repo) or Path(e["repo"]).name.lower() ==
+                      Path(repo).name.lower()]
+            if len(chosen) != 1:
+                print(f"[erro]  a demanda {ids[0]} não tem um worktree só em {repo!r}; repositórios dela: "
+                      + ", ".join(e["repo"] for e in hits))
+                return 1
+            main = chosen[0]
+        extra = [Path(e["path"]) for e in hits if e is not main]
+        demand, target = main["demand"], Path(main["path"])
         folder = state_dir(load_context(cfg, Report(quiet=True))) / demand
         manifest = load_manifest()
         installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
@@ -3202,8 +3214,11 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
     else:
         cmd = [exe]
-    if folder:
-        cmd += ["--add-dir", str(folder)]
+    for d in [*extra, *([folder] if folder else [])]:
+        cmd += ["--add-dir", str(d)]
+    if extra:
+        print(f"[ok]    a demanda tem {len(extra) + 1} worktrees: a sessão abre em {target} e os outros entram por "
+              "--add-dir (troque com --repo)")
     if prompt:
         cmd.append(prompt)
     print(f"Abrindo {provider} em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
@@ -4371,6 +4386,8 @@ def main() -> int:
     p_open.add_argument("--path", help="pasta (padrão: a atual)")
     p_open.add_argument("--print", action="store_true", help="só mostra o comando")
     p_open.add_argument("--no-orchestrate", action="store_true", help="com --demand: abre sem chamar o orquestrador")
+    p_open.add_argument("--repo", help="com --demand de mais de um repositório: o worktree onde a sessão abre "
+                        "(caminho ou nome do repositório; padrão: o primeiro criado)")
     p_status = sub.add_parser("status", help="visão rápida: instalação, demandas ativas, worktrees e pendências")
     p_status.add_argument("--json", action="store_true")
     p_wt = sub.add_parser("worktree", help="worktree por demanda: create, list, inspect, remove, cleanup")
@@ -4522,7 +4539,7 @@ def main() -> int:
         return 0 if ok else 1
     if command == "open":
         return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print,
-                            not args.no_orchestrate)
+                            not args.no_orchestrate, args.repo or "")
     if command == "status":
         return status_command(cfg, catalog, args.json)
     if command == "doctor":

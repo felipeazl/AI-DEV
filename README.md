@@ -195,7 +195,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugin `aidw` e regras globais; `--mcp` registra os MCPs do catálogo. Codex: skills `aidw-*` em `~/.agents/skills`, agentes `aidw-*` em `~/.codex/agents`, `aidw.rules`, hooks no `hooks.json` (merge) e o perfil `aidw` |
 | `uninstall [--provider claude\|codex\|all] [--dry-run]` | Remove só o que o `install` acrescentou (padrão: os dois) |
 | `status [--json]` | Visão rápida, sem chamar os CLIs: contexto, instalação (Claude e Codex), demandas ativas com etapa e situação do worktree, e o que pede atenção (worktree de demanda concluída, órfão, plugin de outro contexto) |
-| `open [--provider claude\|codex] [--demand <id> \| --path <pasta>] [--no-orchestrate] [--print]` | Abre o CLI na pasta; com `--demand` (`1234` acha `us-1234`), no worktree dela, com a pasta da demanda liberada e já chamando o orquestrador (`/aidw:orquestrar <id>` ou `$aidw-orquestrar <id>`); o Codex com `--profile aidw` |
+| `open [--provider claude\|codex] [--demand <id> [--repo <repo>] \| --path <pasta>] [--no-orchestrate] [--print]` | Abre o CLI na pasta; com `--demand` (`1234` acha `us-1234`), no worktree dela (demanda com mais de um repositório: no primeiro criado ou no de `--repo`, e os outros entram por `--add-dir`), com a pasta da demanda liberada e já chamando o orquestrador (`/aidw:orquestrar <id>` ou `$aidw-orquestrar <id>`); o Codex com `--profile aidw` |
 | `doctor` | Verifica núcleo, os dois CLIs e o login, contexto, variáveis, MCPs, pastas, instalação global e ambiente gerado; termina com **PRONTO** ou **NÃO PRONTO** |
 | `show` | Nome, papel, modelo e effort de cada agente |
 | `chat` | Abre o orquestrador do modo projeto no CLI do provedor |
@@ -304,7 +304,7 @@ contexts/<nome>/
   - Essas junctions ficam na raiz dos worktrees e são compartilhadas entre os worktrees do mesmo repositório.
   - O `remove` não mexe nelas.
 - **Entrar no worktree:** o `EnterWorktree` com o id da demanda leva o chat para o worktree que o `worktree create`
-  fez. Num chat aberto na raiz do AiDW, ele entra no worktree da demanda (se ela tiver um só); num chat aberto em
+  fez. Num chat aberto na raiz do AiDW, ele entra no worktree da demanda (com vários, no primeiro criado); num chat aberto em
   outro repositório, ele cria o worktree desse repositório para a mesma demanda.
 - **Retomar:** `/aidw:orquestrar` sem argumento na pasta do worktree (ou do repositório) acha a demanda e continua
   da etapa gravada. Depois de uma compactação da conversa, um hook lembra o orquestrador de reler as regras.
