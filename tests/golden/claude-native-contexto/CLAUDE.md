@@ -99,7 +99,7 @@ whenever you stop for the user.
 ## Runtime
 
 - You are `orquestrador` — Orquestrador (role `orchestrator`), the main chat.
-- Your model: Claude Opus 5.5 (`claude-opus-5-5`, effort high)
+- Your model: Claude Opus (`claude-opus`, effort high)
 - Delegation mode: **native**
 - Provider: **Claude (Claude Code)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
@@ -111,13 +111,13 @@ whenever you stop for the user.
 
 | Agent | Display name | Role | Model | Default effort | Status |
 |---|---|---|---|---|---|
-| `codificador` | Codificador | coder | Claude Opus 5.5 (`claude-opus-5-5`) | medium | enabled |
-| `revisor` | Revisor | reviewer | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
-| `api` | API | api-db | Claude Sonnet 5 (`claude-sonnet-5`) | medium | enabled |
-| `qa` | QA | qa | Claude Sonnet 5 (`claude-sonnet-5`) | medium | disabled — do not delegate |
-| `documentador` | Documentador | documenter | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) | — | enabled |
-| `bugs` | Bugs | bug-hunter | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
-| `seguranca` | Seguranca | security | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
+| `codificador` | Codificador | coder | Claude Opus (`claude-opus`) | medium | enabled |
+| `revisor` | Revisor | reviewer | Claude Sonnet (`claude-sonnet`) | high | enabled |
+| `api` | API | api-db | Claude Sonnet (`claude-sonnet`) | medium | enabled |
+| `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | disabled — do not delegate |
+| `documentador` | Documentador | documenter | Claude Haiku (`claude-haiku`) | — | enabled |
+| `bugs` | Bugs | bug-hunter | Claude Sonnet (`claude-sonnet`) | high | enabled |
+| `seguranca` | Seguranca | security | Claude Sonnet (`claude-sonnet`) | high | enabled |
 
 ## How to delegate
 

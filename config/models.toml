@@ -6,7 +6,10 @@
 # Campos:
 #   name       nome legível
 #   provider   claude | codex
-#   model_id   ID passado ao CLI (`claude --model` / `codex -m`)
+#   model_id   ID passado ao CLI (`claude --model` / `codex -m`). No Claude é o apelido (opus, sonnet…),
+#              que o Claude Code resolve para o modelo mais novo da família que ele conhece; no Codex
+#              é o ID exato, porque o Codex não tem apelido.
+#   label      como o modelo aparece no cabeçalho, nas tabelas e no Runtime: a família, sem versão
 #   tiers      top | mid | fast — o wizard usa o tier para escolher o padrão de cada agente
 #              (Opus/Sonnet/Haiku no Claude; os equivalentes no Codex). Em cada tier vale o
 #              primeiro modelo do arquivo que estiver disponível para a conta.
@@ -20,34 +23,38 @@
 # --- Claude (Claude Code, login da assinatura) -----------------------------------------------
 
 [models.opus]
-name = "Claude Opus 5.5"
+name = "Claude Opus"
+label = "claude-opus"
 provider = "claude"
-model_id = "claude-opus-5-5"
+model_id = "opus"
 alias = "opus"
 tiers = ["top"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 min_cli = "2.1.280"
 
 [models.sonnet]
-name = "Claude Sonnet 5"
+name = "Claude Sonnet"
+label = "claude-sonnet"
 provider = "claude"
-model_id = "claude-sonnet-5"
+model_id = "sonnet"
 alias = "sonnet"
 tiers = ["mid"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
 [models.haiku]
-name = "Claude Haiku 4.5"
+name = "Claude Haiku"
+label = "claude-haiku"
 provider = "claude"
-model_id = "claude-haiku-4-5-20251001"
+model_id = "haiku"
 alias = "haiku"
 tiers = ["fast"]
 efforts = []
 
 [models.fable]
-name = "Claude Fable 5.1"
+name = "Claude Fable"
+label = "claude-fable"
 provider = "claude"
-model_id = "claude-fable-5-1"
+model_id = "fable"
 alias = "fable"
 tiers = []
 efforts = ["low", "medium", "high", "xhigh", "max"]
@@ -58,28 +65,32 @@ efforts = ["low", "medium", "high", "xhigh", "max"]
 # gpt-5.6-luna e gpt-5.5 — o gpt-6-sol não estava liberado, então o tier top cai no gpt-6-luna.
 
 [models.gpt-6-sol]
-name = "GPT-6 Sol"
+name = "GPT Sol"
+label = "gpt-sol"
 provider = "codex"
 model_id = "gpt-6-sol"
 tiers = ["top"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
 [models.gpt-6-luna]
-name = "GPT-6 Luna"
+name = "GPT Luna"
+label = "gpt-luna"
 provider = "codex"
 model_id = "gpt-6-luna"
 tiers = ["top", "mid"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
 [models.gpt-5-6-terra]
-name = "GPT-5.6 Terra"
+name = "GPT Terra"
+label = "gpt-terra"
 provider = "codex"
 model_id = "gpt-5.6-terra"
 tiers = ["mid"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
 [models.gpt-5-6-luna]
-name = "GPT-5.6 Luna"
+name = "GPT Luna"
+label = "gpt-luna"
 provider = "codex"
 model_id = "gpt-5.6-luna"
 tiers = ["fast"]

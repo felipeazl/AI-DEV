@@ -656,15 +656,20 @@ def variant_name(a: dict, model: dict, effort: str) -> str:
     return a["name"]
 
 
+def model_tag(m: dict) -> str:
+    """Como o modelo aparece para o usuário: a família sem versão (`label`); o `model_id` é o que vai ao CLI."""
+    return m.get("label") or m["model_id"]
+
+
 def model_label(a: dict, effort: str | None = None) -> str:
     effort = a["effort"] if effort is None else effort
     e = f", effort {effort}" if effort and a["model"].get("efforts") else ""
-    return f"{a['model']['name']} (`{a['model']['model_id']}`{e})"
+    return f"{a['model']['name']} (`{model_tag(a['model'])}`{e})"
 
 
 def header(a: dict, effort: str) -> str:
     e = f" {effort.capitalize()}" if effort and a["model"].get("efforts") else ""
-    return f"## {a['display']} - {a['model']['model_id']}{e}"
+    return f"## {a['display']} - {model_tag(a['model'])}{e}"
 
 
 # ---------------------------------------------------------------------------
@@ -1110,7 +1115,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    f"- You are `{a['name']}` — {a['display']} (role `{role}`), a sub-agent of "
                    f"`{orch}`: one task per run, and you cannot talk to the user. Questions and approvals "
                    "go back to the orchestrator in your final JSON.",
-                   f"- Model: {a['model']['name']} (`{a['model']['model_id']}`). The orchestrator chose "
+                   f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`). The orchestrator chose "
                    "the effort of this task.",
                    f"- Max retries: {routing.get('max_retries', 3)} (the same failing step; then stop and "
                    "report the failure `state` of your OUTPUT)",
@@ -1165,7 +1170,7 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
             if claude_native:
                 cells.append(f"`{ns}{variant_name(a, model, effort)}`")
             elif model["key"] != a["model"]["key"]:
-                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model['model_id']}`)")
+                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model_tag(model)}`)")
             else:
                 cells.append(effort or "—")
         rows.append(f"| **{lvl}** | {spec.get('when', '')} | " + " | ".join(cells) + " |")
@@ -1377,7 +1382,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         eff = a["effort"] if a["model"].get("efforts") else "—"
         definition = f"`{(GEN_AGENTS_DIR / (a['name'] + '.md')).as_posix()}`" if a["enabled"] else "—"
         team.append(f"| `{ns}{a['name']}` | {a['display']} | {role} | {a['model']['name']} "
-                    f"(`{a['model']['model_id']}`) | {eff} |" + (f" {definition} |" if with_definition else "")
+                    f"(`{model_tag(a['model'])}`) | {eff} |" + (f" {definition} |" if with_definition else "")
                     + f" {status} |")
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
     cmd = "install" if ns else "apply"
@@ -1422,8 +1427,8 @@ def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: 
     if model["key"] != a["model"]["key"]:
         description = (f"{a['display']} com {model['name']}, effort {effort or '—'}: mesmo papel de "
                        f"{ns}{a['name']}. Só quando a tabela Effort per task indicar.")
-        prompt = prompt.replace(f"- Model: {a['model']['name']} (`{a['model']['model_id']}`).",
-                                f"- Model: {model['name']} (`{model['model_id']}`).")
+        prompt = prompt.replace(f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`).",
+                                f"- Model: {model['name']} (`{model_tag(model)}`).")
     elif name != a["name"]:
         description = (f"{a['display']}, effort {effort}: mesmo papel de {ns}{a['name']}. "
                        "Só quando a tabela Effort per task indicar.")
@@ -1938,13 +1943,13 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-sair" if codex else f"/{plugin}:sair"
-    workspace = ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
+    workspace = ("7. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
                  "do Codex deixa só leitura: peça aprovação (escalada) para esse comando. Se a raiz dos worktrees não for "
                  "gravável (sessão aberta sem o "
                  f"perfil `{CODEX_PROFILE_NAME}`), peça ao usuário para reabrir com `{aidw} open --provider codex "
                  "--demand <id>`." if codex else
-                 "6. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda — "
+                 "7. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda — "
                  "exceto se a sessão já abriu dentro dele (`demand` no `project detect`, ex.: `aidw open --demand`).")
     description = (f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
                    "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
@@ -1968,9 +1973,26 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "reviews, `estado.md`) e continue da etapa gravada (`step`).",
         f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
         "o fluxo.",
-        f"5. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
+        "5. **Modo da sessão:** `interativo` ou `auto` (o padrão, como sempre foi). Vale o que o pedido disser "
+        "(`interativo`, `auto`, `automático`); senão o `mode` do `demand.json`, numa retomada; senão pergunte "
+        + ("em texto, com as duas opções, e espere a resposta. " if codex else
+           "com `AskUserQuestion`, opções *Automático* e *Interativo*. ")
+        + f"Grave com `{aidw} demand set <id> --mode <auto|interativo>` e diga o modo na primeira resposta. O "
+        "usuário troca quando quiser (\"modo automático\", \"modo interativo\"): grave de novo.",
+        f"6. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
         "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda.",
         workspace, "",
+        "## Modo interativo", "",
+        "Só acrescenta paradas; as ações travadas das policies pedem OK nos dois modos, e ler código, rodar "
+        "`record`, build e git local continuam sem pergunta.",
+        "- **Plano:** antes de `TICKETS`, mostre o resumo do plano (nível, tickets, passadas extras, riscos) e o "
+        "caminho do arquivo; espere *aprovar* ou *ajustar*.",
+        "- **Cada delegação:** antes de chamar o agente, escreva o arquivo da tarefa e mostre, em até 6 linhas: "
+        "agente e effort (a célula da tabela *Effort per task*), nível, ticket, arquivos em escopo, comando de build/teste, MCP e o "
+        "caminho da tarefa. Espere *aprovar*, *ajustar* (refaça a tarefa e mostre de novo) ou *pular*. Delegações "
+        "paralelas vão numa aprovação só.",
+        "- Depois de cada resultado, mostre o `header` e o `resumo` e a próxima ação que você pretende; a "
+        "delegação seguinte passa pela mesma aprovação.", "",
         orchestrator_md.strip(), "",
     ])
 
@@ -2692,14 +2714,27 @@ def worktree_hook_create() -> int:
     reg = load_registry()
     same = [e for e in reg["worktrees"] if e["demand"] == name and e["status"] == "active" and Path(e["path"]).is_dir()]
     info = repo_info(cwd)
-    if info:
-        same = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])]
+    here = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])] if info else same
+    at_root = bool(info) and norm_path(info["main"]) == norm_path(ROOT)
+    if at_root and not here and same:
+        # chat aberto na raiz do AiDW, que nunca é repositório de demanda: entra no worktree que a demanda já tem.
+        # Em outro repositório, criar é o certo (demanda com mais de um repositório, `claude --worktree <id>`).
+        if len(same) > 1:
+            print(f"AiDW: a demanda {name} tem worktrees em {len(same)} repositórios e nenhum é o desta pasta; "
+                  "abra o chat no repositório certo ou use `aidw open --demand`", file=sys.stderr)
+            return 1
+        here = same
+    same = here
     if len(same) == 1:  # criado antes pelo orquestrador (`worktree create`): a sessão só entra nele
         print(Path(same[0]["path"]))
         return 0
     cfg = load_config()
     if cfg is None:
         print("AiDW: aidw.config.toml não encontrado", file=sys.stderr)
+        return 1
+    if at_root and demand_path(load_context(cfg, Report(quiet=True)), name).exists():
+        print(f"AiDW: a demanda {name} ainda não tem worktree; crie com `worktree create --repo <repo> --demand "
+              f"{name}` e chame o EnterWorktree de novo (a raiz do AiDW não é repositório de demanda)", file=sys.stderr)
         return 1
     result = worktree_create(cfg, cwd, name)
     if not result["ok"]:
@@ -2764,9 +2799,11 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 DEMAND_STATUS = ("active", "paused", "done")
+DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK antes de cada delegação
 
 
-def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "") -> dict:
+def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
+               mode: str = "") -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
@@ -2775,6 +2812,8 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND ou uma ação de NEXT ACTION)"}
     if status and status not in DEMAND_STATUS:
         return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
+    if mode and mode not in DEMAND_MODES:
+        return {"ok": False, "error": f"modo inválido {mode!r} (use {', '.join(DEMAND_MODES)})"}
     data, warning, kind = load_demand(ctx, demand)
     if kind == "context":
         return {"ok": False, "error": warning}
@@ -2783,7 +2822,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     if step and step != data.get("step"):
         data.setdefault("history", []).append({"step": step, "at": now})
         data["step"] = step
-    for key, value in (("status", status), ("title", title), ("note", note)):
+    for key, value in (("status", status), ("title", title), ("note", note), ("mode", mode)):
         if value:
             data[key] = value
     data["updated"] = now
@@ -2806,14 +2845,16 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
         if active_only and d.get("status") == "done":
             continue
         out.append({"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
-                    "title": d.get("title", ""), "note": d.get("note", ""), "updated": d.get("updated"),
+                    "title": d.get("title", ""), "note": d.get("note", ""), "mode": d.get("mode", "auto"),
+                    "updated": d.get("updated"),
                     "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
     return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
 
 
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
-        result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "")
+        result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
+                            args.mode or "")
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -3630,13 +3671,18 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     demand = Path(args.demand).resolve()
     demand.mkdir(parents=True, exist_ok=True)
     append_metrics(demand, row)
-    shown = {**a, "model": {**model, "model_id": row["model"]}}
-    head = header(shown, effort)
+    real_id = row["model"] != model["model_id"]
+    if real_id:  # a sessão do Codex rodou em outro modelo: o cabeçalho mostra o real
+        real = next((m for m in catalog.values() if m["model_id"] == row["model"]), {})
+        model = {**model, "name": real.get("name", row["model"]), "label": real.get("label", row["model"]),
+                 "model_id": row["model"]}
+    head = header({**a, "model": model}, effort)
     if row["tokens_out"] is None:
         tokens = f"{row['tokens_in']:,} tokens".replace(",", ".") if row["tokens_in"] is not None else "tokens ?"
     else:
         tokens = f"{row['tokens_in']:,} tokens entrada + {row['tokens_out']:,} saída".replace(",", ".")
-    parts = [f"{a['display']} ({level})", model["name"], f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
+    shown = model["name"] + (f" ({row['model']})" if real_id else "")  # mesma família, versões diferentes
+    parts = [f"{a['display']} ({level})", shown, f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
     if row["limits"] != "—":
         parts.append(row["limits"])
     print(json.dumps({"header": head, "resumo": " | ".join(parts), **row, "warnings": rep.warnings},
@@ -3839,7 +3885,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     head = header(shown, effort)
     label = args.label or task.stem
     effort_txt = f"effort **{effort}**" if effort else "no effort setting"
-    prompt = (f"Model for this task: {model['name']} (`{model['model_id']}`), {effort_txt}, level `{level}`.\n\n"
+    prompt = (f"Model for this task: {model['name']} (`{model_tag(model)}`), {effort_txt}, level `{level}`.\n\n"
               f"Your task is in the file `{task.as_posix()}`: read it and execute it. Demand folder: "
               f"`{demand.as_posix()}`. Finish with the JSON of the OUTPUT section of your definition, "
               "with `state`.")
@@ -4362,12 +4408,13 @@ def main() -> int:
         c.add_argument("--json", action="store_true", help="saída em JSON")
     p_dm = sub.add_parser("demand", help="estado da demanda para retomar: set, show, list")
     dm = p_dm.add_subparsers(dest="dm_action", required=True)
-    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota)")
+    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota, modo)")
     d_set.add_argument("id", help="id da demanda, ex.: us-1234")
     d_set.add_argument("--step", help="etapa atual: UNDERSTAND ou uma ação de NEXT ACTION")
     d_set.add_argument("--status", choices=("active", "paused", "done"))
     d_set.add_argument("--title")
     d_set.add_argument("--note", help="onde parou / próximo passo")
+    d_set.add_argument("--mode", choices=DEMAND_MODES, help="modo da sessão: auto (padrão) ou interativo")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")

@@ -576,6 +576,22 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(code, 0, hook)
             self.assertEqual(Path(hook.strip()), tmp / "wt" / "Outro" / "us-7", "o hook não pode levar a outro repositório")
 
+            # chat aberto na raiz do AiDW (também um repositório): entra no worktree que a demanda já tem
+            git(root, "init", "-q", "-b", "main")
+            code, err = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(root)}))
+            self.assertEqual(code, 1, "us-7 tem worktree em dois repositórios: a raiz não escolhe")
+            self.assertIn("abra o chat no repositório certo", err)
+            code, wt9 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-9", "--json")
+            self.assertEqual(code, 0, wt9)
+            code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-9", "cwd": str(root)}))
+            self.assertEqual((code, Path(hook.strip())), (0, Path(wt9["path"])), "sem worktree do próprio AiDW")
+            self.assertFalse((tmp / "wt" / root.name).exists())
+            self.aidw_json(root, "demand", "set", "us-10", "--status", "active", "--json")
+            code, err = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-10", "cwd": str(root)}))
+            self.assertEqual(code, 1, "demanda sem worktree: a raiz do AiDW não vira worktree dela")
+            self.assertIn("worktree create --repo", err)
+            self.assertFalse((tmp / "wt" / root.name).exists())
+
             path = Path(wt["path"])
             (path / "novo.txt").write_text("x\n", encoding="utf-8")
             git(path, "add", ".")
@@ -607,6 +623,11 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual([x["id"] for x in lst["demands"]], ["us-5"])
             code, show = wt.aidw_json(root, "demand", "show", "us-5")
             self.assertEqual(show["title"], "Teste")
+            self.assertEqual(lst["demands"][0]["mode"], "auto", "sem modo gravado vale o automático")
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--mode", "interativo", "--json")
+            self.assertEqual((code, d["mode"], d["step"]), (0, "interativo", "IMPLEMENT"), d)
+            code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
+            self.assertEqual(lst["demands"][0]["mode"], "interativo")
 
             hook = lambda payload: subprocess.run([sys.executable, str(root / "aidw_guard.py")],  # noqa: E731
                                                   input=json.dumps(payload), capture_output=True, text=True,
@@ -668,7 +689,8 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("aidw_guard.py", hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
             orq = files["plugins/aidw/skills/orquestrar/SKILL.md"].decode("utf-8")
             for step in ("project detect --json", "demand list --active --json", "não recomece",
-                         "demand set <id> --step <AÇÃO>", "EnterWorktree"):
+                         "demand set <id> --step <AÇÃO>", "EnterWorktree", "--mode <auto|interativo>",
+                         "AskUserQuestion", "## Modo interativo"):
                 self.assertIn(step, orq)
             self.assertLess(orq.index("Ao ser chamado"), orq.index("# ROLE"), "o protocolo vem antes do resto")
             sair = files["plugins/aidw/skills/sair/SKILL.md"].decode("utf-8")
@@ -778,6 +800,8 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("name: aidw-orquestrar", orq)
             self.assertIn("$aidw-sair", orq)
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
+            self.assertNotIn("AskUserQuestion", orq, "no Codex o modo é perguntado em texto")
+            self.assertIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
             done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")

@@ -111,12 +111,21 @@ Abra um chat — de preferência na pasta do repositório — e chame:
 ```text
 /aidw:orquestrar 1234              ← a demanda (id do card, link ou descrição)
 /aidw:orquestrar                   ← sem argumento: retoma a demanda desta pasta (ou pergunta qual)
+/aidw:orquestrar 1234 interativo   ← pede o seu OK antes de cada delegação (sem o modo, ele pergunta)
 /aidw:sair                         ← grava onde parou e devolve o chat ao modo normal
 /aidw:done                         ← fecha a tarefa: grava no contexto o que ela ensinou e faz commit e push dele
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, entra nele e
-segue o fluxo. Para ver tudo o que está em andamento e voltar a uma demanda pelo terminal:
+segue o fluxo.
+
+- **Modo da sessão:** `auto` (padrão) segue sozinho e para só nas ações travadas, dúvidas reais e na revisão final.
+  `interativo` também para antes de criar os tickets, com o resumo do plano, e antes de cada delegação, com agente,
+  effort, nível, ticket, arquivos, build e o arquivo da tarefa; você responde *aprovar*, *ajustar* ou *pular*.
+- Sem o modo no pedido, o orquestrador pergunta; o modo fica no `demand.json` e vale na retomada. Para trocar no
+  meio, diga "modo automático" ou "modo interativo".
+
+Para ver tudo o que está em andamento e voltar a uma demanda pelo terminal:
 
 ```text
 python aidw.py status                  ← instalação, demandas ativas (etapa, worktree, alterações) e pendências
@@ -136,8 +145,8 @@ Peça como pediria a um tech lead:
 Cada resultado de agente aparece com o cabeçalho e o resumo medidos:
 
 ```text
-## Codificador - claude-opus-5-5 Medium
-Codificador (padrao) | Claude Opus 5.5 | effort medium | 67.448 tokens | 156 s
+## Codificador - claude-opus Medium
+Codificador (padrao) | Claude Opus | effort medium | 67.448 tokens | 156 s
 ```
 
 ### Codex (qualquer pasta)
@@ -192,7 +201,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 | `chat` | Abre o orquestrador do modo projeto no CLI do provedor |
 | `context list` · `check <nome>` · `use [<nome>]` · `create <nome> --description d` | Contextos: lista, valida, ativa (troca só a linha `active`), cria a estrutura com git próprio |
 | `project detect [--path p] [--json]` | Repositório principal, sistema do contexto e demanda de uma pasta |
-| `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n]` · `show <id>` · `list [--active]` | Estado da demanda para retomar (`demand.json`, com histórico das etapas) |
+| `demand set <id> [--step S] [--status active\|paused\|done] [--mode auto\|interativo] [--title t] [--note n]` · `show <id>` · `list [--active]` | Estado da demanda para retomar (`demand.json`, com histórico das etapas) |
 | `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch `<prefixo><número>-<slug>`, junctions de `packages`/`node_modules` e das pastas vizinhas do `worktree_link` do sistema (idempotente) |
 | `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação dos worktrees; `remove` só com worktree limpo e publicado (mantém a branch); `cleanup` tira do registro o que sumiu |
 | `record --agent <a> --level <n> --label <x> --demand <pasta> --state <s> (--tokens --tool-uses --duration-ms \| --codex-task <t>)` | Registra uma delegação nativa no `metricas.md` e imprime cabeçalho e resumo (usado pelo orquestrador) |
@@ -294,6 +303,9 @@ contexts/<nome>/
     partir do working copy principal (ex.: `C:/wt/Hope/eCommerce` → `C:/ProjetosLegados/eCommerce`).
   - Essas junctions ficam na raiz dos worktrees e são compartilhadas entre os worktrees do mesmo repositório.
   - O `remove` não mexe nelas.
+- **Entrar no worktree:** o `EnterWorktree` com o id da demanda leva o chat para o worktree que o `worktree create`
+  fez. Num chat aberto na raiz do AiDW, ele entra no worktree da demanda (se ela tiver um só); num chat aberto em
+  outro repositório, ele cria o worktree desse repositório para a mesma demanda.
 - **Retomar:** `/aidw:orquestrar` sem argumento na pasta do worktree (ou do repositório) acha a demanda e continua
   da etapa gravada. Depois de uma compactação da conversa, um hook lembra o orquestrador de reler as regras.
 - **Limpar:** `aidw.py worktree remove <id>` só remove worktree sem alteração local e com commits publicados;
@@ -422,7 +434,10 @@ O princípio: **o modelo nunca é a última barreira.**
 - **Agente:** `agents/<papel>/AGENT.md` (ROLE, INPUT, PROCESS, OUTPUT com `state`), `[agents.<papel>]` no
   `aidw.config.toml`, o papel em `DEFAULT_AGENTS`/`RUN_PROFILE` do `aidw.py` e o effort em cada nível do
   `routing.toml`.
-- **Modelo:** uma tabela em `config/models.toml`.
+- **Modelo:** uma tabela em `config/models.toml`. No Claude, `model_id` é o apelido (`opus`, `sonnet`, `haiku`), que o
+  Claude Code resolve para o modelo mais novo da família que a versão instalada conhece; o `label` (ex.: `claude-sonnet`)
+  é o que aparece no cabeçalho e nas tabelas. No Codex, `model_id` é o ID exato, e a coluna *Modelo* do `metricas.md`
+  grava o modelo que a sessão usou.
 - **Policy:** um `.md` em `orchestrator/policies/` (todos) ou em `contexts/<nome>/policies/`. Com frontmatter
   `orchestrator_when: <momento>`, o orquestrador a lê só nesse momento (os agentes continuam com ela inteira).
 - **Referência do orquestrador:** `orchestrator/reference/<nome>.md` com `when:` no frontmatter.

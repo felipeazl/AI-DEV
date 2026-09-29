@@ -11,7 +11,7 @@
       "display": "Orquestrador",
       "enabled": true,
       "model": "opus",
-      "model_id": "claude-opus-5-5",
+      "model_id": "opus",
       "effort": "high",
       "skills": [
         "to-spec",
@@ -25,7 +25,7 @@
       "display": "Codificador",
       "enabled": true,
       "model": "opus",
-      "model_id": "claude-opus-5-5",
+      "model_id": "opus",
       "effort": "medium",
       "skills": [
         "preparar-worktree"
@@ -37,7 +37,7 @@
       "display": "Revisor",
       "enabled": true,
       "model": "sonnet",
-      "model_id": "claude-sonnet-5",
+      "model_id": "sonnet",
       "effort": "high",
       "skills": [
         "code-review",
@@ -52,7 +52,7 @@
       "display": "API",
       "enabled": true,
       "model": "sonnet",
-      "model_id": "claude-sonnet-5",
+      "model_id": "sonnet",
       "effort": "medium",
       "skills": [
         "database-safe"
@@ -64,7 +64,7 @@
       "display": "QA",
       "enabled": false,
       "model": "sonnet",
-      "model_id": "claude-sonnet-5",
+      "model_id": "sonnet",
       "effort": "medium",
       "skills": [],
       "preload": []
@@ -74,7 +74,7 @@
       "display": "Documentador",
       "enabled": true,
       "model": "haiku",
-      "model_id": "claude-haiku-4-5-20251001",
+      "model_id": "haiku",
       "effort": "",
       "skills": [],
       "preload": []
@@ -84,7 +84,7 @@
       "display": "Bugs",
       "enabled": true,
       "model": "sonnet",
-      "model_id": "claude-sonnet-5",
+      "model_id": "sonnet",
       "effort": "high",
       "skills": [
         "bug-hunt",
@@ -99,7 +99,7 @@
       "display": "Seguranca",
       "enabled": true,
       "model": "sonnet",
-      "model_id": "claude-sonnet-5",
+      "model_id": "sonnet",
       "effort": "high",
       "skills": [
         "security-audit",
@@ -117,7 +117,7 @@
     "context7"
   ],
   "claude_settings": {
-    "model": "claude-opus-5-5",
+    "model": "opus",
     "effortLevel": "high",
     "allow": [
       "Bash(python aidw.py delegate *)",

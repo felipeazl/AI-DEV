@@ -99,7 +99,7 @@ whenever you stop for the user.
 ## Runtime
 
 - You are `orquestrador` — Orquestrador (role `orchestrator`), the main chat.
-- Your model: Claude Opus 5.5 (`claude-opus-5-5`, effort high)
+- Your model: Claude Opus (`claude-opus`, effort high)
 - Delegation mode: **headless**
 - Provider: **Claude (Claude Code)** — every agent runs on it
 - Project dirs (search here for repositories): none configured
@@ -111,13 +111,13 @@ whenever you stop for the user.
 
 | Agent (`--agent`) | Display name | Role | Model | Default effort | Definition | Status |
 |---|---|---|---|---|---|---|
-| `codificador` | Codificador | coder | Claude Opus 5.5 (`claude-opus-5-5`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
-| `revisor` | Revisor | reviewer | Claude Sonnet 5 (`claude-sonnet-5`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
-| `api` | API | api-db | Claude Sonnet 5 (`claude-sonnet-5`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
-| `qa` | QA | qa | Claude Sonnet 5 (`claude-sonnet-5`) | medium | — | disabled — do not delegate |
-| `documentador` | Documentador | documenter | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) | — | `<ROOT>/.aidw/agents/documentador.md` | enabled |
-| `bugs` | Bugs | bug-hunter | Claude Sonnet 5 (`claude-sonnet-5`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
-| `seguranca` | Seguranca | security | Claude Sonnet 5 (`claude-sonnet-5`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
+| `codificador` | Codificador | coder | Claude Opus (`claude-opus`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
+| `revisor` | Revisor | reviewer | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
+| `api` | API | api-db | Claude Sonnet (`claude-sonnet`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
+| `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | — | disabled — do not delegate |
+| `documentador` | Documentador | documenter | Claude Haiku (`claude-haiku`) | — | `<ROOT>/.aidw/agents/documentador.md` | enabled |
+| `bugs` | Bugs | bug-hunter | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
+| `seguranca` | Seguranca | security | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
 
 ## How to delegate
 
@@ -145,8 +145,8 @@ Default level: **padrao**. Each cell is the effort to pass. `—` = the model ta
 | **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | low | low | low | — | low | low |
 | **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | low | medium | low | — | medium | medium |
 | **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | high | medium | — | high | high |
-| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | high + model `opus` (`claude-opus-5-5`) | high | — | high + model `opus` (`claude-opus-5-5`) | high + model `opus` (`claude-opus-5-5`) |
-| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | xhigh | xhigh + model `opus` (`claude-opus-5-5`) | high | — | xhigh + model `opus` (`claude-opus-5-5`) | xhigh + model `opus` (`claude-opus-5-5`) |
+| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | high + model `opus` (`claude-opus`) | high | — | high + model `opus` (`claude-opus`) | high + model `opus` (`claude-opus`) |
+| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | xhigh | xhigh + model `opus` (`claude-opus`) | high | — | xhigh + model `opus` (`claude-opus`) | xhigh + model `opus` (`claude-opus`) |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.
