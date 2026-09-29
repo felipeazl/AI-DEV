@@ -14,13 +14,15 @@ working copy (a hook blocks it). Run it by the absolute path of `aidw.py` shown 
    ```
    python "<aidw root>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base> --json
    ```
-   It fetches, creates `<worktree root>/<repo>/<tipo-id>` on branch `<prefix><id>-<slug>` (prefix from the
-   context), reuses the branch if it already exists, links `packages/`/`node_modules/` and writes
-   `demand.json`. Running it again returns the same worktree. If `main_dirty` is true, tell the user once
-   that the main working copy's local changes are not in the worktree.
-3. **Enter it (Claude):** `EnterWorktree` with name `<tipo-id>` — the AiDW hook returns this same worktree, so
-   the chat, its commands and the diff pane work there. A demand with more than one repository: one
-   `create` per repository; enter the main one and pass the others by absolute path.
+   It fetches, creates `<worktree root>/<tipo-id>/<repo>` (one folder per demand, a worktree per repository
+   inside) on branch `<prefix><id>-<slug>` (prefix from the context), reuses the branch if it already exists,
+   links `packages/`/`node_modules/` and writes `demand.json`. Running it again returns the same worktree. If
+   `main_dirty` is true, tell the user once that the main working copy's local changes are not in the worktree.
+3. **Move the session (Claude):** a demand with more than one repository gets one `create` per repository.
+   - Desktop app: `mcp__ccd_directory__change_directory` to the worktree (one repository) or to the demand folder
+     (more than one); the diff pane follows it, and `/aidw:diff` switches it between the repositories.
+   - Terminal: `EnterWorktree` with name `<tipo-id>` (the AiDW hook returns this worktree).
+   - Every task still names the absolute path of its worktree.
 4. **Validate** with the build command of *Systems*, pointing at the worktree. A failure here is
    environment, not code: report it.
 5. **Hand over** the worktree path and branch in every task (`file:line` and build commands use it).
