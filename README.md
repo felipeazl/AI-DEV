@@ -52,7 +52,7 @@ sistemas, comandos de build, convenções, políticas — sem mudar o nome de na
   cada agente só muda quando você pede.
 - **Você só entra quando precisa:** ações travadas (commit, push, SQL de escrita…), dúvida real ou mais de um
   caminho válido, algo fora do plano, e **uma** revisão final com tudo junto.
-- **Cada demanda tem um worktree** em `C:\wt\<repo>\<demanda>` (configurável): o seu working copy nunca é tocado
+- **Cada demanda tem uma pasta** `C:\wt\<demanda>` (configurável), com um worktree por repositório dentro: o seu working copy nunca é tocado
   pelos agentes.
 - **Tudo é medido.** Cada delegação vira uma linha no `metricas.md` da demanda (agente, nível, modelo, effort,
   tokens, duração) e o estado da demanda fica no `demand.json` — dá para fechar o chat e retomar depois.
@@ -114,6 +114,8 @@ Abra um chat — de preferência na pasta do repositório — e chame:
 /aidw:orquestrar 1234 interativo   ← pede o seu OK antes de cada delegação (sem o modo, ele pergunta)
 /aidw:sair                         ← grava onde parou e devolve o chat ao modo normal
 /aidw:done                         ← fecha a tarefa: grava no contexto o que ela ensinou e faz commit e push dele
+/aidw:diff                         ← o painel de diff vai para o próximo repositório da demanda (em círculo)
+/aidw:diff front                   ← vai direto para o front; `/aidw:diff sair` volta para a pasta da demanda
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, entra nele e
@@ -129,7 +131,7 @@ Para ver tudo o que está em andamento e voltar a uma demanda pelo terminal:
 
 ```text
 python aidw.py status                  ← instalação, demandas ativas (etapa, worktree, alterações) e pendências
-python aidw.py open --demand 1234      ← abre o Claude no worktree da demanda já chamando /aidw:orquestrar
+python aidw.py open --demand 1234      ← abre o Claude na demanda (o worktree, ou a pasta dela com vários) já chamando /aidw:orquestrar
 ```
 
 Peça como pediria a um tech lead:
@@ -180,6 +182,7 @@ O chat aberto na raiz do AiDW é o orquestrador (via `CLAUDE.md`/`AGENTS.md` ger
 |---|---|
 | `/aidw:orquestrar [demanda]` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
 | `/aidw:sair` | Grava a etapa e o próximo passo da demanda (`paused`) e volta o chat ao normal |
+| `/aidw:diff [repo\|sair]` | Só no Claude. Leva o chat para o worktree de um repositório da demanda, e o painel de diff passa a mostrar esse repositório. No app desktop usa o `change_directory` do app (o painel segue); no terminal, `ExitWorktree` e `EnterWorktree` com `<demanda>/<pasta>`. Sem argumento, vai para o próximo, em círculo; `sair` volta para a pasta da demanda (no terminal, para a pasta onde a sessão abriu). O chat e o modo orquestrador continuam; o orquestrador também usa quando você pede "mostra o diff do back" |
 | `/aidw:done` | Fecha a tarefa. Grava no contexto ativo só o que foi verificado e vale para as próximas demandas: build, bloqueios de ambiente e como destravar, dependências, armadilhas, convenções. Depois valida, reinstala, faz commit e push **só do repositório do contexto**, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal. |
 | `/aidw:contexto-listar` | Mostra os contextos, qual está ativo, repositório (git próprio, remoto só pelo host), sistemas e se o plugin está instalado |
 | `/aidw:contexto-usar <nome>` | Valida e ativa um contexto (regenera o ambiente e o plugin com as regras dele); avisa se há demanda ativa |
@@ -293,18 +296,24 @@ contexts/<nome>/
 - **Demanda:** pasta `<state dir do contexto>/<tipo>-<id>/` com o `demand.json` (etapa, status, histórico,
   repositórios) e os artefatos do fluxo: `plano-<id>.md`, `revisao-plano-*`, `tarefa-<agente>-*.md`,
   `diff-*.patch`, `review-*`, `triagem-*`, `checklist-revisao.md`, `metricas.md`, `revisao-final.md`.
-- **Worktree:** `<[worktree] root>/<repo>/<demanda>` (padrão `C:/wt`), branch `<prefixo do contexto><número>-<slug>`
+- **Worktree:** `<[worktree] root>/<demanda>/<repo>` (padrão `C:/wt`), branch `<prefixo do contexto><número>-<slug>`
   a partir da base do plano, com junctions de `packages/` e `node_modules/`. Registro em `state/worktrees.json`.
-  Dois repositórios com o mesmo nome (ex.: `ProjetosLegados/Hope` e `ProjetosTFS/Hope`) não dividem a pasta: o
-  que chegar depois fica em `<root>/<repo>.<pasta-mãe>/<demanda>`.
+  - A pasta da demanda junta os worktrees de todos os repositórios dela (ex.: `C:/wt/it-101662/AssistenteCertificado`
+    e `C:/wt/it-101662/AssistenteCertificado.Front`). O chat pode ficar nela, e o `/aidw:diff` troca o painel de diff
+    entre os repositórios.
+  - Dois repositórios com o mesmo nome (ex.: `ProjetosLegados/Hope` e `ProjetosTFS/Hope`) não dividem a pasta: o
+    que chegar depois fica em `<root>/<demanda>/<repo>.<pasta-mãe>`.
+  - Os worktrees criados antes, em `<root>/<repo>/<demanda>`, continuam funcionando onde estão.
 - **Pastas vizinhas:** o código às vezes alcança outro repositório por caminho relativo, como o HintPath
   `..\..\eCommerce\...\bin\x.dll`. Para isso, o sistema pode listar `worktree_link = ["../eCommerce"]` no `context.toml`.
   - O `worktree create` cria, ao lado do worktree, uma junction com o mesmo caminho relativo para o que ele resolve a
-    partir do working copy principal (ex.: `C:/wt/Hope/eCommerce` → `C:/ProjetosLegados/eCommerce`).
-  - Essas junctions ficam na raiz dos worktrees e são compartilhadas entre os worktrees do mesmo repositório.
-  - O `remove` não mexe nelas.
-- **Entrar no worktree:** o `EnterWorktree` com o id da demanda leva o chat para o worktree que o `worktree create`
-  fez. Num chat aberto na raiz do AiDW, ele entra no worktree da demanda (com vários, no primeiro criado); num chat aberto em
+    partir do working copy principal (ex.: `C:/wt/us-123/eCommerce` → `C:/ProjetosLegados/eCommerce`).
+  - Se a demanda também tem worktree desse repositório, ele já está ali, e o build usa a versão da demanda. Se a
+    junction veio antes, ela vira o worktree quando ele é criado.
+  - O `remove` do último worktree da demanda tira as junctions da pasta dela, sem apagar nada através delas.
+    Caminhos que sobem além da pasta da demanda (`../../ProjetosLegados`) ficam na raiz, compartilhados.
+- **Entrar no worktree:** com o chat aberto na pasta da demanda (ou num worktree dela), ele fica onde está. Aberto em
+  outro lugar, o `EnterWorktree` com o id da demanda leva o chat para o worktree que o `worktree create` fez. Num chat aberto na raiz do AiDW, ele entra no worktree da demanda (com vários, no primeiro criado); num chat aberto em
   outro repositório, ele cria o worktree desse repositório para a mesma demanda.
 - **Retomar:** `/aidw:orquestrar` sem argumento na pasta do worktree (ou do repositório) acha a demanda e continua
   da etapa gravada. Depois de uma compactação da conversa, um hook lembra o orquestrador de reler as regras.
@@ -333,7 +342,7 @@ mode = "native"            # "native" = subagentes do provedor · "headless" = a
 project_dirs = ["C:/Projetos"]   # liberadas para o orquestrador e os agentes
 
 [worktree]
-root = "C:/wt"             # worktrees das demandas: <root>/<repo>/<id>, fora de qualquer repositório
+root = "C:/wt"             # worktrees das demandas: <root>/<id>/<repo>, fora de qualquer repositório
 
 [mcp]
 enabled = ["playwright", "chrome-devtools", "figma", "context7"]
@@ -392,6 +401,7 @@ arquivo gerado alterado à mão faz o `install` parar (a não ser com `--force`)
 | Agentes | `aidw:<agente>`, uma variante por effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Abrir/retomar demanda | ✅ | ✅ |
 | Entrar no worktree | ✅ `EnterWorktree` + hook | pelo caminho absoluto; `aidw open --provider codex --demand <id>` abre o Codex nele |
+| Diff de cada repositório da demanda | ✅ `/aidw:diff` troca o painel | — (sem `EnterWorktree`) |
 | Guard e lembrete depois de compactação | ✅ hooks do plugin | ✅ `hooks.json` (aprovação única no terminal) |
 | Regras globais | `~/.claude/settings.json` | `~/.codex/rules/aidw.rules` |
 | Pastas graváveis | as do settings | as do perfil `aidw` (AiDW, projetos, worktrees) |

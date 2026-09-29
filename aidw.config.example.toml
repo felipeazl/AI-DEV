@@ -17,7 +17,7 @@ mode = "native"
 project_dirs = []
 
 [worktree]
-# Onde ficam os worktrees das demandas (<raiz>/<repo>/<id>). Curta e fora de qualquer repositório.
+# Onde ficam os worktrees das demandas (<raiz>/<id>/<repo>). Curta e fora de qualquer repositório.
 root = "C:/wt"
 
 [mcp]
