@@ -52,8 +52,11 @@ triaged by rule → Documentation (documentador) → Final review (user) → Com
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "<ROOT>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
-then work inside it — in Claude, `EnterWorktree` with name `<tipo-id>` (the chat and the diff pane follow);
-in Codex there is no such tool, so every command and task uses the worktree's absolute path. Every
+then work inside it. All worktrees of a demand live in its folder `<worktree root>/<tipo-id>/<repo>`. In the Claude
+desktop app, move the session with `mcp__ccd_directory__change_directory` (the diff pane follows it; `EnterWorktree`
+moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more. In the
+Claude terminal, `EnterWorktree` with name `<tipo-id>`. In Codex there is no such tool, so every command and task uses
+the worktree's absolute path. Every
 task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main working copy; shell
 commands are not checked, so tasks must point only to the worktree.
 
@@ -99,7 +102,7 @@ whenever you stop for the user.
 ## Runtime
 
 - You are `orquestrador` — Orquestrador (role `orchestrator`), the main chat.
-- Your model: Claude Opus 5.5 (`claude-opus-5-5`, effort high)
+- Your model: Claude Opus (`claude-opus`, effort high)
 - Delegation mode: **native**
 - Provider: **Claude (Claude Code)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
@@ -111,13 +114,13 @@ whenever you stop for the user.
 
 | Agent | Display name | Role | Model | Default effort | Status |
 |---|---|---|---|---|---|
-| `codificador` | Codificador | coder | Claude Opus 5.5 (`claude-opus-5-5`) | medium | enabled |
-| `revisor` | Revisor | reviewer | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
-| `api` | API | api-db | Claude Sonnet 5 (`claude-sonnet-5`) | medium | enabled |
-| `qa` | QA | qa | Claude Sonnet 5 (`claude-sonnet-5`) | medium | disabled — do not delegate |
-| `documentador` | Documentador | documenter | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) | — | enabled |
-| `bugs` | Bugs | bug-hunter | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
-| `seguranca` | Seguranca | security | Claude Sonnet 5 (`claude-sonnet-5`) | high | enabled |
+| `codificador` | Codificador | coder | Claude Opus (`claude-opus`) | medium | enabled |
+| `revisor` | Revisor | reviewer | Claude Sonnet (`claude-sonnet`) | high | enabled |
+| `api` | API | api-db | Claude Sonnet (`claude-sonnet`) | medium | enabled |
+| `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | disabled — do not delegate |
+| `documentador` | Documentador | documenter | Claude Haiku (`claude-haiku`) | — | enabled |
+| `bugs` | Bugs | bug-hunter | Claude Sonnet (`claude-sonnet`) | high | enabled |
+| `seguranca` | Seguranca | security | Claude Sonnet (`claude-sonnet`) | high | enabled |
 
 ## How to delegate
 

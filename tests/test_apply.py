@@ -381,7 +381,7 @@ class WorktreeTest(unittest.TestCase):
                                       "--slug", "Teste de slug", "--json")
             self.assertEqual(code, 0, wt)
             path = Path(wt["path"])
-            self.assertEqual(path, tmp / "wt" / "Aplicação" / "us-1")
+            self.assertEqual(path, tmp / "wt" / "us-1" / "Aplicação")
             self.assertEqual(wt["branch"], "feature/1-teste-de-slug")
             self.assertEqual(wt["base"], "main")
             self.assertEqual(wt["links"], ["node_modules"])
@@ -455,21 +455,20 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(code, 0, wt)
             self.assertEqual(wt["system"], "app")
             self.assertEqual(wt["outside_links"], ["../Vizinho"])
-            vizinho = tmp / "wt" / "Aplicação" / "Vizinho"
+            vizinho = tmp / "wt" / "us-5" / "Vizinho"
             self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o HintPath ..\\Vizinho resolve a partir do worktree")
             self.assertTrue(any("não existe" in w for w in wt["warnings"]), wt["warnings"])
             self.assertTrue(any("ignorado" in w for w in wt["warnings"]), wt["warnings"])
             self.assertFalse((tmp / "escapa").exists(), "nunca cria junction fora da raiz dos worktrees")
             code, wt2 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-6", "--json")
-            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "reaproveita a junction de outro worktree")
+            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "cada demanda tem a sua, na pasta dela")
+            self.assertTrue((tmp / "wt" / "us-6" / "Vizinho" / "bin" / "lib.dll").is_file())
             (tmp / "outra").mkdir()
-            os.rmdir(vizinho)  # remove só a junction
-            load_aidw(root).make_link(vizinho, tmp / "outra")
+            (tmp / "wt" / "us-7").mkdir()
+            load_aidw(root).make_link(tmp / "wt" / "us-7" / "Vizinho", tmp / "outra")
             code, wt3 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
             self.assertEqual(wt3["outside_links"], [], "junction para outro lugar não é reaproveitada")
             self.assertTrue(any("outro lugar" in w for w in wt3["warnings"]), wt3["warnings"])
-            os.rmdir(vizinho)
-            load_aidw(root).make_link(vizinho, tmp / "repos" / "Vizinho")
 
             homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: ProjetosTFS/Hope x Legados/Hope)
             homonimo.mkdir(parents=True)
@@ -479,11 +478,64 @@ class WorktreeTest(unittest.TestCase):
             git(homonimo, "commit", "-q", "-m", "inicial")
             code, wt4 = self.aidw_json(root, "worktree", "create", "--repo", str(homonimo), "--demand", "us-5", "--json")
             self.assertEqual(code, 0, wt4)
-            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "Aplicação.outros" / "us-5", "não invade a pasta do homônimo")
+            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "us-5" / "Aplicação.outros", "não invade a pasta do homônimo")
             code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(repo), "--json")
             self.assertEqual(code, 0, done)
-            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o remove não toca a junction compartilhada")
-            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file())
+            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "a demanda ainda tem worktree: a junction fica")
+            code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(homonimo), "--json")
+            self.assertEqual(code, 0, done)
+            self.assertFalse((tmp / "wt" / "us-5").exists(), "sem worktrees, a pasta da demanda sai com as junctions")
+            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file(), "nunca apaga através da junction")
+
+            # a demanda também mexe no vizinho: a junction dele vira o worktree da demanda
+            aidw = load_aidw(root)
+            viz = tmp / "repos" / "Vizinho"
+            git(viz, "init", "-q", "-b", "main")
+            git(viz, "add", ".")
+            git(viz, "commit", "-q", "-m", "inicial")
+            code, w8 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-8", "--json")
+            self.assertEqual(code, 0, w8)
+            junction = tmp / "wt" / "us-8" / "Vizinho"
+            self.assertTrue(aidw.is_link(junction))
+            code, err = self.aidw_json(root, "worktree", "create", "--repo", str(viz), "--demand", "us-8",
+                                       "--base", "nao-existe", "--json")
+            self.assertEqual(code, 1, err)
+            self.assertTrue(aidw.is_link(junction), "um erro no create não tira a junction de que o build depende")
+            code, w8v = self.aidw_json(root, "worktree", "create", "--repo", str(viz), "--demand", "us-8", "--json")
+            self.assertEqual((code, Path(w8v["path"])), (0, junction), w8v)
+            self.assertFalse(aidw.is_link(junction))
+            self.assertTrue(any("era junction" in w for w in w8v["warnings"]), w8v["warnings"])
+            self.assertTrue((viz / "bin" / "lib.dll").is_file())
+            (tmp / "wt" / "us-8" / "notas.txt").write_text("x\n", encoding="utf-8")
+            for r in (repo, viz):
+                code, rm = self.aidw_json(root, "worktree", "remove", "us-8", "--repo", str(r), "--json")
+                self.assertEqual(code, 0, rm)
+            self.assertTrue((tmp / "wt" / "us-8" / "notas.txt").is_file(), "com outro arquivo, a pasta da demanda fica")
+
+    def test_worktree_no_formato_antigo(self) -> None:
+        """Worktrees criados antes da pasta por demanda (`<raiz>/<repo>/<demanda>`, sem `layout` no registro)
+        continuam valendo: list, hook `<demanda>/<pasta>`, open e remove."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            repo = self.make_repo(tmp)
+            old = tmp / "wt" / repo.name / "us-40"
+            git(repo, "worktree", "add", "-q", "-b", "feature/40", str(old), "main")
+            reg = root / "state" / "worktrees.json"
+            reg.parent.mkdir(parents=True, exist_ok=True)
+            reg.write_text(json.dumps({"worktrees": [
+                {"demand": "us-40", "repo": repo.as_posix(), "path": old.as_posix(), "branch": "feature/40",
+                 "base": "main", "links": [], "status": "active", "context": "exemplo"}]}), encoding="utf-8")
+            code, lst = self.aidw_json(root, "worktree", "list", "--json")
+            self.assertEqual(lst["worktrees"][0]["folder"], repo.name)
+            code, hook = self.aidw_json(root, "worktree", "hook-create",
+                                        stdin=json.dumps({"name": f"us-40/{repo.name}", "cwd": str(tmp)}))
+            self.assertEqual((code, Path(hook.strip())), (0, old))
+            code, out = self.aidw_json(root, "open", "--demand", "us-40", "--print")
+            self.assertIn(f"Abrindo claude em {old}", out)
+            code, rm = self.aidw_json(root, "worktree", "remove", "us-40", "--json")
+            self.assertEqual(code, 0, rm)
+            self.assertFalse(old.exists())
 
     def test_status_e_open(self) -> None:
         """F7: `status` junta demanda ativa e worktree e aponta o que pede atenção; `open --demand` abre no worktree
@@ -522,6 +574,35 @@ class WorktreeTest(unittest.TestCase):
             self.assertNotIn("orquestrar", out)
             code, out = self.aidw_json(root, "open", "--demand", "us-9", "--print")
             self.assertEqual(code, 1)
+
+            # back e front na mesma demanda: abre no primeiro worktree criado e o outro entra por --add-dir
+            front = tmp / "repos" / "Front"
+            front.mkdir(parents=True)
+            git(front, "init", "-q", "-b", "main")
+            (front / "a.txt").write_text("a\n", encoding="utf-8")
+            git(front, "add", ".")
+            git(front, "commit", "-q", "-m", "inicial")
+            code, wtf = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "us-1", "--json")
+            self.assertEqual(code, 0, wtf)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--print")
+            self.assertEqual(code, 0, out)
+            self.assertIn(f"Abrindo claude em {Path(wt['path']).parent}", out, "abre na pasta da demanda")
+            self.assertNotIn(f"--add-dir {Path(wtf['path'])}", out, "os worktrees já estão dentro dela")
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Front", "--print")
+            self.assertIn(f"Abrindo claude em {Path(wtf['path'])}", out)
+            self.assertIn(f"--add-dir {Path(wt['path'])}", out)
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Nenhum", "--print")
+            self.assertEqual(code, 1, out)
+            code, wtb = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "bug-1",
+                                       "--slug", "outro", "--json")
+            self.assertEqual(code, 0, wtb)
+            code, out = self.aidw_json(root, "open", "--demand", "1", "--print")
+            self.assertEqual(code, 1, "1 casa us-1 e bug-1: não escolhe")
+            self.assertIn("mais de uma demanda", out)
+            for demand in ("us-1", "bug-1"):
+                code, rm = self.aidw_json(root, "worktree", "remove", demand, "--repo", str(front), "--json")
+                self.assertEqual(code, 0, rm)
+            self.aidw_json(root, "demand", "set", "bug-1", "--status", "done")
 
             self.aidw_json(root, "demand", "set", "us-1", "--status", "done")
             (Path(wt["path"]) / "app.txt").write_text("v2\n", encoding="utf-8")
@@ -574,7 +655,33 @@ class WorktreeTest(unittest.TestCase):
             git(other, "commit", "-q", "-m", "inicial")
             code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(other)}))
             self.assertEqual(code, 0, hook)
-            self.assertEqual(Path(hook.strip()), tmp / "wt" / "Outro" / "us-7", "o hook não pode levar a outro repositório")
+            self.assertEqual(Path(hook.strip()), tmp / "wt" / "us-7" / "Outro", "o hook não pode levar a outro repositório")
+
+            # chat aberto na raiz do AiDW (também um repositório): entra no worktree que a demanda já tem
+            git(root, "init", "-q", "-b", "main")
+            code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(root)}))
+            self.assertEqual((code, Path(hook.strip())), (0, Path(wt["path"])),
+                             "us-7 tem worktree em dois repositórios: a raiz entra no primeiro criado")
+            # skill diff: `<demanda>/<pasta>` leva ao worktree daquele repositório, de qualquer pasta
+            code, hook = self.aidw_json(root, "worktree", "hook-create",
+                                        stdin=json.dumps({"name": "us-7/outro", "cwd": str(repo)}))
+            self.assertEqual((code, Path(hook.strip())), (0, tmp / "wt" / "us-7" / "Outro"))
+            code, det = self.aidw_json(root, "project", "detect", "--path", str(tmp / "wt" / "us-7"), "--json")
+            self.assertEqual((det["demand"], [w["folder"] for w in det["worktrees"]]), ("us-7", ["Aplicação", "Outro"]),
+                             "a pasta da demanda (não é git) é reconhecida")
+            code, err = self.aidw_json(root, "worktree", "hook-create",
+                                       stdin=json.dumps({"name": "us-7/Nenhum", "cwd": str(repo)}))
+            self.assertEqual(code, 1, err)
+            code, wt9 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-9", "--json")
+            self.assertEqual(code, 0, wt9)
+            code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-9", "cwd": str(root)}))
+            self.assertEqual((code, Path(hook.strip())), (0, Path(wt9["path"])), "sem worktree do próprio AiDW")
+            self.assertFalse((tmp / "wt" / "us-9" / root.name).exists())
+            self.aidw_json(root, "demand", "set", "us-10", "--status", "active", "--json")
+            code, err = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-10", "cwd": str(root)}))
+            self.assertEqual(code, 1, "demanda sem worktree: a raiz do AiDW não vira worktree dela")
+            self.assertIn("worktree create --repo", err)
+            self.assertFalse((tmp / "wt" / "us-10").exists())
 
             path = Path(wt["path"])
             (path / "novo.txt").write_text("x\n", encoding="utf-8")
@@ -607,6 +714,11 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual([x["id"] for x in lst["demands"]], ["us-5"])
             code, show = wt.aidw_json(root, "demand", "show", "us-5")
             self.assertEqual(show["title"], "Teste")
+            self.assertEqual(lst["demands"][0]["mode"], "auto", "sem modo gravado vale o automático")
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--mode", "interativo", "--json")
+            self.assertEqual((code, d["mode"], d["step"]), (0, "interativo", "IMPLEMENT"), d)
+            code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
+            self.assertEqual(lst["demands"][0]["mode"], "interativo")
 
             hook = lambda payload: subprocess.run([sys.executable, str(root / "aidw_guard.py")],  # noqa: E731
                                                   input=json.dumps(payload), capture_output=True, text=True,
@@ -668,10 +780,16 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("aidw_guard.py", hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
             orq = files["plugins/aidw/skills/orquestrar/SKILL.md"].decode("utf-8")
             for step in ("project detect --json", "demand list --active --json", "não recomece",
-                         "demand set <id> --step <AÇÃO>", "EnterWorktree"):
+                         "demand set <id> --step <AÇÃO>", "EnterWorktree", "--mode <auto|interativo>",
+                         "AskUserQuestion", "## Modo interativo"):
                 self.assertIn(step, orq)
             self.assertLess(orq.index("Ao ser chamado"), orq.index("# ROLE"), "o protocolo vem antes do resto")
             sair = files["plugins/aidw/skills/sair/SKILL.md"].decode("utf-8")
+            diff = files["plugins/aidw/skills/diff/SKILL.md"].decode("utf-8")
+            for step in ("ExitWorktree", 'action: "keep"', 'name: "<demanda>/<folder>"', "worktree list --json",
+                         "**seguinte**", "`sair`: a pasta da demanda"):
+                self.assertIn(step, diff)
+            self.assertIn("/aidw:diff sair", orq)
             self.assertIn("--status paused", sair)
             self.assertIn("disable-model-invocation: true", sair)
 
@@ -778,6 +896,9 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("name: aidw-orquestrar", orq)
             self.assertIn("$aidw-sair", orq)
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
+            self.assertNotIn("AskUserQuestion", orq, "no Codex o modo é perguntado em texto")
+            self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
+            self.assertIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
             done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")

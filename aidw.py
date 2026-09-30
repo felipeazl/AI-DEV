@@ -342,7 +342,7 @@ def render_config(cfg: dict) -> str:
         f"project_dirs = {toml_value(cfg['workspace']['project_dirs'])}",
         "",
         "[worktree]",
-        "# Onde ficam os worktrees das demandas (<raiz>/<repo>/<id>). Curta e fora de qualquer repositório.",
+        "# Onde ficam os worktrees das demandas (<raiz>/<id>/<repo>). Curta e fora de qualquer repositório.",
         f"root = {toml_value(cfg['worktree']['root'])}",
         "",
         "[mcp]",
@@ -656,15 +656,20 @@ def variant_name(a: dict, model: dict, effort: str) -> str:
     return a["name"]
 
 
+def model_tag(m: dict) -> str:
+    """Como o modelo aparece para o usuário: a família sem versão (`label`); o `model_id` é o que vai ao CLI."""
+    return m.get("label") or m["model_id"]
+
+
 def model_label(a: dict, effort: str | None = None) -> str:
     effort = a["effort"] if effort is None else effort
     e = f", effort {effort}" if effort and a["model"].get("efforts") else ""
-    return f"{a['model']['name']} (`{a['model']['model_id']}`{e})"
+    return f"{a['model']['name']} (`{model_tag(a['model'])}`{e})"
 
 
 def header(a: dict, effort: str) -> str:
     e = f" {effort.capitalize()}" if effort and a["model"].get("efforts") else ""
-    return f"## {a['display']} - {a['model']['model_id']}{e}"
+    return f"## {a['display']} - {model_tag(a['model'])}{e}"
 
 
 # ---------------------------------------------------------------------------
@@ -1110,7 +1115,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    f"- You are `{a['name']}` — {a['display']} (role `{role}`), a sub-agent of "
                    f"`{orch}`: one task per run, and you cannot talk to the user. Questions and approvals "
                    "go back to the orchestrator in your final JSON.",
-                   f"- Model: {a['model']['name']} (`{a['model']['model_id']}`). The orchestrator chose "
+                   f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`). The orchestrator chose "
                    "the effort of this task.",
                    f"- Max retries: {routing.get('max_retries', 3)} (the same failing step; then stop and "
                    "report the failure `state` of your OUTPUT)",
@@ -1165,7 +1170,7 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
             if claude_native:
                 cells.append(f"`{ns}{variant_name(a, model, effort)}`")
             elif model["key"] != a["model"]["key"]:
-                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model['model_id']}`)")
+                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model_tag(model)}`)")
             else:
                 cells.append(effort or "—")
         rows.append(f"| **{lvl}** | {spec.get('when', '')} | " + " | ".join(cells) + " |")
@@ -1377,7 +1382,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         eff = a["effort"] if a["model"].get("efforts") else "—"
         definition = f"`{(GEN_AGENTS_DIR / (a['name'] + '.md')).as_posix()}`" if a["enabled"] else "—"
         team.append(f"| `{ns}{a['name']}` | {a['display']} | {role} | {a['model']['name']} "
-                    f"(`{a['model']['model_id']}`) | {eff} |" + (f" {definition} |" if with_definition else "")
+                    f"(`{model_tag(a['model'])}`) | {eff} |" + (f" {definition} |" if with_definition else "")
                     + f" {status} |")
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
     cmd = "install" if ns else "apply"
@@ -1422,8 +1427,8 @@ def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: 
     if model["key"] != a["model"]["key"]:
         description = (f"{a['display']} com {model['name']}, effort {effort or '—'}: mesmo papel de "
                        f"{ns}{a['name']}. Só quando a tabela Effort per task indicar.")
-        prompt = prompt.replace(f"- Model: {a['model']['name']} (`{a['model']['model_id']}`).",
-                                f"- Model: {model['name']} (`{model['model_id']}`).")
+        prompt = prompt.replace(f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`).",
+                                f"- Model: {model['name']} (`{model_tag(model)}`).")
     elif name != a["name"]:
         description = (f"{a['display']}, effort {effort}: mesmo papel de {ns}{a['name']}. "
                        "Só quando a tabela Effort per task indicar.")
@@ -1938,14 +1943,20 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-sair" if codex else f"/{plugin}:sair"
-    workspace = ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
+    workspace = ("7. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
                  "do Codex deixa só leitura: peça aprovação (escalada) para esse comando. Se a raiz dos worktrees não for "
                  "gravável (sessão aberta sem o "
                  f"perfil `{CODEX_PROFILE_NAME}`), peça ao usuário para reabrir com `{aidw} open --provider codex "
                  "--demand <id>`." if codex else
-                 "6. **Código:** worktree da demanda (seção *Workspace*) e `EnterWorktree` com o id da demanda — "
-                 "exceto se a sessão já abriu dentro dele (`demand` no `project detect`, ex.: `aidw open --demand`).")
+                 "7. **Código:** worktree da demanda (seção *Workspace*); todos ficam na pasta da demanda "
+                 "(`<raiz dos worktrees>/<id>/<repositório>`). Se a sessão abriu nessa pasta ou num worktree dela "
+                 "(`demand` no `project detect`, ex.: `aidw open --demand`), fique onde está. Senão, no app desktop, "
+                 "`mcp__ccd_directory__change_directory` para o worktree (um repositório) ou a pasta da demanda (mais "
+                 "de um); no terminal, `EnterWorktree` com o id da demanda. O painel de diff mostra um repositório "
+                 "por vez: `/"
+                 f"{plugin}:diff` troca para o próximo, `/{plugin}:diff <repo>` vai para um e `/{plugin}:diff sair` "
+                 "volta para a pasta da demanda.")
     description = (f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
                    "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
     return "\n".join([
@@ -1968,9 +1979,26 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "reviews, `estado.md`) e continue da etapa gravada (`step`).",
         f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
         "o fluxo.",
-        f"5. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
+        "5. **Modo da sessão:** `interativo` ou `auto` (o padrão, como sempre foi). Vale o que o pedido disser "
+        "(`interativo`, `auto`, `automático`); senão o `mode` do `demand.json`, numa retomada; senão pergunte "
+        + ("em texto, com as duas opções, e espere a resposta. " if codex else
+           "com `AskUserQuestion`, opções *Automático* e *Interativo*. ")
+        + f"Grave com `{aidw} demand set <id> --mode <auto|interativo>` e diga o modo na primeira resposta. O "
+        "usuário troca quando quiser (\"modo automático\", \"modo interativo\"): grave de novo.",
+        f"6. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
         "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda.",
         workspace, "",
+        "## Modo interativo", "",
+        "Só acrescenta paradas; as ações travadas das policies pedem OK nos dois modos, e ler código, rodar "
+        "`record`, build e git local continuam sem pergunta.",
+        "- **Plano:** antes de `TICKETS`, mostre o resumo do plano (nível, tickets, passadas extras, riscos) e o "
+        "caminho do arquivo; espere *aprovar* ou *ajustar*.",
+        "- **Cada delegação:** antes de chamar o agente, escreva o arquivo da tarefa e mostre, em até 6 linhas: "
+        "agente e effort (a célula da tabela *Effort per task*), nível, ticket, arquivos em escopo, comando de build/teste, MCP e o "
+        "caminho da tarefa. Espere *aprovar*, *ajustar* (refaça a tarefa e mostre de novo) ou *pular*. Delegações "
+        "paralelas vão numa aprovação só.",
+        "- Depois de cada resultado, mostre o `header` e o `resumo` e a próxima ação que você pretende; a "
+        "delegação seguinte passa pela mesma aprovação.", "",
         orchestrator_md.strip(), "",
     ])
 
@@ -1986,6 +2014,49 @@ def exit_skill(plugin: str, provider: str = "claude") -> str:
         "`estado.md` curto na pasta dela. Depois responda normalmente, sem as regras do orquestrador, até "
         f"`{'$aidw-orquestrar' if codex else '/' + plugin + ':orquestrar'}` ser chamado de novo (ele retoma da etapa "
         "gravada).", "",
+    ])
+
+
+def diff_skill(plugin: str) -> str:
+    """Só no Claude: o painel de diff segue a pasta da sessão, e o Codex não tem `EnterWorktree`."""
+    aidw = aidw_command(True)
+    description = (f"{PLUGIN_GUARD} Troca o repositório que o painel de diff mostra, sem sair do chat nem do modo "
+                   "orquestrador: sem argumento vai para o próximo repositório da demanda (em círculo), com um nome "
+                   "vai para ele, e `sair` volta para a pasta da demanda. Use quando o usuário pedir para ver o diff "
+                   "de um repositório da demanda.")
+    return "\n".join([
+        "---", "name: diff", f"description: {json.dumps(description, ensure_ascii=False)}", "---", "",
+        f"<!-- {GENERATED_MARK} install; não edite: altere as fontes e rode `python aidw.py install`. -->", "",
+        "# Diff por repositório da demanda", "",
+        "Pedido (pode estar vazio): $ARGUMENTS", "",
+        f"1. **Onde o chat está:** `{aidw} project detect --json` na pasta atual. `demand` é a demanda (no worktree "
+        "ou na pasta da demanda); senão, a demanda desta sessão; senão `demand list --active --json`, e pergunte "
+        "se houver mais de uma.",
+        f"2. **Worktrees:** `{aidw} worktree list --json`, os `active` dessa demanda, na ordem da lista (a de "
+        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`.",
+        "3. **Destino:**",
+        "   - vazio: o worktree **seguinte** àquele em que o chat está, voltando ao primeiro depois do último; fora "
+        "de todos (na pasta da demanda, por exemplo), o primeiro;",
+        "   - `sair`: a pasta da demanda (a pasta-mãe dos worktrees dela);",
+        "   - um nome: o `folder` que casa com ele, sem diferenciar maiúsculas; um pedaço vale (`front`). Nenhum ou "
+        "mais de um: liste os `folder` e pergunte.",
+        "   Com um worktree só, vazio e o nome dele levam a ele; se o chat já está lá, diga e pare.",
+        "4. **Mudar a pasta da sessão.** No app desktop do Claude existe a ferramenta "
+        "`mcp__ccd_directory__change_directory` (se estiver adiada, carregue com ToolSearch "
+        "`select:mcp__ccd_directory__change_directory`): chame com `path` = o `path` do worktree de destino, ou a "
+        "pasta da demanda no `sair`. É ela que leva o painel de diff junto; a pasta muda quando esta resposta termina, "
+        "e o usuário pode ter de aprovar a pasta. Não use `EnterWorktree` no app: ele muda só a pasta do Claude Code e "
+        "o painel fica para trás.",
+        "5. **Sem essa ferramenta (terminal):** se a sessão entrou num worktree com `EnterWorktree`, saia com "
+        "`ExitWorktree` e `action: \"keep\"`, nunca `remove`; ele volta à pasta onde a sessão abriu. No `sair`, "
+        "pare aí. Depois, `EnterWorktree` com "
+        "`name: \"<demanda>/<folder>\"` (ex.: `us-123/AssistenteCertificado.Front`); o hook do AiDW devolve o "
+        "caminho. Não use `path`: o Claude só aceita worktree do repositório onde o chat abriu.",
+        "6. Responda em até 3 linhas: onde o chat está agora (repositório e branch, ou a pasta da demanda), "
+        "`git -C <path> diff --stat <base>...HEAD` resumido e o próximo da volta (`/" + plugin + ":diff`). O painel de "
+        "diff mostra esse repositório; na pasta da demanda ele fica vazio. O modo orquestrador continua: os ajustes "
+        "que o usuário apontar entram no fluxo como sempre (triagem e tarefa para o agente, com o caminho absoluto).",
+        "",
     ])
 
 
@@ -2033,6 +2104,7 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     put(f"{base}/skills/orquestrar/SKILL.md",
         orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "orquestrar" / "SKILL.md"))
     put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
+    put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin))
     for name, r in b["orchestrator_refs"].items():
         put(f"{base}/reference/{name}.md", r["content"])
     py = f'python "{ROOT.as_posix()}/aidw.py"'
@@ -2519,18 +2591,22 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
         if e["demand"] == demand and norm_path(e["repo"]) == norm_path(main) and Path(e["path"]).is_dir():
             return {"ok": True, "created": False, **e}
     folder = main.name
-    if any(Path(e["repo"]).name.lower() == folder.lower() and norm_path(e["repo"]) != norm_path(main)
-           for e in reg["worktrees"]):  # ex.: ProjetosLegados/Hope e ProjetosTFS/Hope: um não invade o outro
+    if any(e["demand"] == demand and Path(e["repo"]).name.lower() == folder.lower()
+           and norm_path(e["repo"]) != norm_path(main)
+           for e in reg["worktrees"]):  # ex.: ProjetosLegados/Hope e ProjetosTFS/Hope na mesma demanda
         folder = f"{main.name}.{main.parent.name}"
-    path = worktree_root(cfg) / folder / demand
-    if path.exists():
+    path = worktree_root(cfg) / demand / folder  # a pasta da demanda junta os worktrees de todos os repositórios dela
+    warnings = []
+    # o worktree_link de outro repositório da demanda (ex.: ../eCommerce) vira o worktree dela; a junction só sai logo
+    # antes do `git worktree add` e volta se ele falhar
+    was_link = is_link(path) and norm_path(os.path.realpath(path)) == norm_path(os.path.realpath(main))
+    if path.exists() and not was_link:
         return {"ok": False, "error": f"{path.as_posix()} já existe e não está no registro do AiDW; confira e remova à mão"}
     wt_cfg = ctx.get("worktree", {}) if ctx else {}
     number = re.sub(r"^[a-z]+-", "", demand)
     branch = f"{wt_cfg.get('branch_prefix', 'aidw/')}{number}" + (f"-{slugify(slug)[:40].strip('-')}" if slug else "")
     if git_proc(main, "check-ref-format", "--branch", branch).returncode != 0:
         return {"ok": False, "error": f"nome de branch inválido: {branch}"}
-    warnings = []
     if git_out(main, "remote"):
         if git_proc(main, "fetch", "-q", "origin").returncode != 0:
             warnings.append("git fetch origin falhou; a base pode estar desatualizada")
@@ -2541,12 +2617,19 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     if main_dirty:
         warnings.append("o working copy principal tem alterações locais; elas NÃO entram no worktree")
     path.parent.mkdir(parents=True, exist_ok=True)
+    if was_link:
+        remove_link(path)
     if git_proc(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0:
         proc = git_proc(main, "worktree", "add", str(path), branch)  # branch já existe: reaproveita
     else:
         proc = git_proc(main, "worktree", "add", "-b", branch, str(path), base)
     if proc.returncode != 0:
+        if was_link and not path.exists():
+            make_link(path, main)  # o build dos outros repositórios da demanda continua achando a dependência
         return {"ok": False, "error": f"git worktree add falhou: {(proc.stderr or proc.stdout).strip()[-400:]}"}
+    if was_link:
+        warnings.append(f"{path.as_posix()} era junction para {main.as_posix()}; agora é o worktree da demanda, e o "
+                        "build dos outros repositórios dela passa a usar esta versão")
     links = []
     try:
         for name in wt_cfg.get("link", DEFAULT_WORKTREE_LINKS):
@@ -2566,7 +2649,7 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     outside = link_outside(cfg, ctx, system, main, path, warnings)
     entry = {"demand": demand, "repo": main.as_posix(), "path": path.as_posix(), "branch": branch, "base": base,
              "links": links, "outside_links": outside, "status": "active", "context": ctx["name"] if ctx else None,
-             "system": system, "created_at": datetime.now().isoformat(timespec="seconds")}
+             "system": system, "layout": "demanda", "created_at": datetime.now().isoformat(timespec="seconds")}
     reg["worktrees"].append(entry)
     save_registry(reg)
     demand_file = update_demand_file(ctx, demand, {k: entry[k] for k in ("repo", "path", "branch", "base", "system")})
@@ -2577,20 +2660,25 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
 def link_outside(cfg: dict, ctx: dict | None, system: str | None, main: Path, path: Path, warnings: list) -> list[str]:
     """`worktree_link` do sistema: pastas vizinhas que o código alcança por caminho relativo (ex.: HintPath
     `..\\..\\eCommerce\\...\\bin\\x.dll`). O mesmo caminho relativo, a partir do worktree, vira junction para o que ele
-    resolve a partir do working copy principal. Ficam na raiz dos worktrees, compartilhadas, e o `remove` não as
-    toca (estão fora do worktree)."""
+    resolve a partir do working copy principal. Ficam na pasta da demanda (ou acima, na raiz dos worktrees,
+    compartilhadas); o `remove` do último worktree da demanda tira as da pasta dela."""
     made = []
     rels = (ctx or {}).get("systems", {}).get(system or "", {}).get("worktree_link", [])
+    registered = load_registry()["worktrees"] if rels else []
     for rel in rels:
         src, dst = Path(os.path.normpath(main / rel)), Path(os.path.normpath(path / rel))
         if norm_path(src) == norm_path(main):
             continue  # a lista vale para todos os repositórios do sistema; o próprio repositório não se liga
         if not path_inside(dst, worktree_root(cfg)) or path_inside(dst, path) or path_inside(src, main):
-            warnings.append(f"worktree_link {rel!r} ignorado: precisa sair do repositório e ficar na raiz dos worktrees")
+            warnings.append(f"worktree_link {rel!r} ignorado: precisa sair do repositório e ficar dentro da raiz dos "
+                            "worktrees")
         elif not src.is_dir():
             warnings.append(f"worktree_link {rel!r}: {src.as_posix()} não existe; o build pode não achar essa dependência")
+        elif any(norm_path(x["path"]) == norm_path(dst) and norm_path(x["repo"]) == norm_path(src)
+                 and x["status"] == "active" and Path(x["path"]).is_dir() for x in registered):
+            continue  # a demanda tem worktree desse repositório ali: o build usa a versão da demanda
         elif is_link(dst) and norm_path(os.path.realpath(dst)) == norm_path(os.path.realpath(src)):
-            made.append(rel)  # já criada por outro worktree do mesmo repositório
+            made.append(rel)  # já criada por outro worktree da demanda
         elif is_link(dst):  # aponta para outro lugar (config antiga, outro repositório) ou para nada
             warnings.append(f"worktree_link {rel!r}: {dst.as_posix()} é junction para outro lugar; confira e remova à "
                             f"mão para ela apontar para {src.as_posix()}")
@@ -2650,8 +2738,26 @@ def worktree_remove(target: str, repo: str | None = None) -> dict:
         git_proc(e["repo"], "worktree", "prune")
     reg["worktrees"] = [x for x in reg["worktrees"] if x is not e]
     save_registry(reg)
+    folder = Path(e["path"]).parent
+    if in_demand_folder(e) and folder.is_dir() and not any(path_inside(x["path"], folder) for x in reg["worktrees"]):
+        children = list(folder.iterdir())
+        if all(is_link(c) for c in children):  # sobraram só as junctions do worktree_link: a pasta da demanda sai
+            for child in children:
+                remove_link(child)  # tira a junction, nunca apaga através dela
+            folder.rmdir()
     return {"ok": True, "path": e["path"], "branch": e["branch"],
             "note": f"a branch {e['branch']} foi mantida (apagar branch é ação travada)"}
+
+
+def in_demand_folder(e: dict) -> bool:
+    """Worktree no formato `<raiz>/<demanda>/<pasta>` (gravado no registro); os antigos são `<raiz>/<pasta>/<demanda>`."""
+    return e.get("layout") == "demanda"
+
+
+def wt_folder(e: dict) -> str:
+    """Pasta do repositório no worktree (ex.: `AssistenteCertificado.Front`), nos dois formatos."""
+    p = Path(e["path"])
+    return p.name if in_demand_folder(e) else p.parent.name
 
 
 def worktree_cleanup() -> dict:
@@ -2669,9 +2775,15 @@ def project_detect(cfg: dict, path: str) -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     info = repo_info(path)
     result = {"path": Path(path).resolve().as_posix(), "context": ctx["name"] if ctx else None, "git": bool(info)}
-    if not info:
-        return result
     reg = load_registry()
+    if not info:  # a pasta da demanda (`<raiz>/<demanda>`) não é repositório: os worktrees dela estão dentro
+        inner = [e for e in reg["worktrees"] if e["status"] == "active" and in_demand_folder(e)
+                 and path_inside(path, Path(e["path"]).parent)]
+        if inner:
+            result.update(demand=inner[0]["demand"], demand_folder=Path(inner[0]["path"]).parent.as_posix(),
+                          worktrees=[{"folder": wt_folder(e), "path": e["path"], "branch": e["branch"]}
+                                     for e in inner if e["demand"] == inner[0]["demand"]])
+        return result
     active = [e for e in reg["worktrees"] if norm_path(e["repo"]) == norm_path(info["main"]) and e["status"] == "active"]
     here = [e for e in active if path_inside(path, e["path"])]
     result.update(info, system=system_for(ctx, info["main"]),
@@ -2687,19 +2799,40 @@ def worktree_hook_create() -> int:
     except (json.JSONDecodeError, UnicodeDecodeError):
         print("AiDW: entrada inválida no hook WorktreeCreate", file=sys.stderr)
         return 1
-    name = slugify(str(data.get("name") or "")) or "sessao"
+    raw = str(data.get("name") or "")
     cwd = str(data.get("cwd") or os.getcwd())
     reg = load_registry()
+    if "/" in raw:  # `<demanda>/<pasta do repositório>` (skill diff): o worktree desse repositório, de qualquer pasta
+        demand, folder = (x.strip() for x in raw.split("/", 1))
+        hits = [e for e in reg["worktrees"] if e["demand"] == slugify(demand) and e["status"] == "active"
+                and Path(e["path"]).is_dir() and wt_folder(e).lower() == folder.lower()]
+        if len(hits) != 1:
+            print(f"AiDW: nenhum worktree ativo da demanda {demand} na pasta {folder} "
+                  "(`aidw.py worktree list`)", file=sys.stderr)
+            return 1
+        print(Path(hits[0]["path"]))
+        return 0
+    name = slugify(raw) or "sessao"
     same = [e for e in reg["worktrees"] if e["demand"] == name and e["status"] == "active" and Path(e["path"]).is_dir()]
     info = repo_info(cwd)
-    if info:
-        same = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])]
+    here = [e for e in same if norm_path(e["repo"]) == norm_path(info["main"])] if info else same[:1]
+    at_root = bool(info) and norm_path(info["main"]) == norm_path(ROOT)
+    if at_root and not here and same:
+        # chat aberto na raiz do AiDW, que nunca é repositório de demanda: entra no worktree que a demanda já tem
+        # (com vários, no primeiro criado; o orquestrador leva os outros pelo caminho absoluto). Em outro
+        # repositório, criar é o certo (demanda com mais de um repositório, `claude --worktree <id>`).
+        here = same[:1]
+    same = here
     if len(same) == 1:  # criado antes pelo orquestrador (`worktree create`): a sessão só entra nele
         print(Path(same[0]["path"]))
         return 0
     cfg = load_config()
     if cfg is None:
         print("AiDW: aidw.config.toml não encontrado", file=sys.stderr)
+        return 1
+    if at_root and demand_path(load_context(cfg, Report(quiet=True)), name).exists():
+        print(f"AiDW: a demanda {name} ainda não tem worktree; crie com `worktree create --repo <repo> --demand "
+              f"{name}` e chame o EnterWorktree de novo (a raiz do AiDW não é repositório de demanda)", file=sys.stderr)
         return 1
     result = worktree_create(cfg, cwd, name)
     if not result["ok"]:
@@ -2727,7 +2860,8 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
         result = ({"ok": True, **hits[0], **worktree_state(hits[0])} if len(hits) == 1 else
                   {"ok": False, "error": "nenhum ou mais de um worktree com esse caminho/demanda (use --repo)"})
     else:  # list
-        result = {"ok": True, "worktrees": [{**e, **worktree_state(e)} for e in load_registry()["worktrees"]]}
+        result = {"ok": True, "worktrees": [{**e, "folder": wt_folder(e), **worktree_state(e)}
+                                            for e in load_registry()["worktrees"]]}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["ok"] else 1
@@ -2764,9 +2898,11 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 DEMAND_STATUS = ("active", "paused", "done")
+DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK antes de cada delegação
 
 
-def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "") -> dict:
+def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
+               mode: str = "") -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
@@ -2775,6 +2911,8 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND ou uma ação de NEXT ACTION)"}
     if status and status not in DEMAND_STATUS:
         return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
+    if mode and mode not in DEMAND_MODES:
+        return {"ok": False, "error": f"modo inválido {mode!r} (use {', '.join(DEMAND_MODES)})"}
     data, warning, kind = load_demand(ctx, demand)
     if kind == "context":
         return {"ok": False, "error": warning}
@@ -2783,7 +2921,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     if step and step != data.get("step"):
         data.setdefault("history", []).append({"step": step, "at": now})
         data["step"] = step
-    for key, value in (("status", status), ("title", title), ("note", note)):
+    for key, value in (("status", status), ("title", title), ("note", note), ("mode", mode)):
         if value:
             data[key] = value
     data["updated"] = now
@@ -2806,14 +2944,16 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
         if active_only and d.get("status") == "done":
             continue
         out.append({"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
-                    "title": d.get("title", ""), "note": d.get("note", ""), "updated": d.get("updated"),
+                    "title": d.get("title", ""), "note": d.get("note", ""), "mode": d.get("mode", "auto"),
+                    "updated": d.get("updated"),
                     "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
     return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
 
 
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
-        result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "")
+        result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
+                            args.mode or "")
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -3133,18 +3273,38 @@ def demand_worktrees(demand: str) -> list[dict]:
             (e["demand"] == demand or (demand.isdigit() and e["demand"].endswith("-" + demand)))]
 
 
-def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True) -> int:
+def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True,
+                 repo: str = "") -> int:
     """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
-    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão)."""
+    `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão). Demanda com mais de
+    um repositório: a sessão abre na pasta da demanda, que tem os worktrees dentro (`/aidw:diff` troca o painel
+    de diff entre eles); com `--repo`, ou nos worktrees do formato antigo, no worktree dele (padrão: o primeiro
+    criado), e os outros entram por `--add-dir`."""
     target = Path(path).resolve() if path else Path.cwd()
     folder = prompt = None
+    extra: list[Path] = []
     if demand:
         hits = demand_worktrees(demand)
-        if len(hits) != 1:
-            print(f"[erro]  {'nenhum' if not hits else 'mais de um'} worktree ativo para a demanda {demand!r} "
-                  "(`aidw.py worktree list`)")
+        ids = sorted({e["demand"] for e in hits})
+        if not hits or len(ids) > 1:
+            print(f"[erro]  {'nenhum worktree ativo' if not hits else 'mais de uma demanda (' + ', '.join(ids) + ')'} "
+                  f"para {demand!r} (`aidw.py worktree list`)")
             return 1
-        demand, target = hits[0]["demand"], Path(hits[0]["path"])
+        main = hits[0]
+        if repo:
+            chosen = [e for e in hits if norm_path(e["repo"]) == norm_path(repo) or Path(e["repo"]).name.lower() ==
+                      Path(repo).name.lower()]
+            if len(chosen) != 1:
+                print(f"[erro]  a demanda {ids[0]} não tem um worktree só em {repo!r}; repositórios dela: "
+                      + ", ".join(e["repo"] for e in hits))
+                return 1
+            main = chosen[0]
+        extra = [Path(e["path"]) for e in hits if e is not main]
+        demand, target = main["demand"], Path(main["path"])
+        parents = {norm_path(Path(e["path"]).parent) for e in hits}
+        if provider == "claude" and not repo and len(hits) > 1 and len(parents) == 1 and \
+                all(in_demand_folder(e) for e in hits):
+            target, extra = Path(main["path"]).parent, []  # a pasta da demanda: os worktrees estão dentro dela
         folder = state_dir(load_context(cfg, Report(quiet=True))) / demand
         manifest = load_manifest()
         installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
@@ -3161,8 +3321,13 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
     else:
         cmd = [exe]
-    if folder:
-        cmd += ["--add-dir", str(folder)]
+    for d in [*extra, *([folder] if folder else [])]:
+        cmd += ["--add-dir", str(d)]
+    if extra:
+        print(f"[ok]    a demanda tem {len(extra) + 1} worktrees: a sessão abre em {target} e os outros entram por "
+              "--add-dir (troque com --repo)")
+    elif demand and folder and not (target / ".git").exists():
+        print(f"[ok]    pasta da demanda {target}: os worktrees estão dentro; /aidw:diff troca o painel de diff entre eles")
     if prompt:
         cmd.append(prompt)
     print(f"Abrindo {provider} em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
@@ -3630,13 +3795,18 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     demand = Path(args.demand).resolve()
     demand.mkdir(parents=True, exist_ok=True)
     append_metrics(demand, row)
-    shown = {**a, "model": {**model, "model_id": row["model"]}}
-    head = header(shown, effort)
+    real_id = row["model"] != model["model_id"]
+    if real_id:  # a sessão do Codex rodou em outro modelo: o cabeçalho mostra o real
+        real = next((m for m in catalog.values() if m["model_id"] == row["model"]), {})
+        model = {**model, "name": real.get("name", row["model"]), "label": real.get("label", row["model"]),
+                 "model_id": row["model"]}
+    head = header({**a, "model": model}, effort)
     if row["tokens_out"] is None:
         tokens = f"{row['tokens_in']:,} tokens".replace(",", ".") if row["tokens_in"] is not None else "tokens ?"
     else:
         tokens = f"{row['tokens_in']:,} tokens entrada + {row['tokens_out']:,} saída".replace(",", ".")
-    parts = [f"{a['display']} ({level})", model["name"], f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
+    shown = model["name"] + (f" ({row['model']})" if real_id else "")  # mesma família, versões diferentes
+    parts = [f"{a['display']} ({level})", shown, f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
     if row["limits"] != "—":
         parts.append(row["limits"])
     print(json.dumps({"header": head, "resumo": " | ".join(parts), **row, "warnings": rep.warnings},
@@ -3839,7 +4009,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     head = header(shown, effort)
     label = args.label or task.stem
     effort_txt = f"effort **{effort}**" if effort else "no effort setting"
-    prompt = (f"Model for this task: {model['name']} (`{model['model_id']}`), {effort_txt}, level `{level}`.\n\n"
+    prompt = (f"Model for this task: {model['name']} (`{model_tag(model)}`), {effort_txt}, level `{level}`.\n\n"
               f"Your task is in the file `{task.as_posix()}`: read it and execute it. Demand folder: "
               f"`{demand.as_posix()}`. Finish with the JSON of the OUTPUT section of your definition, "
               "with `state`.")
@@ -4325,6 +4495,8 @@ def main() -> int:
     p_open.add_argument("--path", help="pasta (padrão: a atual)")
     p_open.add_argument("--print", action="store_true", help="só mostra o comando")
     p_open.add_argument("--no-orchestrate", action="store_true", help="com --demand: abre sem chamar o orquestrador")
+    p_open.add_argument("--repo", help="com --demand de mais de um repositório: o worktree onde a sessão abre "
+                        "(caminho ou nome do repositório; padrão: o primeiro criado)")
     p_status = sub.add_parser("status", help="visão rápida: instalação, demandas ativas, worktrees e pendências")
     p_status.add_argument("--json", action="store_true")
     p_wt = sub.add_parser("worktree", help="worktree por demanda: create, list, inspect, remove, cleanup")
@@ -4362,12 +4534,13 @@ def main() -> int:
         c.add_argument("--json", action="store_true", help="saída em JSON")
     p_dm = sub.add_parser("demand", help="estado da demanda para retomar: set, show, list")
     dm = p_dm.add_subparsers(dest="dm_action", required=True)
-    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota)")
+    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota, modo)")
     d_set.add_argument("id", help="id da demanda, ex.: us-1234")
     d_set.add_argument("--step", help="etapa atual: UNDERSTAND ou uma ação de NEXT ACTION")
     d_set.add_argument("--status", choices=("active", "paused", "done"))
     d_set.add_argument("--title")
     d_set.add_argument("--note", help="onde parou / próximo passo")
+    d_set.add_argument("--mode", choices=DEMAND_MODES, help="modo da sessão: auto (padrão) ou interativo")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")
@@ -4475,7 +4648,7 @@ def main() -> int:
         return 0 if ok else 1
     if command == "open":
         return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print,
-                            not args.no_orchestrate)
+                            not args.no_orchestrate, args.repo or "")
     if command == "status":
         return status_command(cfg, catalog, args.json)
     if command == "doctor":
