@@ -106,6 +106,7 @@ DEFAULT_WORKTREE_LINKS = ["packages", "node_modules"]
 DEMAND_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
 GENERATED_MARK = "Gerado por aidw.py"
 ORCHESTRATOR = "orchestrator"
+SKIP_LEVEL = "none"  # routing.toml: o papel não roda naquele nível
 PLANNER = "planner"
 EXPLORER = "explorer"
 # Papéis que chegaram depois das primeiras configs: uma config que não os lista os recebe com o padrão.
@@ -133,8 +134,8 @@ DEFAULT_NAMES = {
     "bug-hunter": "bugs",
     "security": "seguranca",
 }
-# Opus no orquestrador, no planejador e no codificador; Sonnet no api e no revisor; Haiku no explorador e no
-# documentador.
+# Modelo base (o do nível padrao): Opus no orquestrador, planejador, codificador e revisor; Sonnet no api, bugs e
+# segurança; Haiku no explorador e no documentador. Os outros níveis trocam modelo/effort no routing.toml.
 # No Codex o tier escolhe o equivalente (config/models.toml).
 # skills  = disponíveis para o agente (listadas no prompt; ele chama com o Skill tool quando precisa)
 # preload = subconjunto injetado inteiro no início de cada execução — só o que ele usa sempre.
@@ -147,7 +148,7 @@ DEFAULT_AGENTS: dict[str, dict] = {
     # Explorador: leitura barata do código, com `arquivo:linha`, num relatório que o plano e o código reusam.
     "explorer": {"enabled": True, "tier": "fast", "effort": "low", "skills": []},
     "coder": {"enabled": True, "tier": "top", "effort": "medium", "skills": ["preparar-worktree"]},
-    "reviewer": {"enabled": True, "tier": "mid", "effort": "high",
+    "reviewer": {"enabled": True, "tier": "top", "effort": "medium",
                  "skills": ["code-review", "verificar-premissa"], "preload": ["code-review"]},
     "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe"]},
     "qa": {"enabled": False, "tier": "mid", "effort": "medium", "skills": []},
@@ -274,6 +275,16 @@ def tier_model(catalog: dict, provider: str, tier: str) -> str | None:
         if not available or catalog[key]["model_id"] in available:
             return key
     return candidates[0] if candidates else None
+
+
+def equivalent_model(catalog: dict, key: str, provider: str, fallback_tier: str = "mid") -> str | None:
+    """O modelo do provedor que corresponde a `key` de outro provedor, pelo tier (Opus → top, Sonnet → mid,
+    Haiku → fast): a mesma tabela de modelos por nível serve ao Claude e ao Codex. Sem tier (ex.: Fable), o
+    tier do papel."""
+    m = catalog[key]
+    if m["provider"] == provider:
+        return key
+    return tier_model(catalog, provider, (m.get("tiers") or [fallback_tier])[0])
 
 
 def default_config(provider: str = "claude") -> dict:
@@ -546,10 +557,8 @@ def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Repor
             rep.error(f"agente {role}: modelo {key!r} não existe em config/models.toml")
             continue
         if key and catalog[key]["provider"] != provider:
-            fallback = tier_model(catalog, provider, DEFAULT_AGENTS.get(role, {}).get("tier", "mid"))
-            rep.warn(f"agente {role}: {key!r} é do provedor {catalog[key]['provider']}; usando "
-                     f"{fallback!r} (tire o `model` do aidw.config.toml ou escolha um de {provider})")
-            key = fallback
+            key = equivalent_model(catalog, key, provider,  # ex.: `opus` no Codex → o top do Codex
+                                   DEFAULT_AGENTS.get(role, {}).get("tier", "mid"))
         if not key:
             key = tier_model(catalog, provider, DEFAULT_AGENTS.get(role, {}).get("tier", "mid"))
         if not key:
@@ -610,7 +619,7 @@ def load_routing(rep: Report) -> dict:
                 continue
             if role not in DEFAULT_AGENTS:
                 rep.error(f"routing.toml: [effort.levels.{lvl}] cita papel desconhecido {role!r}")
-            elif value not in EFFORTS:
+            elif value not in EFFORTS and value != SKIP_LEVEL:
                 rep.error(f"routing.toml: [effort.levels.{lvl}] {role} = {value!r} não é effort válido")
     if levels and eff.get("default_level") not in levels:
         rep.error(f"routing.toml: effort.default_level {eff.get('default_level')!r} não está em [effort.levels]")
@@ -619,7 +628,10 @@ def load_routing(rep: Report) -> dict:
 
 def effort_for(routing: dict, role: str, level: str, agent: dict) -> str:
     spec = routing.get("effort", {}).get("levels", {}).get(level, {})
-    return spec.get(role) or agent["effort"]
+    value = spec.get(role)
+    if value == SKIP_LEVEL:
+        return ""
+    return value or agent["effort"]
 
 
 def attach_variants(resolved: dict, routing: dict, catalog: dict, rep: Report) -> None:
@@ -633,19 +645,20 @@ def attach_variants(resolved: dict, routing: dict, catalog: dict, rep: Report) -
         if role == ORCHESTRATOR:
             continue
         base = a["model"]
-        by_level = {}
+        by_level, skip = {}, []
         for lvl, spec in levels.items():
+            if spec.get(role) == SKIP_LEVEL:  # o papel não roda nesse nível (ex.: planejador em trivial)
+                skip.append(lvl)
+                continue
             key = spec.get("models", {}).get(role)
             model = base
             if key:
                 if key not in catalog:
                     rep.error(f"routing.toml: [effort.levels.{lvl}.models] {role} = {key!r} não existe em "
                               "config/models.toml")
-                elif catalog[key]["provider"] != base["provider"]:
-                    rep.warn(f"routing.toml: [effort.levels.{lvl}.models] {role} = {key!r} é de outro "
-                             f"provedor; usando {base['key']!r}")
-                else:
-                    model = {**catalog[key], "key": key}
+                else:  # de outro provedor: o equivalente pelo tier
+                    eq = equivalent_model(catalog, key, base["provider"])
+                    model = {**catalog[eq], "key": eq} if eq else base
             effort = effort_for(routing, role, lvl, a) if model.get("efforts") else ""
             if effort and effort not in model["efforts"]:
                 rep.error(f"routing.toml: [effort.levels.{lvl}] {model['name']} não aceita effort {effort!r}")
@@ -663,7 +676,7 @@ def attach_variants(resolved: dict, routing: dict, catalog: dict, rep: Report) -
             else:
                 name = "-".join(x for x in (a["name"], model.get("alias") or model["key"], effort) if x)
             variants.setdefault(name, {"model": model, "effort": effort})
-        a["by_level"], a["variants"] = by_level, variants
+        a["by_level"], a["variants"], a["skip_levels"] = by_level, variants, skip
 
 
 def variant_name(a: dict, model: dict, effort: str) -> str:
@@ -1197,7 +1210,9 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
         for r in roles:
             a = resolved[r]
             model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
-            if claude_native:
+            if lvl in a.get("skip_levels", []):
+                cells.append("— (não roda)")
+            elif claude_native:
                 cells.append(f"`{ns}{variant_name(a, model, effort)}`")
             elif model["key"] != a["model"]["key"]:
                 cells.append(f"{effort or '—'} + model `{model['key']}` (`{model_tag(model)}`)")
@@ -1208,7 +1223,7 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     if claude_native:
         intro = ("Each cell is the `subagent_type` to use: the agent's model with the effort of that "
                  "level already pinned in its definition (a `-<alias>-` in the name means that level "
-                 "uses another model, e.g. `revisor-opus-high`).")
+                 "uses another model, e.g. `bugs-opus-high`).")
     else:
         intro = ("Each cell is the effort to pass. `—` = the model takes no effort (omit it). A cell "
                  "with `+ model` also names the model to pass for that level.")
@@ -1435,7 +1450,8 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         tpl.include(ORCHESTRATOR_MD),
         "\n".join(["## Runtime", "",
                    f"- You are `{orch['name']}` — {orch['display']} (role `orchestrator`), the main chat.",
-                   f"- Your model: {model_label(orch)}",
+                   (f"- Your model: the one selected in this chat (recommended: {model_label(orch)})"
+                    if provider == "claude" else f"- Your model: {model_label(orch)}"),
                    f"- Delegation mode: **{mode}**",
                    *runtime_lines(cfg, ctx),
                    *([f"- This chat may be in any folder: run the AiDW commands by absolute path "
@@ -1656,11 +1672,10 @@ def sync_claude_settings(managed: dict, previous: dict, dry: bool, rep: Report) 
     except json.JSONDecodeError:
         rep.error(f"{rel(CLAUDE_SETTINGS)} não é JSON válido; corrija ou apague o arquivo")
         return
-    data["model"] = managed["model"]
-    if managed["effortLevel"]:
-        data["effortLevel"] = managed["effortLevel"]
-    else:
-        data.pop("effortLevel", None)
+    # o modelo e o effort do orquestrador são os do chat: o AiDW não fixa mais, e tira só o que ele mesmo gravou
+    for key in ("model", "effortLevel"):
+        if previous.get(key) and data.get(key) == previous[key]:
+            data.pop(key)
     perms = data.setdefault("permissions", {})
     for key in ("allow", "ask", "deny", "additionalDirectories"):
         merged = merge_list(perms.get(key, []), previous.get(key, []), managed[key])
@@ -1873,8 +1888,6 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         orch = resolved[ORCHESTRATOR]
         ctx_perms = ctx.get("permissions", {}) if ctx else {}
         managed = {
-            "model": orch["model"]["model_id"],
-            "effortLevel": orch["effort"],
             "allow": list(dict.fromkeys([*ctx_perms.get("allow", []), *delegate_allow_rules(),
                                          *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
             "enabledMcpjsonServers": list(servers),
@@ -4016,6 +4029,8 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         rep.error(f"agente {args.agent!r} inexistente, desabilitado ou é o orquestrador (válidos: {valid})")
     attach_variants(resolved, routing, catalog, rep)
     level = args.level or routing.get("effort", {}).get("default_level", "padrao")
+    if a and level in a.get("skip_levels", []) and not (args.model or args.effort):
+        rep.error(f"{a['name']} não roda no nível {level} (routing.toml); use o nível mais baixo em que ele roda")
     # Modelo do nível ([effort.levels.<nível>.models]) quando houver; `--model` vence.
     model = a["by_level"].get(level, (a["model"], ""))[0] if a else {}
     if a and args.model:

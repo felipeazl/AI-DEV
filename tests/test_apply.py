@@ -224,6 +224,68 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertIsNone(aidw.build(aidw.load_config(), aidw.load_catalog(), rep))
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
 
+    def test_tabela_de_modelos_por_nivel(self) -> None:
+        """A tabela modelo/effort por nível (Felipe, 2026-09-30): nada acima de high; planejador fora do trivial;
+        no Codex, o equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
+        esperado = {  # papel: (trivial, simples, padrao, complexa, critica); None = não roda
+            "planner": (None, "sonnet/high", "opus/medium", "opus/high", "opus/high"),
+            "explorer": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/high"),
+            "coder": ("sonnet/high", "sonnet/high", "opus/medium", "opus/high", "opus/high"),
+            "reviewer": ("sonnet/high", "sonnet/high", "opus/medium", "opus/high", "opus/high"),
+            "bug-hunter": ("sonnet/low", "sonnet/medium", "sonnet/high", "opus/high", "opus/high"),
+            "security": ("sonnet/low", "sonnet/medium", "sonnet/high", "opus/high", "opus/high"),
+            "api-db": ("haiku/", "sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high"),
+            "documenter": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/medium"),
+        }
+        niveis = ("trivial", "simples", "padrao", "complexa", "critica")
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            for role, cells in esperado.items():
+                a = b["resolved"][role]
+                got = tuple(None if lvl in a["skip_levels"] else
+                            f"{a['by_level'][lvl][0]['key']}/{a['by_level'][lvl][1]}" for lvl in niveis)
+                self.assertEqual(got, cells, role)
+            efforts = [e for a in b["resolved"].values() for _, e in a.get("by_level", {}).values()]
+            self.assertFalse(set(efforts) & {"xhigh", "max"}, "nada acima de high")
+            # delegar um papel num nível em que ele não roda é recusado (não cai no modelo base)
+            task = root / "tarefa.md"
+            task.write_text("x\n", encoding="utf-8")
+            out = run_aidw(root, "delegate", "--agent", "planejador", "--level", "trivial", "--task", str(task),
+                           "--demand", str(root / "demanda"))
+            self.assertNotEqual(out.returncode, 0)
+            self.assertIn("não roda no nível trivial", out.stdout + out.stderr)
+            cat = aidw.load_catalog()
+            tiers = {t: aidw.tier_model(cat, "codex", t) for t in ("top", "mid", "fast")}
+            self.assertEqual(len(set(tiers.values())), 3, f"três degraus no Codex: {tiers}")
+
+    def test_settings_so_perde_o_que_o_aidw_gravou(self) -> None:
+        """O modelo do orquestrador é o do chat: o apply tira `model`/`effortLevel` só quando são o valor que ele
+        mesmo gravou antes; a escolha do usuário e as outras chaves ficam."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            aidw = load_aidw(root)
+            managed = {"allow": ["Read"], "ask": [], "deny": [], "additionalDirectories": [],
+                       "enabledMcpjsonServers": [], "env": {}}
+            previous = {"model": "opus", "effortLevel": "high"}
+            for model, fica in (("opus", False), ("sonnet", True)):
+                aidw.CLAUDE_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+                aidw.CLAUDE_SETTINGS.write_text(json.dumps({"model": model, "effortLevel": "high",
+                                                            "env": {"MINHA": "1"}}), encoding="utf-8")
+                aidw.sync_claude_settings(managed, previous, False, aidw.Report(quiet=True))
+                data = json.loads(aidw.CLAUDE_SETTINGS.read_text(encoding="utf-8"))
+                self.assertEqual("model" in data, fica, model)
+                self.assertNotIn("effortLevel", data)
+                self.assertEqual(data["env"], {"MINHA": "1"})
+                self.assertEqual(data["permissions"]["allow"], ["Read"])
+            data["model"] = "opus"  # depois disso o AiDW não grava mais nada: um `opus` escolhido fica
+            aidw.CLAUDE_SETTINGS.write_text(json.dumps(data), encoding="utf-8")
+            aidw.sync_claude_settings(managed, {**managed}, False, aidw.Report(quiet=True))
+            self.assertEqual(json.loads(aidw.CLAUDE_SETTINGS.read_text(encoding="utf-8"))["model"], "opus")
+
     def test_config_antiga_ganha_os_agentes_novos(self) -> None:
         """Uma config com [agents.*] de antes do planejador e do explorador: os dois entram com o padrão, o
         planejador recebe os níveis e o orquestrador delega a exploração ao explorador."""
@@ -244,6 +306,13 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertIn("## Levels", planner)
             self.assertIn("passadas-extras.md", planner)
             self.assertIn("the `explorador` agent", b["orchestrator_md"])
+            self.assertEqual(b["resolved"]["planner"]["skip_levels"], ["trivial"], "planejador não roda em trivial")
+            self.assertIn("— (não roda)", b["orchestrator_md"])
+            self.assertIn("`codificador-sonnet-high`", b["orchestrator_md"], "trivial/simples: Sonnet high")
+            cat = aidw.load_catalog()
+            self.assertEqual(aidw.equivalent_model(cat, "opus", "codex"), aidw.tier_model(cat, "codex", "top"))
+            self.assertEqual(aidw.equivalent_model(cat, "haiku", "codex"), aidw.tier_model(cat, "codex", "fast"))
+            self.assertEqual(aidw.equivalent_model(cat, "sonnet", "claude"), "sonnet")
 
 
 class InstallTest(unittest.TestCase):

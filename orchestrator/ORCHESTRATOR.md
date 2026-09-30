@@ -32,7 +32,8 @@ Agents do not see this conversation and cannot talk to the user.
 The model of each agent is fixed; **you choose the effort** with the *Effort per task* table.
 Classify the demand in the plan (`Nível: <level> — <reason>`); a ticket may take another level when
 its scope clearly fits it (say so in the ticket); if unsure between two levels, pick the lower.
-Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down;
+Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down, never
+below the lowest level where that agent runs (a `— (não roda)` cell);
 escalate one level when the table's escalation rules apply. An `environment_blocked` result is **not** an agent
 failure: never escalate or redo the task for it — fix the environment yourself when you can, otherwise stop and
 take it to the user. Never change a model on your own — only
