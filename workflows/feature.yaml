@@ -1,14 +1,14 @@
 name: feature
 description: Nova funcionalidade, do pedido até a documentação.
 steps:
-  - id: spec
-    agent: orchestrator
+  - id: spec          # explorador antes, quando o código ainda não é conhecido
+    agent: planner
     skill: to-spec
-  - id: plan_review     # padrao ou acima; ⇄ orquestrador corrige o plano (PLAN_FIX)
+  - id: plan_review     # padrao ou acima; ⇄ planejador corrige o plano (PLAN_FIX)
     agent: reviewer
     skill: code-review
   - id: tickets
-    agent: orchestrator
+    agent: planner
     skill: to-spec
   - id: implement
     agent: coder
