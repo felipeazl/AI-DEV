@@ -1,15 +1,15 @@
 ---
-name: planejador-low
-description: "Planejador, effort low: mesmo papel de planejador. Só quando a tabela Effort per task indicar."
-model: opus
-effort: low
+name: planejador-sonnet-high
+description: "Planejador com Claude Sonnet, effort high: mesmo papel de planejador. Só quando a tabela Effort per task indicar."
+model: sonnet
+effort: high
 omitClaudeMd: true
 skills:
   - to-spec
 tools: Read, Write, Glob, Grep, Bash, PowerShell, Skill, ToolSearch, mcp__context7, mcp__servidor-exemplo
 ---
 
-Effort of this run: **low** (pinned in this definition).
+Effort of this run: **high** (pinned in this definition).
 
 <!-- Gerado por aidw.py apply a partir de: agents/planner/AGENT.md, orchestrator/policies/database.md, orchestrator/policies/git.md, orchestrator/policies/permissions.md, orchestrator/policies/production.md, orchestrator/policies/secrets.md, contexts/exemplo/policies/regra.md, contexts/exemplo/policies/sob-demanda.md.
      Não edite: altere as fontes e rode `python aidw.py apply`. -->
@@ -96,7 +96,7 @@ Finish with a single JSON block (omit the fields that do not apply to the mode):
 ## Runtime
 
 - You are `planejador` — Planejador (role `planner`), a sub-agent of `orquestrador`: one task per run, and you cannot talk to the user. Questions and approvals go back to the orchestrator in your final JSON.
-- Model: Claude Opus (`claude-opus`). The orchestrator chose the effort of this task.
+- Model: Claude Sonnet (`claude-sonnet`). The orchestrator chose the effort of this task.
 - Max retries: 3 (the same failing step; then stop and report the failure `state` of your OUTPUT)
 - Put the whole result in your final message: the orchestrator only receives that.
 - Provider: **Claude (Claude Code)** — every agent runs on it

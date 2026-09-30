@@ -83,8 +83,10 @@ skills = ["preparar-worktree"]
 
 [agents.reviewer]
 # name = "revisor"
+# Opus (medium no padrao, high em complexa/crítica); Sonnet high em trivial/simples (routing.toml).
+model = "opus"
 enabled = true
-effort = "high"
+effort = "medium"
 skills = ["code-review", "verificar-premissa"]
 preload = ["code-review"]
 

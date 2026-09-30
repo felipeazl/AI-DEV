@@ -32,7 +32,7 @@ sistemas, comandos de build, convenções, políticas — sem mudar o nome de na
 ## 1. Como funciona
 
 ```text
- Você ── /aidw:orquestrar <demanda> ──► orquestrador (Opus · effort high)
+ Você ── /aidw:orquestrar <demanda> ──► orquestrador (o modelo do chat; Opus · high recomendado)
                                         │ detecta o projeto · abre ou retoma a demanda
                                         │ cria o worktree da demanda e entra nele
                                         ▼
@@ -224,16 +224,20 @@ escolhe a variante pela tabela *Effort per task*.
 
 | Agente | Papel | Modelo padrão | O que faz |
 |---|---|---|---|
-| `orquestrador` | orchestrator | Opus · high | O chat principal: entende, escolhe o effort, delega, tria as revisões pelas regras, pede só o que precisa e monta a revisão final. Não implementa nem lê código para planejar |
-| `explorador` | explorer | Haiku (Sonnet · medium em complexa/crítica) | Lê código e documentação e responde perguntas numeradas com `arquivo:linha` (onde está, como funciona hoje, contrato entre sistemas); grava `exploracao-<assunto>.md`, que o plano e as tarefas reusam. Não altera código |
-| `planejador` | planner | Opus · medium (low em simples, high em complexa) | Escreve o plano a partir do resumo do card e da exploração (`to-spec`), corrige depois da revisão do plano e corta os tickets em tarefas prontas; não altera código |
-| `codificador` | coder | Opus · medium | Implementa um ticket por vez no worktree: código, testes, build/lint/typecheck; aplica as correções de uma revisão e grava o diff |
-| `revisor` | reviewer | Sonnet · high (Opus em complexa/crítica) | Revisa o plano e o diff contra spec, ticket e card; achados com IDs estáveis e severidade (CRITICO/IMPORTANTE/SUGESTAO); não altera código |
-| `api` | api-db | Sonnet · medium | Consulta APIs, banco (leitura pelo validador do contexto) e logs; propõe qualquer escrita com o comando exato e só executa com OK |
-| `documentador` | documenter | Haiku · medium (tier fast) | Atualiza README/ARCHITECTURE/changelog a partir do diff aprovado, gera o plano de testes e redige work items |
-| `bugs` | bug-hunter | Sonnet · high | **Sob demanda:** caça defeitos de comportamento com cenário concreto, ou a causa-raiz de um bug reportado |
-| `seguranca` | security | Sonnet · high | **Sob demanda:** vulnerabilidades exploráveis (authn/authz, segredos, cripto, injeção, dados pessoais) com caminho de ataque |
+| `orquestrador` | orchestrator | o do chat (Opus · high recomendado) | O chat principal: entende, escolhe o effort, delega, tria as revisões pelas regras, pede só o que precisa e monta a revisão final. Não implementa nem lê código para planejar |
+| `explorador` | explorer | Haiku (Sonnet · medium em complexa, · high em crítica) | Lê código e documentação e responde perguntas numeradas com `arquivo:linha` (onde está, como funciona hoje, contrato entre sistemas); grava `exploracao-<assunto>.md`, que o plano e as tarefas reusam. Não altera código |
+| `planejador` | planner | Opus · medium (Sonnet · high em simples, Opus · high em complexa/crítica; não roda em trivial) | Escreve o plano a partir do resumo do card e da exploração (`to-spec`), corrige depois da revisão do plano e corta os tickets em tarefas prontas; não altera código |
+| `codificador` | coder | Opus · medium (Sonnet · high em trivial/simples, Opus · high em complexa/crítica) | Implementa um ticket por vez no worktree: código, testes, build/lint/typecheck; aplica as correções de uma revisão e grava o diff |
+| `revisor` | reviewer | Opus · medium (Sonnet · high em trivial/simples, Opus · high em complexa/crítica) | Revisa o plano e o diff contra spec, ticket e card; achados com IDs estáveis e severidade (CRITICO/IMPORTANTE/SUGESTAO); não altera código |
+| `api` | api-db | Sonnet · medium (Haiku em trivial, Sonnet · low em simples, · high em complexa/crítica) | Consulta APIs, banco (leitura pelo validador do contexto) e logs; propõe qualquer escrita com o comando exato e só executa com OK |
+| `documentador` | documenter | Haiku (Sonnet · medium em complexa/crítica) | Atualiza README/ARCHITECTURE/changelog a partir do diff aprovado, gera o plano de testes e redige work items |
+| `bugs` | bug-hunter | Sonnet (low/medium/high até padrao; Opus · high em complexa/crítica) | **Sob demanda:** caça defeitos de comportamento com cenário concreto, ou a causa-raiz de um bug reportado |
+| `seguranca` | security | como o `bugs` | **Sob demanda:** vulnerabilidades exploráveis (authn/authz, segredos, cripto, injeção, dados pessoais) com caminho de ataque |
 | `qa` | qa | Sonnet · medium | Desligado por padrão: testes e critérios de aceite de ponta a ponta; hoje o teste é o `validation` do codificador |
+
+Nenhum agente passa de effort `high`: acima disso o ganho é pequeno e a sessão se gasta rápido. No Codex a
+mesma tabela vale pelo equivalente de cada modelo (Opus → o top do Codex, Sonnet → o intermediário, Haiku → o
+leve), escolhido entre os liberados para a conta.
 
 O `explorador` e o `planejador` tiram do chat do orquestrador a leitura de código e a escrita do plano: o
 contexto dele fica pequeno a demanda inteira, e cada um roda num contexto novo, no modelo e effort do nível.
