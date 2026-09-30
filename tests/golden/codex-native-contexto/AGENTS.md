@@ -54,8 +54,11 @@ triaged by rule → Documentation (documentador) → Final review (user) → Com
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "<ROOT>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
-then work inside it — in Claude, `EnterWorktree` with name `<tipo-id>` (the chat and the diff pane follow);
-in Codex there is no such tool, so every command and task uses the worktree's absolute path. Every
+then work inside it. All worktrees of a demand live in its folder `<worktree root>/<tipo-id>/<repo>`. In the Claude
+desktop app, move the session with `mcp__ccd_directory__change_directory` (the diff pane follows it; `EnterWorktree`
+moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more. In the
+Claude terminal, `EnterWorktree` with name `<tipo-id>`. In Codex there is no such tool, so every command and task uses
+the worktree's absolute path. Every
 task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main working copy; shell
 commands are not checked, so tasks must point only to the worktree.
 
@@ -101,7 +104,7 @@ whenever you stop for the user.
 ## Runtime
 
 - You are `orquestrador` — Orquestrador (role `orchestrator`), the main chat.
-- Your model: GPT-6 Sol (`gpt-6-sol`, effort high)
+- Your model: GPT Sol (`gpt-sol`, effort high)
 - Delegation mode: **native**
 - Provider: **Codex (Codex CLI)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
@@ -113,13 +116,13 @@ whenever you stop for the user.
 
 | Agent | Display name | Role | Model | Default effort | Definition | Status |
 |---|---|---|---|---|---|---|
-| `codificador` | Codificador | coder | GPT-6 Sol (`gpt-6-sol`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
-| `revisor` | Revisor | reviewer | GPT-6 Luna (`gpt-6-luna`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
-| `api` | API | api-db | GPT-6 Luna (`gpt-6-luna`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
-| `qa` | QA | qa | GPT-6 Luna (`gpt-6-luna`) | medium | — | disabled — do not delegate |
-| `documentador` | Documentador | documenter | GPT-5.6 Luna (`gpt-5.6-luna`) | medium | `<ROOT>/.aidw/agents/documentador.md` | enabled |
-| `bugs` | Bugs | bug-hunter | GPT-6 Luna (`gpt-6-luna`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
-| `seguranca` | Seguranca | security | GPT-6 Luna (`gpt-6-luna`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
+| `codificador` | Codificador | coder | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
+| `revisor` | Revisor | reviewer | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
+| `api` | API | api-db | GPT Luna (`gpt-luna`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
+| `qa` | QA | qa | GPT Luna (`gpt-luna`) | medium | — | disabled — do not delegate |
+| `documentador` | Documentador | documenter | GPT Luna (`gpt-luna`) | medium | `<ROOT>/.aidw/agents/documentador.md` | enabled |
+| `bugs` | Bugs | bug-hunter | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
+| `seguranca` | Seguranca | security | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
 
 ## How to delegate
 
