@@ -7,12 +7,14 @@ description: Turn a request into a persistent specification that becomes the sou
 
 1. Restate the request in one sentence.
 2. **Check existing work first:** work item state, child tasks, linked PRs, attachments, and
-   branches. If work already exists, ask whether this is a continuation, a fix or a redo.
+   branches. If work already exists, ask whether this is a continuation, a fix or a redo (a sub-agent
+   finds this in the demand summary and puts any doubt in its open questions).
    Read the work item's **comments** and its **linked items** (parent, related, predecessors):
    decisions often live only there and override the description.
-3. Inspect the repository through a cheap exploration subagent (e.g. `Explore`), asking for
-   the relevant files with `file:line` pointers. The *Systems* section gives repo, stack and
-   commands — do not re-derive them.
+3. Start from the exploration reports in the demand folder (`exploracao-*.md`); read code only to
+   verify a premise or close a small gap. With no report and a large unknown area, ask for an
+   exploration (the explorer agent, or the cheapest exploration available) instead of sweeping the
+   code. The *Systems* section gives repo, stack and commands — do not re-derive them.
 4. **Inspect the dependencies:** if the change consumes another system (API, library, shared
    model), open that side too — contract, enums, events, error responses. The *Systems* section
    lists where each dependency lives.

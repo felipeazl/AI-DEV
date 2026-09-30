@@ -21,6 +21,31 @@
       ],
       "preload": []
     },
+    "planner": {
+      "name": "planejador",
+      "display": "Planejador",
+      "enabled": true,
+      "model": "opus",
+      "model_id": "opus",
+      "effort": "medium",
+      "skills": [
+        "to-spec",
+        "verificar-premissa"
+      ],
+      "preload": [
+        "to-spec"
+      ]
+    },
+    "explorer": {
+      "name": "explorador",
+      "display": "Explorador",
+      "enabled": true,
+      "model": "haiku",
+      "model_id": "haiku",
+      "effort": "",
+      "skills": [],
+      "preload": []
+    },
     "coder": {
       "name": "codificador",
       "display": "Codificador",

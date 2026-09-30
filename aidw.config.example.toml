@@ -59,6 +59,22 @@ enabled = true
 effort = "high"
 skills = ["to-spec", "verificar-premissa", "preparar-worktree"]
 
+# Para desligar um agente: enabled = false (o orquestrador faz a etapa dele ou a pula).
+[agents.planner]
+# name = "planejador"
+# Plano, correção do plano e tickets num contexto novo. Opus: o plano decide o custo das etapas seguintes.
+enabled = true
+effort = "medium"
+skills = ["to-spec", "verificar-premissa"]
+preload = ["to-spec"]
+
+[agents.explorer]
+# name = "explorador"
+# Leitura de código com arquivo:linha. Haiku (sem effort); Sonnet nas demandas complexa e crítica (routing.toml).
+enabled = true
+effort = "low"
+skills = []
+
 [agents.coder]
 # name = "codificador"
 enabled = true

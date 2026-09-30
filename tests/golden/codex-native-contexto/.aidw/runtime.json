@@ -21,6 +21,31 @@
       ],
       "preload": []
     },
+    "planner": {
+      "name": "planejador",
+      "display": "Planejador",
+      "enabled": true,
+      "model": "gpt-6-sol",
+      "model_id": "gpt-6-sol",
+      "effort": "medium",
+      "skills": [
+        "to-spec",
+        "verificar-premissa"
+      ],
+      "preload": [
+        "to-spec"
+      ]
+    },
+    "explorer": {
+      "name": "explorador",
+      "display": "Explorador",
+      "enabled": true,
+      "model": "gpt-5-6-luna",
+      "model_id": "gpt-5.6-luna",
+      "effort": "low",
+      "skills": [],
+      "preload": []
+    },
     "coder": {
       "name": "codificador",
       "display": "Codificador",

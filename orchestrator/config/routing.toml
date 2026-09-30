@@ -12,9 +12,11 @@
 max_retries = 3
 
 [rules]
-# Início e plano
+# Início e plano (planejador; o orquestrador quando ele está desabilitado)
 existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou retrabalho?
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
+plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece: explorador, e
+                                                # um planejador novo no mesmo modo (conta em max_retries)
 spec_ready = "PLAN_REVIEW"                      # sem dúvidas: revisor confere o plano (padrao+)
 plan_review_approved = "TICKETS"
 plan_review_changes_requested = "PLAN_FIX"      # o orquestrador corrige o plano; nova rodada
@@ -38,8 +40,9 @@ review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ci
 review_approved = "DOCS"
 max_retries_exceeded = "HUMAN_APPROVAL"
 
-# Agente de apoio (api): devolve o fluxo para a etapa que o chamou
+# Agentes de apoio (api, explorador): devolvem o fluxo para a etapa que os chamou
 task_complete = "RETURN"
+exploration_complete = "RETURN"
 
 # Especialistas sob demanda (bugs, seguranca): voltam para a etapa que os chamou. Os achados
 # entram na mesma triagem da revisão (CRITICO/IMPORTANTE → CODER_FIX ou PLAN_FIX).
@@ -67,6 +70,7 @@ default_level = "padrao"
 
 [effort.levels.trivial]
 when = "Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto."
+explorer = "low"
 coder = "low"
 reviewer = "low"
 api-db = "low"
@@ -77,6 +81,8 @@ security = "low"
 
 [effort.levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
+planner = "low"
+explorer = "low"
 coder = "low"
 reviewer = "medium"
 api-db = "low"
@@ -87,6 +93,8 @@ security = "medium"
 
 [effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
+planner = "medium"
+explorer = "low"
 coder = "medium"
 reviewer = "high"
 api-db = "medium"
@@ -97,6 +105,8 @@ security = "high"
 
 [effort.levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
+planner = "high"
+explorer = "medium"
 coder = "high"
 reviewer = "high"
 api-db = "high"
@@ -111,9 +121,13 @@ security = "high"
 reviewer = "opus"
 bug-hunter = "opus"
 security = "opus"
+# Explorador: Haiku até padrao; Sonnet quando a demanda envolve vários sistemas ou legado frágil.
+explorer = "sonnet"
 
 [effort.levels.critica]
 when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
+planner = "xhigh"
+explorer = "medium"
 coder = "xhigh"
 reviewer = "xhigh"
 api-db = "high"
@@ -128,6 +142,8 @@ security = "xhigh"
 reviewer = "opus"
 bug-hunter = "opus"
 security = "opus"
+# Explorador: Haiku até padrao; Sonnet quando a demanda envolve vários sistemas ou legado frágil.
+explorer = "sonnet"
 
 [effort.escalate]
 # Quando subir um nível na próxima tentativa do mesmo papel.

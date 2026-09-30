@@ -18,6 +18,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -222,6 +223,27 @@ class OrchestratorReferenceTest(unittest.TestCase):
             rep = aidw.Report(quiet=True)
             self.assertIsNone(aidw.build(aidw.load_config(), aidw.load_catalog(), rep))
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
+
+    def test_config_antiga_ganha_os_agentes_novos(self) -> None:
+        """Uma config com [agents.*] de antes do planejador e do explorador: os dois entram com o padrão, o
+        planejador recebe os níveis e o orquestrador delega a exploração ao explorador."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            cfg_file = root / "aidw.config.toml"
+            text = cfg_file.read_text(encoding="utf-8")
+            text = re.sub(r"\[agents\.(planner|explorer)\]\n(?:(?!\n\[).)*\n", "", text, flags=re.S)
+            self.assertNotIn("[agents.planner]", text)
+            cfg_file.write_text(text, encoding="utf-8")
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            self.assertEqual(b["resolved"]["explorer"]["model"]["key"], "haiku")
+            self.assertEqual(b["resolved"]["planner"]["model"]["key"], "opus")
+            planner = b["agents"]["planner"]["prompt"]
+            self.assertIn("## Levels", planner)
+            self.assertIn("passadas-extras.md", planner)
+            self.assertIn("the `explorador` agent", b["orchestrator_md"])
 
 
 class InstallTest(unittest.TestCase):
