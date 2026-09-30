@@ -36,12 +36,12 @@ sistemas, comandos de build, convenções, políticas — sem mudar o nome de na
                                         │ detecta o projeto · abre ou retoma a demanda
                                         │ cria o worktree da demanda e entra nele
                                         ▼
-   entender → plano (to-spec) → revisão do plano → tickets → implementação → preparar revisão
+   entender → exploração → plano → revisão do plano → tickets → implementação → preparar revisão
             → revisão ⇄ correção (+ bugs/segurança sob demanda) → documentação → revisão final (você)
                                         │
-          ┌──────────────┬──────────────┼──────────────┬──────────────┬──────────────┐
-          ▼              ▼              ▼              ▼              ▼              ▼
-     codificador      revisor          api        documentador      bugs        seguranca
+     ┌────────────┬────────────┬────────────┼────────────┬────────────┬────────────┬────────────┐
+     ▼            ▼            ▼            ▼            ▼            ▼            ▼            ▼
+ explorador  planejador  codificador    revisor         api     documentador     bugs     seguranca
 ```
 
 - **Um chat, vários agentes.** Os agentes são subagentes nativos do provedor (a ferramenta `Agent` no Claude,
@@ -224,7 +224,9 @@ escolhe a variante pela tabela *Effort per task*.
 
 | Agente | Papel | Modelo padrão | O que faz |
 |---|---|---|---|
-| `orquestrador` | orchestrator | Opus · high | O chat principal: entende, planeja (`to-spec`), escolhe o effort, delega, tria as revisões pelas regras, pede só o que precisa e monta a revisão final. Não implementa |
+| `orquestrador` | orchestrator | Opus · high | O chat principal: entende, escolhe o effort, delega, tria as revisões pelas regras, pede só o que precisa e monta a revisão final. Não implementa nem lê código para planejar |
+| `explorador` | explorer | Haiku (Sonnet · medium em complexa/crítica) | Lê código e documentação e responde perguntas numeradas com `arquivo:linha` (onde está, como funciona hoje, contrato entre sistemas); grava `exploracao-<assunto>.md`, que o plano e as tarefas reusam. Não altera código |
+| `planejador` | planner | Opus · medium (low em simples, high em complexa) | Escreve o plano a partir do resumo do card e da exploração (`to-spec`), corrige depois da revisão do plano e corta os tickets em tarefas prontas; não altera código |
 | `codificador` | coder | Opus · medium | Implementa um ticket por vez no worktree: código, testes, build/lint/typecheck; aplica as correções de uma revisão e grava o diff |
 | `revisor` | reviewer | Sonnet · high (Opus em complexa/crítica) | Revisa o plano e o diff contra spec, ticket e card; achados com IDs estáveis e severidade (CRITICO/IMPORTANTE/SUGESTAO); não altera código |
 | `api` | api-db | Sonnet · medium | Consulta APIs, banco (leitura pelo validador do contexto) e logs; propõe qualquer escrita com o comando exato e só executa com OK |
@@ -232,6 +234,11 @@ escolhe a variante pela tabela *Effort per task*.
 | `bugs` | bug-hunter | Sonnet · high | **Sob demanda:** caça defeitos de comportamento com cenário concreto, ou a causa-raiz de um bug reportado |
 | `seguranca` | security | Sonnet · high | **Sob demanda:** vulnerabilidades exploráveis (authn/authz, segredos, cripto, injeção, dados pessoais) com caminho de ataque |
 | `qa` | qa | Sonnet · medium | Desligado por padrão: testes e critérios de aceite de ponta a ponta; hoje o teste é o `validation` do codificador |
+
+O `explorador` e o `planejador` tiram do chat do orquestrador a leitura de código e a escrita do plano: o
+contexto dele fica pequeno a demanda inteira, e cada um roda num contexto novo, no modelo e effort do nível.
+Se um deles estiver desligado (`enabled = false` no `aidw.config.toml`, que é como se desliga qualquer
+agente), o orquestrador faz a etapa como antes. Uma config de antes desses dois agentes os recebe com o padrão.
 
 `bugs` e `seguranca` só entram quando um gatilho se aplica (concorrência, legado frágil, dados pessoais, auth,
 dependências…), uma vez por demanda, em paralelo com a 1ª revisão. Os nomes, modelos e efforts padrão podem ser
