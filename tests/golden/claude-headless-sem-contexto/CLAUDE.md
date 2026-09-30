@@ -36,7 +36,8 @@ Agents do not see this conversation and cannot talk to the user.
 The model of each agent is fixed; **you choose the effort** with the *Effort per task* table.
 Classify the demand in the plan (`Nível: <level> — <reason>`); a ticket may take another level when
 its scope clearly fits it (say so in the ticket); if unsure between two levels, pick the lower.
-Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down;
+Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down, never
+below the lowest level where that agent runs (a `— (não roda)` cell);
 escalate one level when the table's escalation rules apply. An `environment_blocked` result is **not** an agent
 failure: never escalate or redo the task for it — fix the environment yourself when you can, otherwise stop and
 take it to the user. Never change a model on your own — only
@@ -121,7 +122,7 @@ whenever you stop for the user.
 ## Runtime
 
 - You are `orquestrador` — Orquestrador (role `orchestrator`), the main chat.
-- Your model: Claude Opus (`claude-opus`, effort high)
+- Your model: the one selected in this chat (recommended: Claude Opus (`claude-opus`, effort high))
 - Delegation mode: **headless**
 - Provider: **Claude (Claude Code)** — every agent runs on it
 - Project dirs (search here for repositories): none configured
@@ -136,7 +137,7 @@ whenever you stop for the user.
 | `planejador` | Planejador | planner | Claude Opus (`claude-opus`) | medium | `<ROOT>/.aidw/agents/planejador.md` | enabled |
 | `explorador` | Explorador | explorer | Claude Haiku (`claude-haiku`) | — | `<ROOT>/.aidw/agents/explorador.md` | enabled |
 | `codificador` | Codificador | coder | Claude Opus (`claude-opus`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
-| `revisor` | Revisor | reviewer | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
+| `revisor` | Revisor | reviewer | Claude Opus (`claude-opus`) | medium | `<ROOT>/.aidw/agents/revisor.md` | enabled |
 | `api` | API | api-db | Claude Sonnet (`claude-sonnet`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
 | `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | — | disabled — do not delegate |
 | `documentador` | Documentador | documenter | Claude Haiku (`claude-haiku`) | — | `<ROOT>/.aidw/agents/documentador.md` | enabled |
@@ -166,11 +167,11 @@ Default level: **padrao**. Each cell is the effort to pass. `—` = the model ta
 
 | Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `documentador` | `bugs` | `seguranca` |
 |---|---|---|---|---|---|---|---|---|---|
-| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | medium | — | low | low | low | — | low | low |
-| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | low | — | low | medium | low | — | medium | medium |
-| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | — | medium | high | medium | — | high | high |
-| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium + model `sonnet` (`claude-sonnet`) | high | high + model `opus` (`claude-opus`) | high | — | high + model `opus` (`claude-opus`) | high + model `opus` (`claude-opus`) |
-| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | xhigh | medium + model `sonnet` (`claude-sonnet`) | xhigh | xhigh + model `opus` (`claude-opus`) | high | — | xhigh + model `opus` (`claude-opus`) | xhigh + model `opus` (`claude-opus`) |
+| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | — | high + model `sonnet` (`claude-sonnet`) | high + model `sonnet` (`claude-sonnet`) | — + model `haiku` (`claude-haiku`) | — | low | low |
+| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | high + model `sonnet` (`claude-sonnet`) | — | high + model `sonnet` (`claude-sonnet`) | high + model `sonnet` (`claude-sonnet`) | low | — | medium | medium |
+| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | — | medium | medium | medium | — | high | high |
+| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium + model `sonnet` (`claude-sonnet`) | high | high | high | medium + model `sonnet` (`claude-sonnet`) | high + model `opus` (`claude-opus`) | high + model `opus` (`claude-opus`) |
+| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | high | high + model `sonnet` (`claude-sonnet`) | high | high | high | medium + model `sonnet` (`claude-sonnet`) | high + model `opus` (`claude-opus`) | high + model `opus` (`claude-opus`) |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.

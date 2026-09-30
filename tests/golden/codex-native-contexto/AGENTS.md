@@ -38,7 +38,8 @@ Agents do not see this conversation and cannot talk to the user.
 The model of each agent is fixed; **you choose the effort** with the *Effort per task* table.
 Classify the demand in the plan (`Nível: <level> — <reason>`); a ticket may take another level when
 its scope clearly fits it (say so in the ticket); if unsure between two levels, pick the lower.
-Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down;
+Follow-ups (re-review of only the fixes, re-running a build, one pointed question) go one level down, never
+below the lowest level where that agent runs (a `— (não roda)` cell);
 escalate one level when the table's escalation rules apply. An `environment_blocked` result is **not** an agent
 failure: never escalate or redo the task for it — fix the environment yourself when you can, otherwise stop and
 take it to the user. Never change a model on your own — only
@@ -138,12 +139,12 @@ whenever you stop for the user.
 | `planejador` | Planejador | planner | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/planejador.md` | enabled |
 | `explorador` | Explorador | explorer | GPT Luna (`gpt-luna`) | low | `<ROOT>/.aidw/agents/explorador.md` | enabled |
 | `codificador` | Codificador | coder | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
-| `revisor` | Revisor | reviewer | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/revisor.md` | enabled |
-| `api` | API | api-db | GPT Luna (`gpt-luna`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
-| `qa` | QA | qa | GPT Luna (`gpt-luna`) | medium | — | disabled — do not delegate |
+| `revisor` | Revisor | reviewer | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/revisor.md` | enabled |
+| `api` | API | api-db | GPT Terra (`gpt-terra`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
+| `qa` | QA | qa | GPT Terra (`gpt-terra`) | medium | — | disabled — do not delegate |
 | `documentador` | Documentador | documenter | GPT Luna (`gpt-luna`) | medium | `<ROOT>/.aidw/agents/documentador.md` | enabled |
-| `bugs` | Bugs | bug-hunter | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
-| `seguranca` | Seguranca | security | GPT Luna (`gpt-luna`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
+| `bugs` | Bugs | bug-hunter | GPT Terra (`gpt-terra`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
+| `seguranca` | Seguranca | security | GPT Terra (`gpt-terra`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
 
 ## How to delegate
 
@@ -169,11 +170,11 @@ Default level: **padrao**. Each cell is the effort to pass. `—` = the model ta
 
 | Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `documentador` | `bugs` | `seguranca` |
 |---|---|---|---|---|---|---|---|---|---|
-| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | medium | low | low | low | low | low | low | low |
-| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | low | low | low | medium | low | low | medium | medium |
-| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | low | medium | high | medium | medium | high | high |
-| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium | high | high | high | medium | high | high |
-| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | xhigh | medium | xhigh | xhigh | high | medium | xhigh | xhigh |
+| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-luna` (`gpt-luna`) | low | low | low |
+| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | high + model `gpt-5-6-terra` (`gpt-terra`) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low | low | medium | medium |
+| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | low | medium | medium | medium | medium | high | high |
+| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
+| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | high | high + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.
