@@ -1,14 +1,14 @@
 name: refactor
 description: Refatoração sem mudança de comportamento; testes antes e depois.
 steps:
-  - id: spec
-    agent: orchestrator
+  - id: spec          # explorador antes, quando o código ainda não é conhecido
+    agent: planner
     skill: to-spec
-  - id: plan_review     # padrao ou acima; ⇄ orquestrador corrige o plano (PLAN_FIX)
+  - id: plan_review     # padrao ou acima; ⇄ planejador corrige o plano (PLAN_FIX)
     agent: reviewer
     skill: code-review
   - id: tickets
-    agent: orchestrator
+    agent: planner
     skill: to-spec
   - id: baseline        # build/testes da base; com qa desabilitado, o codificador roda
     agent: qa

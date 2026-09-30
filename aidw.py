@@ -106,19 +106,25 @@ DEFAULT_WORKTREE_LINKS = ["packages", "node_modules"]
 DEMAND_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
 GENERATED_MARK = "Gerado por aidw.py"
 ORCHESTRATOR = "orchestrator"
+PLANNER = "planner"
+EXPLORER = "explorer"
+# Papéis que chegaram depois das primeiras configs: uma config que não os lista os recebe com o padrão.
+LATE_ROLES = (PLANNER, EXPLORER)
 PROVIDERS = ("claude", "codex")
 PROVIDER_LABEL = {"claude": "Claude (Claude Code)", "codex": "Codex (Codex CLI)"}
 # native   = subagentes nativos do provedor (Claude: ferramenta Agent; Codex: spawn_agent)
 # headless = um processo do CLI por tarefa, via `aidw.py delegate`
 DELEGATION_MODES = ("native", "headless")
 
-ACTIONS = {"PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
+ACTIONS = {"EXPLORE", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
            "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL", "RETURN"}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
 
 DEFAULT_NAMES = {
     "orchestrator": "orquestrador",
+    "planner": "planejador",
+    "explorer": "explorador",
     "coder": "codificador",
     "reviewer": "revisor",
     "api-db": "api",
@@ -127,13 +133,19 @@ DEFAULT_NAMES = {
     "bug-hunter": "bugs",
     "security": "seguranca",
 }
-# Opus no orquestrador e no codificador, Sonnet no api e no revisor, Haiku no documentador.
+# Opus no orquestrador, no planejador e no codificador; Sonnet no api e no revisor; Haiku no explorador e no
+# documentador.
 # No Codex o tier escolhe o equivalente (config/models.toml).
 # skills  = disponíveis para o agente (listadas no prompt; ele chama com o Skill tool quando precisa)
 # preload = subconjunto injetado inteiro no início de cada execução — só o que ele usa sempre.
 DEFAULT_AGENTS: dict[str, dict] = {
     "orchestrator": {"enabled": True, "tier": "top", "effort": "high",
                      "skills": ["to-spec", "verificar-premissa", "preparar-worktree"]},
+    # Planejador: o plano, a correção dele e os tickets, num contexto novo (o do orquestrador fica enxuto).
+    "planner": {"enabled": True, "tier": "top", "effort": "medium",
+                "skills": ["to-spec", "verificar-premissa"], "preload": ["to-spec"]},
+    # Explorador: leitura barata do código, com `arquivo:linha`, num relatório que o plano e o código reusam.
+    "explorer": {"enabled": True, "tier": "fast", "effort": "low", "skills": []},
     "coder": {"enabled": True, "tier": "top", "effort": "medium", "skills": ["preparar-worktree"]},
     "reviewer": {"enabled": True, "tier": "mid", "effort": "high",
                  "skills": ["code-review", "verificar-premissa"], "preload": ["code-review"]},
@@ -158,6 +170,8 @@ PLACEHOLDER_RE = re.compile(r"\{\{agent:([\w-]+)\}\}")
 #   write:       onde o agente Codex pode escrever além da raiz do AiDW (que inclui o state dir).
 #   network:     acesso de rede dos comandos do agente Codex (build com restore, APIs).
 RUN_PROFILE = {
+    "planner": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
+    "explorer": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": False},
     "coder": {"claude_mode": "auto", "max_turns": 80, "write": "projects", "network": True},
     "reviewer": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": False},
     "documenter": {"claude_mode": "auto", "max_turns": 40, "write": "projects", "network": False},
@@ -289,6 +303,9 @@ def load_config() -> dict | None:
             defaults = {k: v for k, v in DEFAULT_AGENTS.get(role, {"enabled": True, "skills": []}).items()
                         if k != "tier"}
             base["agents"][role] = {**defaults, **a}
+        for role in LATE_ROLES:  # papel que chegou depois da config: entra com o padrão (desligar: enabled = false)
+            if role not in base["agents"]:
+                base["agents"][role] = {k: v for k, v in DEFAULT_AGENTS[role].items() if k != "tier"}
     return base
 
 
@@ -1124,6 +1141,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
         skills_section(a["skills"], skills, provider, a["preload"], ns),
         mcp_agent_section(servers, role),
         systems_section(ctx, detailed=True),
+        levels_section(routing) if role == PLANNER else "",
         reference_section(ctx, role),
         "# POLICIES",
         *[tpl.include(p) for p in policy_files(ctx)],
@@ -1134,6 +1152,18 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
         parts += [tpl.include(p) for p in context_files(ctx, role)]
     description = tpl.render(meta.get("description", a["display"]), source)
     return {**meta, "description": description}, "\n\n".join(parts) + "\n"
+
+
+def levels_section(routing: dict) -> str:
+    """Níveis da demanda (routing.toml) e o guia das passadas extras: o planejador classifica a demanda."""
+    levels = routing.get("effort", {}).get("levels", {})
+    if not levels:
+        return ""
+    rows = ["## Levels", "", "Classify the demand in exactly one (if unsure between two, the lower):", ""]
+    rows += [f"- **{lvl}** — {spec.get('when', '')}" for lvl, spec in levels.items()]
+    guide = (ROOT / "orchestrator" / "reference" / "passadas-extras.md").as_posix()
+    rows += ["", f"Extra passes (bugs, security): triggers in `{guide}` — read it when you decide them."]
+    return "\n".join(rows)
 
 
 def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict,
@@ -1196,6 +1226,18 @@ def aidw_command(global_mode: bool) -> str:
     return f'python "{ROOT.as_posix()}/aidw.py"' if global_mode else "python aidw.py"
 
 
+def explore_line(resolved: dict, fallback: str = "the built-in `Explore` subagent (read-only), "
+                 "asking for `file:line` pointers") -> str:
+    ex = resolved.get(EXPLORER)
+    if not ex or not ex["enabled"]:
+        return f"- Code exploration: {fallback}."
+    return (f"- Code exploration: the `{ex['name']}` agent (its column in *Effort per task*), not this chat and "
+            "not a generic "
+            "explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder "
+            "(the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the "
+            "next step needs; one exploration per topic, reused, not repeated.")
+
+
 def record_hint(codex: bool, global_mode: bool = False) -> str:
     usage = ("--codex-task <task_name>" if codex else
              "--tokens <subagent_tokens> --tool-uses <tool_uses> --duration-ms <duration_ms>")
@@ -1225,8 +1267,7 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "", "```", record_hint(codex=False, global_mode=global_mode), "```", "",
             "  `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the "
             "ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.",
-            "- Cheap exploration: the built-in `Explore` subagent (read-only) for sweeping code and "
-            "returning `file:line` pointers.",
+            explore_line(resolved),
         ]
         return "\n".join(lines)
     if global_mode:
@@ -1247,8 +1288,8 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the sub-agent "
             "session, appends `metricas.md` and prints the `header` and `resumo` you must show:",
             "", "```", record_hint(codex=True, global_mode=True), "```", "",
-            f"- There is no exploration role: for broad code exploration spawn `{example}` at level `trivial` asking "
-            "for `file:line` pointers, or read short excerpts yourself.",
+            explore_line(resolved, fallback=f"spawn `{CODEX_NS}{example}` at level `trivial` asking "
+                         "for `file:line` pointers, or read short excerpts yourself"),
         ])
     lines = [
         "## How to delegate", "",
