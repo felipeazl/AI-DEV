@@ -60,7 +60,10 @@ policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, 
 #
 # O orquestrador classifica cada tarefa num nível e passa o effort daquele nível para o papel
 # que vai executá-la. Papel ausente num nível = o effort padrão do agente (aidw.config.toml).
-# Valores: low | medium | high | xhigh | max. Modelos sem effort (ex.: Haiku) ignoram o valor.
+# Valores: low | medium | high | xhigh | max, ou "none" (o papel não roda no nível). Modelos sem effort
+# (ex.: Haiku) ignoram o valor, que continua valendo para o equivalente do Codex.
+# [effort.levels.<nível>.models]: papel → modelo do Claude; no Codex vale o equivalente pelo tier
+# (opus → top, sonnet → mid, haiku → fast), então a mesma tabela serve aos dois.
 #
 # Custo: effort é a principal alavanca de gasto depois do modelo. Na dúvida entre dois níveis,
 # escolha o menor e suba se o resultado mostrar que faltou (regras em [effort.escalate]).
@@ -70,33 +73,47 @@ default_level = "padrao"
 
 [effort.levels.trivial]
 when = "Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto."
+# Trivial não tem plano. Código e revisão em Sonnet high; api no Haiku.
+planner = "none"
 explorer = "low"
-coder = "low"
-reviewer = "low"
+coder = "high"
+reviewer = "high"
 api-db = "low"
 documenter = "low"
 qa = "low"
 bug-hunter = "low"
 security = "low"
 
+[effort.levels.trivial.models]
+coder = "sonnet"
+reviewer = "sonnet"
+api-db = "haiku"
+
 [effort.levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
-planner = "low"
+# Planejador, codificador e revisor em Sonnet high; api em Sonnet low (monta SQL/chamadas que o Felipe aprova).
+planner = "high"
 explorer = "low"
-coder = "low"
-reviewer = "medium"
+coder = "high"
+reviewer = "high"
 api-db = "low"
 documenter = "low"
 qa = "low"
 bug-hunter = "medium"
 security = "medium"
 
+[effort.levels.simples.models]
+planner = "sonnet"
+coder = "sonnet"
+reviewer = "sonnet"
+
 [effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
+# O caso comum: os modelos base, Opus medium no planejador, codificador e revisor.
 planner = "medium"
 explorer = "low"
 coder = "medium"
-reviewer = "high"
+reviewer = "medium"
 api-db = "medium"
 documenter = "medium"
 qa = "medium"
@@ -105,6 +122,7 @@ security = "high"
 
 [effort.levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
+# Explorador e documentador sobem para Sonnet; bugs e segurança para Opus. Nada acima de high (preserva a sessão).
 planner = "high"
 explorer = "medium"
 coder = "high"
@@ -116,34 +134,29 @@ bug-hunter = "high"
 security = "high"
 
 [effort.levels.complexa.models]
-# Política (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
-# Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
-reviewer = "opus"
+explorer = "sonnet"
+documenter = "sonnet"
 bug-hunter = "opus"
 security = "opus"
-# Explorador: Haiku até padrao; Sonnet quando a demanda envolve vários sistemas ou legado frágil.
-explorer = "sonnet"
 
 [effort.levels.critica]
 when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
-planner = "xhigh"
-explorer = "medium"
-coder = "xhigh"
-reviewer = "xhigh"
+# Igual à complexa, com o explorador em Sonnet high. Nada acima de high.
+planner = "high"
+explorer = "high"
+coder = "high"
+reviewer = "high"
 api-db = "high"
 documenter = "medium"
 qa = "high"
-bug-hunter = "xhigh"
-security = "xhigh"
+bug-hunter = "high"
+security = "high"
 
 [effort.levels.critica.models]
-# Política (2026-09-25): revisor Sonnet, Opus nas demandas complexa e crítica.
-# Os especialistas de bugs e segurança seguem a mesma regra (definido na criação deles).
-reviewer = "opus"
+explorer = "sonnet"
+documenter = "sonnet"
 bug-hunter = "opus"
 security = "opus"
-# Explorador: Haiku até padrao; Sonnet quando a demanda envolve vários sistemas ou legado frágil.
-explorer = "sonnet"
 
 [effort.escalate]
 # Quando subir um nível na próxima tentativa do mesmo papel.

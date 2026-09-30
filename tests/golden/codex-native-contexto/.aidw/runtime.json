@@ -63,9 +63,9 @@
       "name": "revisor",
       "display": "Revisor",
       "enabled": true,
-      "model": "gpt-6-luna",
-      "model_id": "gpt-6-luna",
-      "effort": "high",
+      "model": "gpt-6-sol",
+      "model_id": "gpt-6-sol",
+      "effort": "medium",
       "skills": [
         "code-review",
         "verificar-premissa"
@@ -78,8 +78,8 @@
       "name": "api",
       "display": "API",
       "enabled": true,
-      "model": "gpt-6-luna",
-      "model_id": "gpt-6-luna",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
       "effort": "medium",
       "skills": [
         "database-safe"
@@ -90,8 +90,8 @@
       "name": "qa",
       "display": "QA",
       "enabled": false,
-      "model": "gpt-6-luna",
-      "model_id": "gpt-6-luna",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
       "effort": "medium",
       "skills": [],
       "preload": []
@@ -110,8 +110,8 @@
       "name": "bugs",
       "display": "Bugs",
       "enabled": true,
-      "model": "gpt-6-luna",
-      "model_id": "gpt-6-luna",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
       "effort": "high",
       "skills": [
         "bug-hunt",
@@ -125,8 +125,8 @@
       "name": "seguranca",
       "display": "Seguranca",
       "enabled": true,
-      "model": "gpt-6-luna",
-      "model_id": "gpt-6-luna",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
       "effort": "high",
       "skills": [
         "security-audit",

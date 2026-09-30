@@ -61,9 +61,9 @@
       "name": "revisor",
       "display": "Revisor",
       "enabled": true,
-      "model": "sonnet",
-      "model_id": "sonnet",
-      "effort": "high",
+      "model": "opus",
+      "model_id": "opus",
+      "effort": "medium",
       "skills": [
         "code-review",
         "verificar-premissa"
@@ -142,8 +142,6 @@
     "context7"
   ],
   "claude_settings": {
-    "model": "opus",
-    "effortLevel": "high",
     "allow": [
       "Bash(python aidw.py delegate *)",
       "Bash(python aidw.py record *)",
