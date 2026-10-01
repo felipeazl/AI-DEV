@@ -49,8 +49,8 @@ ask = [
 # [agents.<papel>] — o papel é fixo. Opcionais:
 #   name   nome do agente (aceita acento e espaço; sem ele, vale o padrão comentado)
 #   model  chave de config/models.toml do provedor; sem ele, vale o tier padrão do papel
-#          (Opus/top no orquestrador e codificador, Sonnet/mid no revisor e api,
-#           Haiku/fast no documentador). Modelo de outro provedor é ignorado com aviso.
+#          (Opus/top no planejador, codificador e revisor; Sonnet/mid na api, bugs e segurança;
+#           Haiku/fast no explorador e no documentador). Modelo de outro provedor é ignorado com aviso.
 #   effort effort padrão do agente; o orquestrador escolhe o de cada tarefa (routing.toml).
 
 [agents.orchestrator]
