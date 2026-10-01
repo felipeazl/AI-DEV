@@ -1,7 +1,7 @@
-# Catálogo de servidores MCP que o AI-DEV registra no escopo do projeto (.mcp.json).
+# Catálogo de servidores MCP que o AiDW registra no escopo do projeto (.mcp.json).
 #
-# Quais ficam ativos: aidev.config.toml → [mcp].enabled.
-# Depois de mudar este arquivo ou a lista, rode `python aidev.py apply` e abra um chat novo.
+# Quais ficam ativos: aidw.config.toml → [mcp].enabled.
+# Depois de mudar este arquivo ou a lista, rode `python aidw.py apply` (e `install`) e abra um chat novo.
 #
 # Campos:
 #   name        nome legível
@@ -12,8 +12,8 @@
 #   allow       true = ferramentas liberadas sem prompt de permissão
 #   agents      papéis que podem usar ([] = todos)
 #   use_when    quando usar — vai para as instruções do orquestrador e dos agentes
-#   triggers    sinais na tarefa que indicam o uso. São a regra determinística de escolha
-#               enquanto o JEV está desligado (e o fallback quando ele estiver ligado).
+#   triggers    sinais na tarefa que indicam o uso: o orquestrador só cita o servidor na tarefa
+#               quando um gatilho se aplica claramente.
 #
 # Fontes: github.com/microsoft/playwright-mcp · github.com/ChromeDevTools/chrome-devtools-mcp
 #         developers.figma.com/docs/figma-mcp-server · github.com/upstash/context7
