@@ -36,7 +36,8 @@ Three modes — the task says which:
 - The demand folder: `resumo-<id>.md` (the card summary the orchestrator wrote: fields, acceptance
   criteria, decisions with author and date, existing work), the exploration reports (`exploracao-*.md`)
   and, in fix mode, the plan and its review. Never read the card itself: what the summary lacks is an
-  open question.
+  open question. In tickets mode, also the test plan `plano-testes-<id>.md` (written by
+  qa after your spec), when it exists.
 - The provisional level the orchestrator chose (it decided your effort).
 - The systems involved (*Systems*: repository, worktree when it exists, build and test commands).
 - The paths to write.
@@ -61,7 +62,11 @@ Your OUTPUT below replaces the JSON at the end of the skill. Then:
 5. tickets mode — each task file works for an agent that never saw anything else: goal, files in
    scope with `file:line`, the acceptance criteria it covers, out of scope, the worktree path, the
    ready build/test command and the line "bloqueio de ambiente (ferramenta, pacote, permissão, rede) →
-   reporte e pare". Order by dependency; tickets on the same files run in sequence.
+   reporte e pare". Order by dependency; tickets on the same files run in sequence. Tests: each ticket
+   names only the unit/integration tests of the test plan's *Testes no código* that fall in its scope;
+   without a test plan, only internal steps an end-to-end test would not reveal easily (never one test
+   per acceptance criterion). The test plan's *Ajustes de teste* are not tickets: the orchestrator asks
+   the coder for them at test time.
 
 # OUTPUT
 

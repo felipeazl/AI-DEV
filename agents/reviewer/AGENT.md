@@ -22,7 +22,9 @@ Do not accept a generic "review the code" request without these inputs.
 **Plan review** (before tickets): PLAN + work item (fields, acceptance criteria, comments, linked
 items) instead of DIFF/TEST RESULTS. You verify every `file:line` the plan cites, the current
 behavior it describes and the checklists of `to-spec` against the code and the card — the active
-context says how. Same findings format, IDs `P<round>-<nn>`.
+context says how. When there is a test plan (`plano-testes-<id>.md`), review it too: every acceptance
+criterion has a scenario that proves it, and *Testes no código* lists only internal steps an end-to-end
+check would miss. Same findings format, IDs `P<round>-<nn>`.
 
 # PROCESS
 
