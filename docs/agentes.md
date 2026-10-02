@@ -21,7 +21,7 @@ O **papel** é fixo e é o que o AiDW usa internamente (`coder`, `reviewer`…).
 | `documentador` | `documenter` | leitura, edição, shell | só documentação |
 | `bugs` | `bug-hunter` | leitura, shell, grava o relatório | não |
 | `seguranca` | `security` | leitura, shell, grava o relatório | não |
-| `qa` | `qa` | leitura, shell, grava o relatório | não |
+| `qa` | `qa` | leitura, shell, navegador (Claude in Chrome, Playwright), grava o plano de testes, o relatório e o roteiro | não (pede ajustes ao codificador) |
 
 Além disso, cada papel recebe os servidores MCP que `config/mcp.toml` libera para ele (Playwright para quem testa
 tela, Figma para quem implementa layout, Context7 para todos…) e as ferramentas que o contexto bloqueia saem da
@@ -55,12 +55,22 @@ explorador e chama um planejador novo. Opus: o plano decide o custo de todas as 
 
 ### Codificador
 Implementa **um ticket por vez** no worktree: entende, planeja dentro do escopo, implementa seguindo as convenções do
-projeto, cria ou ajusta testes, roda **só** os comandos de build e teste que a tarefa dá, revisa o próprio diff e
-grava o patch. Num bloqueio de ambiente, reporta o comando e o erro exatos e para, sem gambiarra. O bloco
-`validation` do resultado é a etapa de teste enquanto o `qa` está desligado.
+projeto, roda **só** os comandos de build e teste que a tarefa dá, revisa o próprio diff e grava o patch. Num
+bloqueio de ambiente, reporta o comando e o erro exatos e para, sem gambiarra. Se o `qa` estiver desligado, o bloco
+`validation` do resultado é a etapa de teste.
+
+**Testes no código só onde o ponta a ponta não enxerga.** Um fluxo cuja falha aparece na tela ou na resposta da API
+não ganha teste unitário: o QA já pega. Ganha teste o passo interno que nunca chega ao cliente: um cálculo, um
+mapeamento, uma transição de estado, um retry/timer, um dado gravado e não exibido, um erro engolido no log. O plano
+de testes lista esses passos (*Testes no código*) e o ticket diz quais são dele.
+
+**Ajuste de teste** (a pedido do QA): mudança temporária para testar, como pular uma validação, forçar uma flag,
+mockar uma dependência ou apontar o front para QA. Cada bloco leva a marca `AIDW-TESTE` e todos ficam num patch só,
+`ambiente-teste-<id>.patch`, registrado em `ambiente-teste-<id>.md`. O orquestrador aplica o patch para testar e o
+reverte ao fim de cada teste; a revisão e o commit nunca o veem.
 
 ### Revisor
-Revisa o **plano** (confere cada `arquivo:linha`, o comportamento atual e o card) e o **diff** (contra spec, ticket,
+Revisa o **plano** e o plano de testes (confere cada `arquivo:linha`, o comportamento atual e o card) e o **diff** (contra spec, ticket,
 checklist e as convenções do contexto). Devolve achados com IDs estáveis e severidade (CRITICO, IMPORTANTE,
 SUGESTAO). Não altera código. Usa a skill `code-review` (pré-carregada) e `verificar-premissa`.
 
@@ -70,8 +80,8 @@ logs; gera ou ajusta dados de teste, descobre ids, investiga integrações. **To
 exato e só executa depois do seu OK (skill `database-safe`).
 
 ### Documentador
-Atualiza README, ARCHITECTURE, changelog e docs de API a partir do diff **aprovado**, gera o plano de testes quando há
-critérios de aceite e redige work items (US, dívida técnica) para você confirmar.
+Atualiza README, ARCHITECTURE, changelog e docs de API a partir do diff **aprovado** e redige work items (US,
+dívida técnica) para você confirmar. Com o `qa` desligado, também gera o plano de testes.
 
 ### Bugs e Segurança (sob demanda)
 - **bugs:** procura defeitos de comportamento reais, cada um com um cenário de falha concreto, ou acha a causa-raiz de
@@ -81,9 +91,33 @@ critérios de aceite e redige work items (US, dívida técnica) para você confi
 
 Só entram quando um gatilho se aplica, uma vez por demanda, em paralelo com a 1ª revisão ([fluxo.md](fluxo.md#passadas-extras)).
 
-### QA (desligado por padrão)
-Testes de ponta a ponta e conferência dos critérios de aceite. Ligue com `enabled = true` quando o time tiver como
-testar de verdade (ex.: Playwright apontando para um ambiente de teste).
+### QA
+Entra **sempre que a demanda é testada**, em dois momentos:
+
+1. **Plano de testes** (modo `plan`, logo depois do plano do planejador): grava `plano-testes-<id>.md` com a forma
+   de provar cada critério de aceite:
+   - `auto-api`: chamadas na API local ou de DEV/QA;
+   - `auto-browser`: a tela de ponta a ponta, pelo Claude in Chrome (o seu Chrome, já logado) ou pelo Playwright;
+   - `auto-suite`: um teste que já existe;
+   - `manual`: o que não dá para rodar aqui, como desktop/WPF.
+
+   Ele lista também os **testes no código** (o que o ponta a ponta não pega) e os **ajustes de teste**. O revisor
+   confere o plano de testes junto com o plano, e o planejador usa os dois para cortar os tickets.
+2. **Teste da entrega** (modo `test`, depois da implementação):
+   - roda a suíte e os critérios automáticos com evidência;
+   - quando precisa de um ajuste no código, devolve `test_adjustment_needed` e o codificador aplica;
+   - se o subagente não consegue usar o navegador, ele devolve `orchestrator_test_needed`: o orquestrador executa
+     esses critérios no navegador dele, seguindo o plano de testes, e um QA novo (modo `verify`) confere a
+     evidência. Os dois vereditos vão para você numa tabela, e cada divergência ou dúvida é debatida com você, que
+     dá a palavra final;
+   - o que é manual vira `roteiro-testes-<id>.md`.
+
+   Depois da revisão aprovada, o orquestrador mostra o roteiro **um passo por vez**: o que fazer, o resultado
+   esperado e a evidência a mandar. Você executa e manda a evidência, ele confere e registra, e segue até o fim. Um
+   passo que falha vira correção do codificador, revisão só da correção e um novo teste só daquele passo.
+
+Não corrige nem edita código. Uma chamada que muda estado no ambiente continua passando pela sua aprovação, uma por
+vez.
 
 ## Modelo e effort por nível
 
@@ -98,7 +132,7 @@ A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude;
 | bugs · seguranca | Sonnet low | Sonnet medium | Sonnet high | Opus high | Opus high |
 | api | Haiku | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
 | documentador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet medium |
-| qa | desligado | | | | |
+| qa | Sonnet low | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
 
 Por que assim:
 - **Ler é barato, decidir é caro.** Explorador e documentador ficam no Haiku; o raciocínio vai para quem planeja,
@@ -171,7 +205,7 @@ Todo agente termina com **um** bloco JSON. Os campos comuns:
 | api | `task_complete`, `policy_requires_approval`, `environment_blocked` |
 | documentador | `docs_complete`, `environment_blocked`, `policy_requires_approval` |
 | bugs · seguranca | `audit_clean`, `audit_findings`, `audit_has_open_questions` |
-| qa | `tests_passed`, `tests_failed`, `environment_blocked` |
+| qa | `test_plan_ready`, `test_plan_has_open_questions` (plan); `tests_passed`, `tests_failed`, `manual_test_required`, `test_adjustment_needed`, `orchestrator_test_needed`, `environment_blocked`, `policy_requires_approval` (test e verify) |
 
 ## O que um agente recebe
 
@@ -193,7 +227,7 @@ No `aidw.config.toml` ([configuracao.md](configuracao.md)):
 
 ```toml
 [agents.qa]
-enabled = true            # liga o qa
+enabled = false           # desliga o qa (o teste volta a ser o `validation` do codificador)
 
 [agents.bug-hunter]
 enabled = false           # o orquestrador nunca delega a ele

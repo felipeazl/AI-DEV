@@ -98,7 +98,8 @@ skills = ["database-safe"]
 
 [agents.qa]
 # name = "qa"
-enabled = false
+# Plano de testes logo depois do plano e o teste da entrega: automático (API, navegador) ou roteiro com você.
+enabled = true
 effort = "medium"
 skills = []
 

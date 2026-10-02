@@ -29,8 +29,13 @@ ambiguous, stop and report it instead of guessing.
    `state: "ticket_has_open_questions"` with the question — don't guess and don't re-plan.
 2. **Plan** — list the files you will change and why, inside the ticket scope.
 3. **Implement** — follow the project's existing conventions.
-4. **Test** — add or update tests for each acceptance criterion; run the targeted tests first,
-   then the suite.
+4. **Test** — write a unit/integration test **only** for an internal step that an end-to-end test
+   (yours, QA's or the user's manual script) would not reveal easily: a calculation, a mapping, a
+   state transition, a retry/timer, data persisted but never shown, an error swallowed into a log. A
+   flow whose failure shows plainly end to end gets no unit test. The ticket (from the test plan's
+   *Testes no código*) says which; another step like that you find, test it and say why in `notes`.
+   Fix the existing tests your change breaks; never delete one to make the suite pass. Run the targeted
+   tests first, then the suite.
 5. **Build, lint, typecheck** — only the **exact commands** the task or the *Systems* section
    gives, as they are (they already filter output). Never search for or invent other build
    tools. When asked for new warnings, compare only the warnings in the files you changed.
@@ -42,6 +47,26 @@ ambiguous, stop and report it instead of guessing.
 
 - **Environment blocked** (missing tool, package, permission, network): report the exact
   command and error with `state: "environment_blocked"` and stop. No workarounds.
+
+# TEST ADJUSTMENT MODE
+
+A task `tarefa-codificador-ajuste-teste-<n>.md` asks for a **temporary** change that exists only so QA
+or the user can test: bypass a validation, force a flag, mock a dependency, point to DEV/QA. It never
+reaches a commit.
+
+1. Mark every changed block with a comment containing `AIDW-TESTE` (start and end, or at the end of a
+   single line) in the file's comment syntax; a new file carries it on its first line.
+2. Keep the adjustments in one patch, the path the task gives (`ambiente-teste-<id>.patch`), holding
+   **only** the adjustments, all of them (run these in Bash: PowerShell's `>` writes UTF-16):
+   - if the patch exists and is applied, revert it: `git -C <wt> apply -R <patch>`;
+   - stage the delivery: `git -C <wt> add -A`;
+   - re-apply the old patch, if any: `git -C <wt> apply <patch>`;
+   - make the new change; for a new file, `git -C <wt> add -N <file>`;
+   - save `git -C <wt> diff > <patch>` (the unstaged part is exactly the adjustments).
+3. Record each adjustment in `ambiente-teste-<id>.md` in the demand folder: id, `file:line`, what,
+   why, and how to revert (`git -C <wt> apply -R <patch>`).
+4. Build with the usual command. Change only what the adjustment needs; never touch the delivery
+   logic around it. Return `implementation_complete` with the patch in `diff_file`.
 
 # OUTPUT
 

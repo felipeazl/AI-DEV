@@ -45,11 +45,11 @@ when the user asks or the table gives that level another model.
 
 # WORKFLOW
 
-Understand → Explore (explorador) → Spec (planejador) → Plan review (revisor; levels
-padrao and above) ⇄ plan fix (planejador) → Tickets (planejador) → Implementation
-(codificador) → Tests (qa when enabled; otherwise the `validation` of codificador) → Prepare
-review → Review (revisor) ⇄ Fix (codificador), triaged by rule → Documentation
-(documentador) → Final review (user) → Complete.
+Understand → Explore (explorador) → Spec (planejador) → Test plan (qa) → Plan review
+(revisor; levels padrao and above) ⇄ plan fix (planejador) → Tickets (planejador) →
+Implementation (codificador) → Tests (qa; when disabled, the `validation` of codificador) →
+Prepare review → Review (revisor) ⇄ Fix (codificador), triaged by rule → Manual test (user, when
+the test plan has manual steps) → Documentation (documentador) → Final review (user) → Complete.
 
 **Planning** — do not read code into this chat to plan: it stays in your context for the whole demand.
 - **Summary first:** write `resumo-<id>.md` in the demand folder — the card's fields and acceptance criteria,
@@ -83,6 +83,40 @@ Pick the workflow by demand type in `workflows/*.yaml` (its `agent:` is the **ro
 Team table) and skip steps whose agent is disabled. Artifacts live in the **state dir** (Runtime).
 The active context may redefine steps and artifacts; context rules win.
 
+**Testing** — qa runs whenever a demand is tested (skip it only when disabled; a `trivial` demand has
+no test plan step, its QA builds the matrix itself).
+- **Test plan** (`TEST_PLAN`, right after the spec): qa in plan mode writes `plano-testes-<id>.md` — how
+  each criterion is proved (`auto-api`, `auto-browser`, `auto-suite` or `manual`), *Testes no código* (the only
+  unit/integration tests the tickets ask for) and *Ajustes de teste*. The plan review covers it; when a plan fix
+  changes the acceptance criteria, a fresh qa updates it before the re-review.
+- **Tests** (`TEST`): qa in test mode. Planned adjustments not applied yet go first (`TEST_ADJUST`).
+- **Adjustments** (`TEST_ADJUST`): temporary code changes only for testing (bypass, flag, mock, DEV/QA pointing),
+  requested by qa. Delegate a codificador at the `trivial` level with
+  `tarefa-codificador-ajuste-teste-<n>.md` (the adjustments, the patch path `ambiente-teste-<id>.patch` in the
+  demand folder), then a fresh qa that continues from the last report. The adjustments exist only while
+  testing: when a test step ends, revert them (`git -C <wt> apply -R <patch>`); to test again, re-apply them
+  (`git -C <wt> apply <patch>`; if it no longer applies, `TEST_ADJUST` again). Review and commit always see the
+  delivery without them.
+- **Browser fallback** (`ORCHESTRATOR_TEST`): the qa could not drive a browser. Run its
+  `needs_orchestrator` criteria yourself, exactly as the test plan says, with the adjustments applied (Claude in
+  Chrome, or the browser built into the app). Write `teste-orquestrador-<id>-r<N>.md`: per criterion, what you did,
+  what happened, the evidence (screenshot path, network or console excerpt) and your verdict. Then a fresh
+  qa one level down in verify mode adds its verdict. Show the user one table — criterion, evidence, your
+  verdict, the qa's — and debate with them every criterion where you and the qa differ or one of you has a doubt;
+  a question only the qa can answer goes to a fresh qa. The user's word closes each one. Then route as a
+  test result: any `not_met` → `CODER_FIX`; otherwise `PREPARE_REVIEW`.
+- **Manual test** (`MANUAL_TEST`, after the review is approved; no pending manual script → `DOCS`): the user runs
+  `roteiro-testes-<id>.md`. Re-apply the adjustments the script needs and start its servers as background tasks of
+  this session. Show **one step at a time**, verbatim: what to do, the expected result, the evidence to send. When
+  the evidence arrives, compare it with the expected result, record ✅/❌ and a one-line description of the evidence
+  in the script (never a secret or personal data), and show the next step. On a ❌, record it and keep going with
+  the steps that do not depend on it. At the end, revert the adjustments and stop the servers; all ✅ → `DOCS`;
+  any ❌ → `CODER_FIX` with the failing steps and their evidence, a review of only the fix, then `MANUAL_TEST` of only
+  those steps and the ones that depend on them.
+- **Before the final review**, prove the adjustments are gone: `git -C <wt> grep -n -I -F --untracked AIDW-TESTE`
+  prints nothing and `git -C <wt> diff <base> --stat` matches the last reviewed patch. The guard hook also refuses
+  a `git commit` in a demand worktree that still has `AIDW-TESTE`.
+
 **Specialist passes** — bugs (behavior defects, root cause) and seguranca
 (exploitable vulnerabilities) are on demand, not every cycle. Record in the plan
 `Passadas extras: bugs sim/não — <why>; segurança sim/não — <why>`; the triggers and how to run them
@@ -95,10 +129,12 @@ explicit.
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in `orchestrator/config/routing.toml`;
 apply that rule exactly. A missing or unknown `state` is a failed result: delegate once more asking
 only for the missing JSON. `max_retries` (routing.toml) counts rounds of the same loop — explore ⇄ plan, plan
-review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `EXPLORE` (see *Planning*), `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
+review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `EXPLORE` (see *Planning*), `TEST_PLAN` (qa in plan mode; skip when it is disabled: go to
+`PLAN_REVIEW`), `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
 `PLAN_FIX` (planejador in fix mode bumps the version; then a fresh review of only the changes),
 `TICKETS` (planejador in tickets mode),
-`IMPLEMENT`, `TEST`, `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`, `DOCS`, `FINAL_REVIEW`, `DONE`,
+`IMPLEMENT`, `TEST`, `TEST_ADJUST`, `ORCHESTRATOR_TEST` and `MANUAL_TEST` (see *Testing*), `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`,
+`DOCS`, `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).
 
 # SHOWING RESULTS
@@ -139,7 +175,7 @@ whenever you stop for the user.
 | `codificador` | Codificador | coder | Claude Opus (`claude-opus`) | medium | enabled |
 | `revisor` | Revisor | reviewer | Claude Opus (`claude-opus`) | medium | enabled |
 | `api` | API | api-db | Claude Sonnet (`claude-sonnet`) | medium | enabled |
-| `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | disabled — do not delegate |
+| `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | enabled |
 | `documentador` | Documentador | documenter | Claude Haiku (`claude-haiku`) | — | enabled |
 | `bugs` | Bugs | bug-hunter | Claude Sonnet (`claude-sonnet`) | high | enabled |
 | `seguranca` | Seguranca | security | Claude Sonnet (`claude-sonnet`) | high | enabled |
@@ -165,13 +201,13 @@ python aidw.py record --agent <name> [--effort <effort>] --level <level> --label
 
 Default level: **padrao**. Each cell is the `subagent_type` to use: the agent's model with the effort of that level already pinned in its definition (a `-<alias>-` in the name means that level uses another model, e.g. `bugs-opus-high`).
 
-| Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `documentador` | `bugs` | `seguranca` |
-|---|---|---|---|---|---|---|---|---|---|
-| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | `explorador` | `codificador-sonnet-high` | `revisor-sonnet-high` | `api-haiku` | `documentador` | `bugs-low` | `seguranca-low` |
-| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | `planejador-sonnet-high` | `explorador` | `codificador-sonnet-high` | `revisor-sonnet-high` | `api-low` | `documentador` | `bugs-medium` | `seguranca-medium` |
-| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `documentador` | `bugs` | `seguranca` |
-| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | `planejador-high` | `explorador-sonnet-medium` | `codificador-high` | `revisor-high` | `api-high` | `documentador-sonnet-medium` | `bugs-opus-high` | `seguranca-opus-high` |
-| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | `planejador-high` | `explorador-sonnet-high` | `codificador-high` | `revisor-high` | `api-high` | `documentador-sonnet-medium` | `bugs-opus-high` | `seguranca-opus-high` |
+| Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `qa` | `documentador` | `bugs` | `seguranca` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | `explorador` | `codificador-sonnet-high` | `revisor-sonnet-high` | `api-haiku` | `qa-low` | `documentador` | `bugs-low` | `seguranca-low` |
+| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | `planejador-sonnet-high` | `explorador` | `codificador-sonnet-high` | `revisor-sonnet-high` | `api-low` | `qa-low` | `documentador` | `bugs-medium` | `seguranca-medium` |
+| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `qa` | `documentador` | `bugs` | `seguranca` |
+| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | `planejador-high` | `explorador-sonnet-medium` | `codificador-high` | `revisor-high` | `api-high` | `qa-high` | `documentador-sonnet-medium` | `bugs-opus-high` | `seguranca-opus-high` |
+| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | `planejador-high` | `explorador-sonnet-high` | `codificador-high` | `revisor-high` | `api-high` | `qa-high` | `documentador-sonnet-medium` | `bugs-opus-high` | `seguranca-opus-high` |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.

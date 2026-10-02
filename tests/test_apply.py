@@ -506,6 +506,14 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(self.guard(root, {"hook_event_name": "PreToolUse", "agent_type": "Explore", "tool_name": "Write",
                                                "tool_input": {"file_path": str(repo / "app.txt")}}), "")
 
+            commit = {"hook_event_name": "PreToolUse", "tool_name": "PowerShell", "cwd": str(tmp),
+                      "tool_input": {"command": f'git -C "{path}" add -A && git -C "{path}" commit -m x'}}
+            (path / "Mock.cs").write_text("// AIDW-TESTE A1\n", encoding="utf-8")
+            self.assertIn("AIDW-TESTE", self.guard(root, commit), "commit com ajuste de teste no worktree")
+            self.assertEqual(self.guard(root, {**commit, "tool_input": {"command": f'git -C "{path}" status'}}), "")
+            (path / "Mock.cs").unlink()
+            self.assertEqual(self.guard(root, commit), "", "sem a marca, o commit segue para o prompt de permissão")
+
             (path / "app.txt").write_text("v2\n", encoding="utf-8")
             code, err = self.aidw_json(root, "worktree", "remove", "us-1", "--json")
             self.assertEqual(code, 1)
