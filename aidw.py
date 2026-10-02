@@ -117,8 +117,8 @@ PROVIDER_LABEL = {"claude": "Claude (Claude Code)", "codex": "Codex (Codex CLI)"
 # headless = um processo do CLI por tarefa, via `aidw.py delegate`
 DELEGATION_MODES = ("native", "headless")
 
-ACTIONS = {"EXPLORE", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "DOCS",
-           "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL", "RETURN"}
+ACTIONS = {"EXPLORE", "TEST_PLAN", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "TEST_ADJUST", "ORCHESTRATOR_TEST",
+           "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "DOCS", "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL", "RETURN"}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
 
@@ -151,7 +151,8 @@ DEFAULT_AGENTS: dict[str, dict] = {
     "reviewer": {"enabled": True, "tier": "top", "effort": "medium",
                  "skills": ["code-review", "verificar-premissa"], "preload": ["code-review"]},
     "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe"]},
-    "qa": {"enabled": False, "tier": "mid", "effort": "medium", "skills": []},
+    # QA: plano de testes logo depois do plano e o teste da entrega (automático ou roteiro com o usuário).
+    "qa": {"enabled": True, "tier": "mid", "effort": "medium", "skills": []},
     "documenter": {"enabled": True, "tier": "fast", "effort": "medium", "skills": []},
     # Especialistas sob demanda: o orquestrador decide quando uma passada vale o custo.
     "bug-hunter": {"enabled": True, "tier": "mid", "effort": "high",
@@ -2163,7 +2164,7 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
         put(f"{base}/reference/{name}.md", r["content"])
     py = f'python "{ROOT.as_posix()}/aidw.py"'
     put(f"{base}/hooks/hooks.json", json.dumps({"hooks": {
-        "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
                         "hooks": [{"type": "command", "command": f'python "{GUARD_SCRIPT.as_posix()}"'}]}],
         "UserPromptSubmit": [{"hooks": [{"type": "command", "command": f'python "{GUARD_SCRIPT.as_posix()}"'}]}],
         "SessionStart": [{"matcher": "compact|resume",

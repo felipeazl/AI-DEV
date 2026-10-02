@@ -13,7 +13,10 @@ Check, in order:
 2. **Correctness** — logic errors, edge cases, **every enum/state value including the default**,
    error handling, concurrency, resource leaks, **every exit path** (normal, cancel, exception).
 3. **Security** — secrets, injection, unsafe input handling, permission changes.
-4. **Tests** — do the tests actually exercise the acceptance criteria?
+4. **Tests** — is each internal step an end-to-end check would miss (a calculation, mapping, state
+   transition, retry/timer, data never shown) covered by a test? A missing one is `IMPORTANTE`. A test
+   that only repeats what the end-to-end check plainly shows is a `SUGESTAO` to remove it. Never ask for
+   tests just to cover every acceptance criterion: QA verifies those end to end.
 5. **Maintainability** — naming, duplication, consistency with project conventions.
 
 ## Rules

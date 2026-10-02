@@ -3,6 +3,8 @@
 - PreToolUse (Edit/Write/MultiEdit/NotebookEdit) — guard: um agente do AiDW não escreve no working copy
   principal de um repositório que tem worktree ativo de demanda (state/worktrees.json); ele trabalha no
   worktree. A conversa principal não tem regra: o usuário continua livre no working copy dele.
+- PreToolUse (Bash/PowerShell) — `git commit` num worktree ativo de demanda que ainda tem a marca `AIDW-TESTE`
+  (ajuste temporário de teste) é recusado, para qualquer sessão: o ajuste é revertido antes do commit.
 - UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:orquestrar` no Claude,
   `$aidw-orquestrar` no Codex) ou saiu dele (`/aidw:sair`, `$aidw-sair`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
 - SessionStart (compact|resume) — numa sessão no modo orquestrador, lembra de reler a skill e o
@@ -14,6 +16,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,6 +30,10 @@ CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".a
 # Claude: /aidw:orquestrar · Codex: $aidw-orquestrar; sair e done encerram o modo
 MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(orquestrar|sair|done)\b(.*)", re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
+# `git [-C <pasta>] [-c k=v] commit`; o grupo 1 tem as opções antes do subcomando
+GIT_COMMIT_RE = re.compile(r"\bgit((?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|\S+))*)\s+commit\b")
+GIT_DIR_RE = re.compile(r"-C\s+(\"[^\"]*\"|'[^']*'|\S+)")
+TEST_MARK = "AIDW-TESTE"  # marca dos ajustes temporários de teste (codificador, modo ajuste de teste)
 
 
 def norm(p: str) -> str:
@@ -58,7 +65,39 @@ def is_aidw_agent(agent: str) -> bool:
     return any(agent == n or agent.startswith(n + "-") for n in names)
 
 
+def deny(reason: str) -> dict:
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                   "permissionDecisionReason": reason}}
+
+
+def commit_guard(data: dict) -> dict | None:
+    """Recusa `git commit` num worktree ativo de demanda que ainda tem ajuste de teste (marca AIDW-TESTE)."""
+    cmd = str((data.get("tool_input") or {}).get("command") or "")
+    if "commit" not in cmd:
+        return None
+    active = [e for e in read_json(REGISTRY, {}).get("worktrees", []) if e.get("status") == "active"]
+    for m in GIT_COMMIT_RE.finditer(cmd) if active else ():
+        dirs = GIT_DIR_RE.findall(m.group(1))
+        repo = dirs[-1].strip("\"'") if dirs else data.get("cwd")
+        if not repo:
+            continue
+        if not os.path.isabs(repo) and data.get("cwd"):
+            repo = os.path.join(data["cwd"], repo)
+        e = next((e for e in active if inside(repo, e["path"])), None)
+        if not e:
+            continue
+        found = subprocess.run(["git", "-C", e["path"], "grep", "-l", "-I", "-F", "--untracked", TEST_MARK],
+                               capture_output=True, text=True, timeout=15).stdout.split()
+        if found:
+            return deny(f"AiDW: o worktree da demanda {e['demand']} ainda tem ajuste temporario de teste ({TEST_MARK}) "
+                        f"em {', '.join(found[:5])}. Reverta os ajustes (git -C <worktree> apply -R "
+                        "ambiente-teste-<id>.patch) antes do commit.")
+    return None
+
+
 def pre_tool_use(data: dict) -> dict | None:
+    if data.get("tool_name") in ("Bash", "PowerShell"):
+        return commit_guard(data)
     agent = data.get("agent_type") or ""
     if not agent or not is_aidw_agent(agent):
         return None
@@ -80,12 +119,9 @@ def pre_tool_use(data: dict) -> dict | None:
         resolved.append(target)
     for e in read_json(REGISTRY, {}).get("worktrees", []):
         if e.get("status") == "active" and any(inside(x, e["repo"]) and not inside(x, e["path"]) for x in resolved):
-            return {"hookSpecificOutput": {
-                "hookEventName": "PreToolUse", "permissionDecision": "deny",
-                "permissionDecisionReason": (
-                    f"AiDW: {e['repo']} tem o worktree da demanda {e['demand']} em {e['path']} "
-                    f"(branch {e['branch']}). Edite o arquivo correspondente no worktree, não no working copy "
-                    "principal.")}}
+            return deny(f"AiDW: {e['repo']} tem o worktree da demanda {e['demand']} em {e['path']} "
+                        f"(branch {e['branch']}). Edite o arquivo correspondente no worktree, não no working copy "
+                        "principal.")
     return None
 
 

@@ -171,12 +171,15 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
 | 1 | Entender | orquestrador | `resumo-<id>.md`: card, critérios de aceite, decisões dos comentários, trabalho existente |
 | 2 | Explorar | explorador | `exploracao-<assunto>.md`: respostas numeradas com `arquivo:linha` |
 | 3 | Planejar | planejador | `plano-<id>.md` versionado, com **nível** da demanda e passadas extras |
-| 4 | Revisar o plano | revisor ⇄ planejador | só do nível `padrao` para cima |
-| 5 | Tickets | planejador | uma `tarefa-<agente>-<assunto>.md` autocontida por ticket |
-| 6 | Implementar | codificador | código, testes, build e `diff-<ticket>-r<N>.patch`, no worktree |
-| 7 | Revisar | revisor ⇄ codificador | achados `R1-01`… com severidade; triagem por regra até zero CRITICO/IMPORTANTE |
-| 8 | Documentar | documentador | docs do diff aprovado e plano de testes |
-| 9 | Revisão final | **você** | um pacote só; com o seu OK, o orquestrador publica e executa o que foi aprovado |
+| 4 | Plano de testes | qa | `plano-testes-<id>.md`: como provar cada critério (API, navegador, suíte ou manual), testes no código e ajustes de teste |
+| 5 | Revisar o plano | revisor ⇄ planejador | plano e plano de testes; só do nível `padrao` para cima |
+| 6 | Tickets | planejador | uma `tarefa-<agente>-<assunto>.md` autocontida por ticket |
+| 7 | Implementar | codificador | código, os testes que o ponta a ponta não pega, build e `diff-<ticket>-r<N>.patch`, no worktree |
+| 8 | Testar | qa (⇄ codificador nos ajustes de teste) | evidência de cada critério automático; roteiro do que é manual |
+| 9 | Revisar | revisor ⇄ codificador | achados `R1-01`… com severidade; triagem por regra até zero CRITICO/IMPORTANTE |
+| 10 | Teste manual | **você**, com o orquestrador | o roteiro um passo por vez: você executa e manda a evidência (só se houver passo manual) |
+| 11 | Documentar | documentador | docs do diff aprovado |
+| 12 | Revisão final | **você** | um pacote só, sem nenhum ajuste de teste no diff; com o seu OK, o orquestrador publica e executa o que foi aprovado |
 
 - **Cada agente termina com um `state`** (ex.: `implementation_complete`, `review_changes_requested`), e o
   orquestrador aplica a regra fixa de `orchestrator/config/routing.toml`. Os agentes não escolhem o próximo passo.
@@ -202,10 +205,10 @@ repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).
 | `codificador` | Implementa um ticket por vez: código, testes, build | Opus medium → Opus high (Sonnet em trivial/simples) |
 | `revisor` | Revisa plano e diff contra spec, ticket e card; achados com severidade | Opus medium → Opus high (Sonnet em trivial/simples) |
 | `api` | Consulta APIs, banco (só leitura pelo validador) e logs; propõe escritas | Sonnet |
-| `documentador` | Docs do diff aprovado, plano de testes, redação de work items | Haiku → Sonnet |
+| `documentador` | Docs do diff aprovado, redação de work items | Haiku → Sonnet |
 | `bugs` | **Sob demanda:** defeitos com cenário de falha concreto, causa-raiz | Sonnet → Opus high |
 | `seguranca` | **Sob demanda:** vulnerabilidades com caminho de ataque | Sonnet → Opus high |
-| `qa` | Testes de ponta a ponta (desligado por padrão) | Sonnet |
+| `qa` | Plano de testes com o planejador e teste da entrega: web/API sozinho, desktop por roteiro passo a passo com você | Sonnet |
 
 Nenhum agente passa de effort `high`. No Codex vale a mesma tabela pelo equivalente de cada modelo (Opus → top,
 Sonnet → intermediário, Haiku → leve). Nomes, modelos e efforts são configuráveis, e qualquer agente pode ser

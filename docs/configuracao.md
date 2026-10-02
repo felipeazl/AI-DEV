@@ -160,7 +160,7 @@ A tabela de níveis vale pelo tier equivalente de cada modelo, entre os liberado
 enabled = ["playwright", "chrome-devtools", "figma", "context7"]
 
 [agents.qa]
-enabled = true            # testes de ponta a ponta com o Playwright
+enabled = true            # padrão: o qa testa a tela pelo Claude in Chrome ou pelo Playwright
 ```
 
 O Figma precisa de autenticação uma vez (Claude: `/mcp` → figma → Authenticate; Codex: `codex mcp login figma`).
