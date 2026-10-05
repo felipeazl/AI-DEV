@@ -20,7 +20,9 @@ working copy (a hook blocks it). Run it by the absolute path of `aidw.py` shown 
    `main_dirty` is true, tell the user once that the main working copy's local changes are not in the worktree.
 3. **Move the session (Claude):** a demand with more than one repository gets one `create` per repository.
    - Desktop app: `mcp__ccd_directory__change_directory` to the worktree (one repository) or to the demand folder
-     (more than one); the diff pane follows it, and `/aidw:diff` switches it between the repositories.
+     (more than one); the diff pane follows it, and `/aidw:diff` switches it between the repositories. Then add
+     the Runtime *Session folders* (the active context's folder) with `mcp__ccd_directory__request_directory`, once
+     per session, so the plans and reports open in the app.
    - Terminal: `EnterWorktree` with name `<tipo-id>` (the AiDW hook returns this worktree).
    - Every task still names the absolute path of its worktree.
 4. **Validate** with the build command of *Systems*, pointing at the worktree. A failure here is
