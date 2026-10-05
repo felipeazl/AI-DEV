@@ -5,7 +5,7 @@ steps:
     agent: coder
   - id: implement
     agent: coder
-  - id: test            # qa quando habilitado; senão o bloco `validation` do codificador
+  - id: test            # qa (modo test; ajustes temporários via codificador); desabilitado: `validation`
     agent: qa
   - id: prepare_review
     agent: orchestrator
@@ -20,6 +20,8 @@ steps:
     agent: security
     skill: security-audit
     optional: true
+  - id: manual_test     # roteiro manual do qa com o usuário, depois da revisão aprovada (só se houver)
+    agent: orchestrator
   - id: final_review
     agent: orchestrator
 gates:

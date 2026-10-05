@@ -17,7 +17,9 @@ existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou r
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
 plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece: explorador, e
                                                 # um planejador novo no mesmo modo (conta em max_retries)
-spec_ready = "PLAN_REVIEW"                      # sem dúvidas: revisor confere o plano (padrao+)
+spec_ready = "TEST_PLAN"                        # sem dúvidas: o qa monta o plano de testes (qa desabilitado: PLAN_REVIEW)
+test_plan_ready = "PLAN_REVIEW"                 # revisor confere o plano e o plano de testes (padrao+)
+test_plan_has_open_questions = "HUMAN_APPROVAL" # critério sem cenário verificável ou dúvida real
 plan_review_approved = "TICKETS"
 plan_review_changes_requested = "PLAN_FIX"      # o orquestrador corrige o plano; nova rodada
 plan_review_has_open_questions = "HUMAN_APPROVAL"
@@ -29,15 +31,18 @@ implementation_failed = "CODER_FIX"
 environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não consegue resolver
 ticket_has_open_questions = "HUMAN_APPROVAL"    # o plano não serve para o código; confira antes
 
-# Testes. Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador.
+# Testes (qa, modo test). Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador.
 tests_failed = "CODER_FIX"
 tests_passed = "PREPARE_REVIEW"
+manual_test_required = "PREPARE_REVIEW"         # parte automática OK; o roteiro roda com o usuário depois da revisão
+test_adjustment_needed = "TEST_ADJUST"          # codificador aplica o ajuste temporário; um qa novo continua
+orchestrator_test_needed = "ORCHESTRATOR_TEST"  # o qa não tinha navegador: o orquestrador testa e o qa confere
 
 # Ciclo de revisão (triagem por regras)
 review_ready = "REVIEW"
 review_changes_requested = "CODER_FIX"          # CRITICO/IMPORTANTE pendentes
 review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ciclo segue
-review_approved = "DOCS"
+review_approved = "MANUAL_TEST"                 # roteiro manual pendente → usuário testa; sem roteiro → DOCS
 max_retries_exceeded = "HUMAN_APPROVAL"
 
 # Agentes de apoio (api, explorador): devolvem o fluxo para a etapa que os chamou

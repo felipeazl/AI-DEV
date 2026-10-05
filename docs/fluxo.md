@@ -20,8 +20,9 @@ carrega centenas de linhas lidas no começo, fica caro a cada mensagem e erra ma
 ## Etapas
 
 ```text
-Entender → Explorar → Planejar → Revisar o plano ⇄ Corrigir o plano → Tickets → Implementar → Testar
-        → Preparar a revisão → Revisar ⇄ Corrigir (+ bugs/segurança) → Documentar → Revisão final → Concluir
+Entender → Explorar → Planejar → Plano de testes → Revisar o plano ⇄ Corrigir o plano → Tickets → Implementar
+        → Testar (⇄ ajustes de teste) → Preparar a revisão → Revisar ⇄ Corrigir (+ bugs/segurança)
+        → Teste manual (se houver roteiro) → Documentar → Revisão final → Concluir
 ```
 
 | Etapa | Agente | Entrada | Saída |
@@ -29,16 +30,19 @@ Entender → Explorar → Planejar → Revisar o plano ⇄ Corrigir o plano → 
 | **Entender** | orquestrador | o card (id, link ou descrição) | `resumo-<id>.md`: campos e critérios de aceite, decisões dos comentários com autor e data, itens ligados que importam, trabalho já existente (tasks, branch, PR) |
 | **Explorar** | explorador | perguntas numeradas que o plano precisa (onde a mudança vai, o comportamento atual, o contrato de cada dependência) | `exploracao-<assunto>.md`, com `arquivo:linha` em cada resposta |
 | **Planejar** (modo spec) | planejador | resumo + exploração + nível provisório | `plano-<id>.md` v1: comportamento atual verificado, desejado, critérios de aceite, checklists, riscos, **nível**, passadas extras |
-| **Revisar o plano** | revisor | o plano | `revisao-plano-<id>-r<N>.md`, achados `P<N>-<nn>`. Só do nível `padrao` para cima |
+| **Plano de testes** (modo plan) | qa | resumo + plano | `plano-testes-<id>.md`: como provar cada critério (`auto-api`, `auto-browser`, `auto-suite`, `manual`), os testes no código e os ajustes de teste |
+| **Revisar o plano** | revisor | o plano e o plano de testes | `revisao-plano-<id>-r<N>.md`, achados `P<N>-<nn>`. Só do nível `padrao` para cima |
 | **Corrigir o plano** (modo fix) | planejador | plano + revisão | nova versão do plano; um revisor **novo** revisa só as mudanças |
-| **Tickets** (modo tickets) | planejador | plano aprovado | uma `tarefa-<agente>-<assunto>.md` por ticket |
+| **Tickets** (modo tickets) | planejador | plano aprovado + plano de testes | uma `tarefa-<agente>-<assunto>.md` por ticket, com só os testes de *Testes no código* |
 | **Implementar** | codificador | uma tarefa | código e testes no worktree, build, `diff-<ticket>-r<N>.patch` |
-| **Testar** | qa, ou o bloco `validation` do codificador | o diff | build, typecheck, testes, lint (`passed`/`failed`/`skipped`) |
+| **Testar** (modo test) | qa (desligado: o bloco `validation` do codificador) | plano de testes + diff | `qa-<id>-r<N>.md` com a evidência de cada critério; `roteiro-testes-<id>.md` para o que é manual |
+| **Ajustes de teste** | codificador, a pedido do qa | os ajustes | `ambiente-teste-<id>.patch` (marca `AIDW-TESTE`) e `ambiente-teste-<id>.md`; nunca chega ao commit |
 | **Preparar a revisão** | orquestrador | o diff | `checklist-revisao.md` (o contexto pode definir o conteúdo) |
 | **Revisar** | revisor (+ bugs, seguranca) | spec + ticket + diff + checklist | `review-<id>-r<N>.md`, achados `R<N>-<nn>` com severidade |
 | **Triar** | orquestrador | a revisão | `triagem-<id>-r<N>.md`: o que corrige, o que registra, o que pergunta |
 | **Corrigir** | codificador | a revisão + a triagem | novo diff `r<N+1>`; um revisor **novo** revisa só as correções |
-| **Documentar** | documentador | o diff aprovado | docs atualizadas e plano de testes |
+| **Teste manual** | **você**, com o orquestrador | `roteiro-testes-<id>.md` | um passo por vez: você executa e manda a evidência; ele confere e registra ✅/❌ no roteiro |
+| **Documentar** | documentador | o diff aprovado | docs atualizadas (com o qa desligado, também o plano de testes) |
 | **Revisão final** | **você** | `revisao-final.md` | um pacote só: o que mudou, a revisão final, as ações que esperam o seu OK |
 
 ### Atalhos por tamanho
@@ -59,14 +63,18 @@ Todo agente termina com um bloco JSON e um `state`. O orquestrador procura esse 
 | `existing_work_found` | `HUMAN_APPROVAL` | já há trabalho no card: continuação, correção ou retrabalho? |
 | `plan_has_open_questions` | `HUMAN_APPROVAL` | dúvida real ou mais de um caminho válido |
 | `plan_needs_exploration` | `EXPLORE` | o planejador precisa de código que não conhece: explorador, depois um planejador novo |
-| `spec_ready` | `PLAN_REVIEW` | plano pronto (trivial/simples pulam para `TICKETS`) |
+| `spec_ready` | `TEST_PLAN` | plano pronto: o qa monta o plano de testes (qa desligado: `PLAN_REVIEW`) |
+| `test_plan_ready` · `test_plan_has_open_questions` | `PLAN_REVIEW` · `HUMAN_APPROVAL` | trivial/simples pulam a revisão do plano e vão para `TICKETS` |
 | `plan_review_approved` · `plan_review_changes_requested` | `TICKETS` · `PLAN_FIX` | |
 | `tickets_ready` | `IMPLEMENT` | |
 | `implementation_complete` · `implementation_failed` | `TEST` · `CODER_FIX` | |
 | `environment_blocked` | `HUMAN_APPROVAL` | ferramenta, pacote, permissão ou rede; só quando o orquestrador não consegue resolver |
 | `ticket_has_open_questions` | `HUMAN_APPROVAL` | o plano não serve para o código |
 | `tests_passed` · `tests_failed` | `PREPARE_REVIEW` · `CODER_FIX` | |
-| `review_approved` · `review_changes_requested` | `DOCS` · `CODER_FIX` | |
+| `manual_test_required` | `PREPARE_REVIEW` | a parte automática passou; o roteiro manual roda depois da revisão |
+| `test_adjustment_needed` | `TEST_ADJUST` | o codificador aplica o ajuste temporário e um qa novo continua |
+| `orchestrator_test_needed` | `ORCHESTRATOR_TEST` | o qa não conseguiu usar o navegador: o orquestrador testa pelo plano, um qa novo confere e as divergências são debatidas com você |
+| `review_approved` · `review_changes_requested` | `MANUAL_TEST` · `CODER_FIX` | sem roteiro manual pendente, `MANUAL_TEST` vai direto para `DOCS` |
 | `task_complete` · `exploration_complete` · `audit_clean` · `audit_findings` | `RETURN` | agentes de apoio voltam para a etapa que os chamou |
 | `docs_complete` | `FINAL_REVIEW` | |
 | `policy_requires_approval` | `HUMAN_APPROVAL` | ação travada proposta (commit, push, SQL de escrita) |
@@ -125,6 +133,30 @@ demanda. O plano registra `Passadas extras: bugs sim/não — <motivo>; seguran�
 de `orchestrator/reference/passadas-extras.md` (concorrência, timers, legado frágil, autenticação, dados pessoais,
 dependências…). Quando decididas, rodam **em paralelo com a 1ª revisão**, e os achados entram na mesma triagem.
 
+## Testes
+
+O `qa` entra sempre que a demanda é testada ([agentes.md](agentes.md#qa)):
+
+- **Antes dos tickets**, o plano de testes diz como provar cada critério de aceite. Web e API são testados sozinhos:
+  por chamadas na API ou pela tela no navegador. Desktop/WPF, e o que mais não dá para rodar aqui, vira roteiro manual.
+- **O código só ganha teste onde o ponta a ponta não enxerga:** passos internos que não chegam ao cliente. O plano
+  de testes lista esses passos e o ticket diz quais são dele.
+- **Ajustes de teste** (pular uma validação, forçar uma flag, mockar, apontar para QA) são pedidos pelo qa e feitos
+  pelo codificador, todos num patch marcado com `AIDW-TESTE`:
+  - o orquestrador aplica o patch para testar e o reverte ao fim de cada teste;
+  - a revisão e o commit sempre veem a entrega sem ele;
+  - antes da revisão final, o orquestrador prova que não sobrou nada: a busca pela marca vem vazia e o diff bate com
+    o último patch revisado;
+  - o hook do AiDW recusa um `git commit` num worktree de demanda que ainda tenha a marca.
+- **Sem navegador no subagente:** quando o qa não consegue usar o Claude in Chrome nem o Playwright, o orquestrador
+  executa esses critérios no navegador dele, seguindo o plano de testes, e grava a evidência. Um qa novo confere
+  cada uma contra o plano. Você recebe uma tabela com os dois vereditos; o que diverge ou ficou em dúvida é debatido
+  com você, que fecha cada ponto.
+- **Teste manual**, depois da revisão aprovada: o orquestrador mostra o roteiro **um passo por vez**, com o que
+  fazer, o que deve acontecer e a evidência a mandar. Você executa e manda a evidência; ele confere, registra no
+  roteiro e mostra o próximo. Um passo que falha volta para o codificador e, depois da correção revisada, só esse
+  passo (e os que dependem dele) é testado de novo.
+
 ## Quando você é chamado
 
 O orquestrador interrompe **só** para:
@@ -133,7 +165,8 @@ O orquestrador interrompe **só** para:
    exato; o orquestrador junta as propostas e pede o OK uma vez.
 2. **Dúvida real ou mais de um caminho válido:** uma pergunta, com opções, a recomendação e o porquê.
 3. **Algo fora do plano:** escopo maior, ambiente bloqueado, voltas esgotadas.
-4. **A revisão final**, uma vez.
+4. **O teste manual**, quando o plano de testes tem passos que só você pode executar.
+5. **A revisão final**, uma vez.
 
 Decisões pendentes vão juntas numa pergunta só. No modo `interativo`, ele também para antes dos tickets e antes de
 cada delegação.
@@ -148,6 +181,9 @@ Tudo da demanda fica na pasta `<pasta de estado>/<tipo>-<id>/` (a pasta de estad
 | `resumo-<id>.md` | o card resumido, para nenhum agente reler o card |
 | `exploracao-<assunto>.md` | as respostas do explorador, reusadas pelo plano e pelas tarefas |
 | `plano-<id>.md` · `revisao-plano-<id>-r<N>.md` | o plano versionado e as revisões dele |
+| `plano-testes-<id>.md` · `qa-<id>-r<N>.md` · `roteiro-testes-<id>.md` | o plano de testes, os relatórios do qa e o roteiro manual com o resultado de cada passo |
+| `teste-orquestrador-<id>-r<N>.md` | os critérios que o orquestrador testou no navegador dele, com os vereditos dele e do qa |
+| `ambiente-teste-<id>.patch` · `ambiente-teste-<id>.md` | os ajustes temporários de teste e o registro deles |
 | `tarefa-<agente>-<assunto>.md` | cada delegação |
 | `diff-<ticket>-r<N>.patch` · `review-<id>-r<N>.md` · `triagem-<id>-r<N>.md` | cada rodada do ciclo |
 | `checklist-revisao.md` · `revisao-final.md` | preparação e pacote final |
