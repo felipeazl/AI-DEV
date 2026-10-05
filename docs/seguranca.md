@@ -9,7 +9,7 @@ controla.
 | Camada | Como funciona |
 |---|---|
 | **Regras globais do CLI** | O `install` grava no `~/.claude/settings.json` (ou nas `aidw.rules` do Codex): `deny` sempre para force push, `reset --hard`, `clean -f` e leitura de `.env`; `ask` para commit, push, merge, rebase, checkout e o que o contexto marcar. Valem em **toda** sessão, com ou sem orquestrador. `allow` só para a rotina (git de leitura, build, comandos do `aidw.py`) |
-| **Guard (hook)** | Um agente do AiDW não edita o working copy principal de um repositório que tem worktree ativo. A conversa principal fica livre. Comandos de shell não são verificados: as tarefas apontam só para o worktree |
+| **Guard (hook)** | Um agente do AiDW não edita o working copy principal de um repositório que tem worktree ativo. A conversa principal fica livre. Comandos de shell não são verificados (as tarefas apontam só para o worktree), com uma exceção: `git commit` num worktree de demanda que ainda tem ajuste de teste (`AIDW-TESTE`) é recusado, para qualquer sessão |
 | **Worktree** | O código da demanda fica fora do seu working copy; o `remove` recusa worktree com alteração local ou commit não publicado |
 | **Escopo por agente** | Cada papel tem só as ferramentas, MCPs e pastas graváveis que precisa. O contexto pode bloquear ferramentas por papel (ex.: só o orquestrador comenta no card, depois do seu OK) |
 | **Validadores do contexto** | Operações de risco passam por scripts que recusam o que não é permitido (ex.: SQL só leitura, executado dentro de `ROLLBACK`) |

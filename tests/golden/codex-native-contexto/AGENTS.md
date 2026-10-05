@@ -47,11 +47,11 @@ when the user asks or the table gives that level another model.
 
 # WORKFLOW
 
-Understand → Explore (explorador) → Spec (planejador) → Plan review (revisor; levels
-padrao and above) ⇄ plan fix (planejador) → Tickets (planejador) → Implementation
-(codificador) → Tests (qa when enabled; otherwise the `validation` of codificador) → Prepare
-review → Review (revisor) ⇄ Fix (codificador), triaged by rule → Documentation
-(documentador) → Final review (user) → Complete.
+Understand → Explore (explorador) → Spec (planejador) → Test plan (qa) → Plan review
+(revisor; levels padrao and above) ⇄ plan fix (planejador) → Tickets (planejador) →
+Implementation (codificador) → Tests (qa; when disabled, the `validation` of codificador) →
+Prepare review → Review (revisor) ⇄ Fix (codificador), triaged by rule → Manual test (user, when
+the test plan has manual steps) → Documentation (documentador) → Final review (user) → Complete.
 
 **Planning** — do not read code into this chat to plan: it stays in your context for the whole demand.
 - **Summary first:** write `resumo-<id>.md` in the demand folder — the card's fields and acceptance criteria,
@@ -75,7 +75,10 @@ with `python "<ROOT>/aidw.py" worktree create --repo <repo> --demand <tipo-id> -
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
 then work inside it. All worktrees of a demand live in its folder `<worktree root>/<tipo-id>/<repo>`. In the Claude
 desktop app, move the session with `mcp__ccd_directory__change_directory` (the diff pane follows it; `EnterWorktree`
-moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more. In the
+moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more. Then
+(also when the session already starts there) add each of the Runtime *Session folders* with
+`mcp__ccd_directory__request_directory`, once per session: the plans, reports and references of the demand live there,
+and the app opens only files inside the session's folders. In the
 Claude terminal, `EnterWorktree` with name `<tipo-id>`. In Codex there is no such tool, so every command and task uses
 the worktree's absolute path. Every
 task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main working copy; shell
@@ -84,6 +87,40 @@ commands are not checked, so tasks must point only to the worktree.
 Pick the workflow by demand type in `workflows/*.yaml` (its `agent:` is the **role**; map it with the
 Team table) and skip steps whose agent is disabled. Artifacts live in the **state dir** (Runtime).
 The active context may redefine steps and artifacts; context rules win.
+
+**Testing** — qa runs whenever a demand is tested (skip it only when disabled; a `trivial` demand has
+no test plan step, its QA builds the matrix itself).
+- **Test plan** (`TEST_PLAN`, right after the spec): qa in plan mode writes `plano-testes-<id>.md` — how
+  each criterion is proved (`auto-api`, `auto-browser`, `auto-suite` or `manual`), *Testes no código* (the only
+  unit/integration tests the tickets ask for) and *Ajustes de teste*. The plan review covers it; when a plan fix
+  changes the acceptance criteria, a fresh qa updates it before the re-review.
+- **Tests** (`TEST`): qa in test mode. Planned adjustments not applied yet go first (`TEST_ADJUST`).
+- **Adjustments** (`TEST_ADJUST`): temporary code changes only for testing (bypass, flag, mock, DEV/QA pointing),
+  requested by qa. Delegate a codificador at the `trivial` level with
+  `tarefa-codificador-ajuste-teste-<n>.md` (the adjustments, the patch path `ambiente-teste-<id>.patch` in the
+  demand folder), then a fresh qa that continues from the last report. The adjustments exist only while
+  testing: when a test step ends, revert them (`git -C <wt> apply -R <patch>`); to test again, re-apply them
+  (`git -C <wt> apply <patch>`; if it no longer applies, `TEST_ADJUST` again). Review and commit always see the
+  delivery without them.
+- **Browser fallback** (`ORCHESTRATOR_TEST`): the qa could not drive a browser. Run its
+  `needs_orchestrator` criteria yourself, exactly as the test plan says, with the adjustments applied (Claude in
+  Chrome, or the browser built into the app). Write `teste-orquestrador-<id>-r<N>.md`: per criterion, what you did,
+  what happened, the evidence (screenshot path, network or console excerpt) and your verdict. Then a fresh
+  qa one level down in verify mode adds its verdict. Show the user one table — criterion, evidence, your
+  verdict, the qa's — and debate with them every criterion where you and the qa differ or one of you has a doubt;
+  a question only the qa can answer goes to a fresh qa. The user's word closes each one. Then route as a
+  test result: any `not_met` → `CODER_FIX`; otherwise `PREPARE_REVIEW`.
+- **Manual test** (`MANUAL_TEST`, after the review is approved; no pending manual script → `DOCS`): the user runs
+  `roteiro-testes-<id>.md`. Re-apply the adjustments the script needs and start its servers as background tasks of
+  this session. Show **one step at a time**, verbatim: what to do, the expected result, the evidence to send. When
+  the evidence arrives, compare it with the expected result, record ✅/❌ and a one-line description of the evidence
+  in the script (never a secret or personal data), and show the next step. On a ❌, record it and keep going with
+  the steps that do not depend on it. At the end, revert the adjustments and stop the servers; all ✅ → `DOCS`;
+  any ❌ → `CODER_FIX` with the failing steps and their evidence, a review of only the fix, then `MANUAL_TEST` of only
+  those steps and the ones that depend on them.
+- **Before the final review**, prove the adjustments are gone: `git -C <wt> grep -n -I -F --untracked AIDW-TESTE`
+  prints nothing and `git -C <wt> diff <base> --stat` matches the last reviewed patch. The guard hook also refuses
+  a `git commit` in a demand worktree that still has `AIDW-TESTE`.
 
 **Specialist passes** — bugs (behavior defects, root cause) and seguranca
 (exploitable vulnerabilities) are on demand, not every cycle. Record in the plan
@@ -97,10 +134,12 @@ explicit.
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in `orchestrator/config/routing.toml`;
 apply that rule exactly. A missing or unknown `state` is a failed result: delegate once more asking
 only for the missing JSON. `max_retries` (routing.toml) counts rounds of the same loop — explore ⇄ plan, plan
-review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `EXPLORE` (see *Planning*), `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
+review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `EXPLORE` (see *Planning*), `TEST_PLAN` (qa in plan mode; skip when it is disabled: go to
+`PLAN_REVIEW`), `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
 `PLAN_FIX` (planejador in fix mode bumps the version; then a fresh review of only the changes),
 `TICKETS` (planejador in tickets mode),
-`IMPLEMENT`, `TEST`, `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`, `DOCS`, `FINAL_REVIEW`, `DONE`,
+`IMPLEMENT`, `TEST`, `TEST_ADJUST`, `ORCHESTRATOR_TEST` and `MANUAL_TEST` (see *Testing*), `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`,
+`DOCS`, `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).
 
 # SHOWING RESULTS
@@ -141,7 +180,7 @@ whenever you stop for the user.
 | `codificador` | Codificador | coder | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/codificador.md` | enabled |
 | `revisor` | Revisor | reviewer | GPT Sol (`gpt-sol`) | medium | `<ROOT>/.aidw/agents/revisor.md` | enabled |
 | `api` | API | api-db | GPT Terra (`gpt-terra`) | medium | `<ROOT>/.aidw/agents/api.md` | enabled |
-| `qa` | QA | qa | GPT Terra (`gpt-terra`) | medium | — | disabled — do not delegate |
+| `qa` | QA | qa | GPT Terra (`gpt-terra`) | medium | `<ROOT>/.aidw/agents/qa.md` | enabled |
 | `documentador` | Documentador | documenter | GPT Luna (`gpt-luna`) | medium | `<ROOT>/.aidw/agents/documentador.md` | enabled |
 | `bugs` | Bugs | bug-hunter | GPT Terra (`gpt-terra`) | high | `<ROOT>/.aidw/agents/bugs.md` | enabled |
 | `seguranca` | Seguranca | security | GPT Terra (`gpt-terra`) | high | `<ROOT>/.aidw/agents/seguranca.md` | enabled |
@@ -168,13 +207,13 @@ python aidw.py record --agent <name> [--effort <effort>] --level <level> --label
 
 Default level: **padrao**. Each cell is the effort to pass. `—` = the model takes no effort (omit it). A cell with `+ model` also names the model to pass for that level.
 
-| Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `documentador` | `bugs` | `seguranca` |
-|---|---|---|---|---|---|---|---|---|---|
-| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-luna` (`gpt-luna`) | low | low | low |
-| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | high + model `gpt-5-6-terra` (`gpt-terra`) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low | low | medium | medium |
-| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | low | medium | medium | medium | medium | high | high |
-| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
-| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | high | high + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
+| Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `qa` | `documentador` | `bugs` | `seguranca` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-luna` (`gpt-luna`) | low | low | low | low |
+| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | high + model `gpt-5-6-terra` (`gpt-terra`) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low | low | low | medium | medium |
+| **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium | low | medium | medium | medium | medium | medium | high | high |
+| **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
+| **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | high | high + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.

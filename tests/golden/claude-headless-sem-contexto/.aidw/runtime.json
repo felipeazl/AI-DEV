@@ -87,7 +87,7 @@
     "qa": {
       "name": "qa",
       "display": "QA",
-      "enabled": false,
+      "enabled": true,
       "model": "sonnet",
       "model_id": "sonnet",
       "effort": "medium",
