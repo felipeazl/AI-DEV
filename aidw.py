@@ -480,6 +480,16 @@ def state_dir(ctx: dict | None) -> Path:
     return ROOT / (ctx.get("state_dir", "state") if ctx else "state")
 
 
+def session_dirs(ctx: dict | None) -> list[Path]:
+    """Pastas que a sessão do orquestrador leva junto: a do contexto ativo (planos, referências) e o estado das
+    demandas quando ele fica fora dela."""
+    dirs = [ctx["dir"]] if ctx else []
+    state = state_dir(ctx)
+    if not any(state == d or d in state.parents for d in dirs):
+        dirs.append(state)
+    return dirs
+
+
 def worktree_root(cfg: dict) -> Path:
     return Path(os.path.expanduser(cfg["worktree"]["root"]))
 
@@ -1033,7 +1043,7 @@ def resolve_mcp(cfg: dict, rep: Report) -> dict[str, dict]:
     return servers
 
 
-def runtime_lines(cfg: dict, ctx: dict | None) -> list[str]:
+def runtime_lines(cfg: dict, ctx: dict | None, orchestrator: bool = False) -> list[str]:
     ctx_label = f"`{ctx['name']}` — {ctx['description']}" if ctx else "none"
     dirs = ", ".join(f"`{d}`" for d in project_dirs(cfg, ctx)) or "none configured"
     return [
@@ -1041,6 +1051,9 @@ def runtime_lines(cfg: dict, ctx: dict | None) -> list[str]:
         f"- Project dirs (search here for repositories): {dirs}",
         f"- State dir: `{state_dir(ctx).as_posix()}`",
         f"- Context: {ctx_label}",
+        *([] if not orchestrator or cfg["provider"]["name"] == "codex" else
+          ["- Session folders (add them to the session in the desktop app, *Workspace*): "
+           + ", ".join(f"`{d.as_posix()}`" for d in session_dirs(ctx))]),
         f"- AiDW root: `{ROOT.as_posix()}`",
     ]
 
@@ -1454,7 +1467,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
                    (f"- Your model: the one selected in this chat (recommended: {model_label(orch)})"
                     if provider == "claude" else f"- Your model: {model_label(orch)}"),
                    f"- Delegation mode: **{mode}**",
-                   *runtime_lines(cfg, ctx),
+                   *runtime_lines(cfg, ctx, orchestrator=True),
                    *([f"- This chat may be in any folder: run the AiDW commands by absolute path "
                       f"(`{aidw_command(True)} ...`)."] if ns else [])]),
         "\n".join(["## Team", "", *team]),
@@ -2008,7 +2021,9 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                  "(`<raiz dos worktrees>/<id>/<repositório>`). Se a sessão abriu nessa pasta ou num worktree dela "
                  "(`demand` no `project detect`, ex.: `aidw open --demand`), fique onde está. Senão, no app desktop, "
                  "`mcp__ccd_directory__change_directory` para o worktree (um repositório) ou a pasta da demanda (mais "
-                 "de um); no terminal, `EnterWorktree` com o id da demanda. O painel de diff mostra um repositório "
+                 "de um); no terminal, `EnterWorktree` com o id da demanda. No app, depois de mudar (ou ao ficar), "
+                 "adicione as *Session folders* do Runtime com `mcp__ccd_directory__request_directory`, uma vez por "
+                 "sessão, para os planos e relatórios abrirem no app. O painel de diff mostra um repositório "
                  "por vez: `/"
                  f"{plugin}:diff` troca para o próximo, `/{plugin}:diff <repo>` vai para um e `/{plugin}:diff sair` "
                  "volta para a pasta da demanda.")
@@ -3338,6 +3353,7 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
     target = Path(path).resolve() if path else Path.cwd()
     folder = prompt = None
     extra: list[Path] = []
+    shared: list[Path] = []
     if demand:
         hits = demand_worktrees(demand)
         ids = sorted({e["demand"] for e in hits})
@@ -3360,7 +3376,11 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         if provider == "claude" and not repo and len(hits) > 1 and len(parents) == 1 and \
                 all(in_demand_folder(e) for e in hits):
             target, extra = Path(main["path"]).parent, []  # a pasta da demanda: os worktrees estão dentro dela
-        folder = state_dir(load_context(cfg, Report(quiet=True))) / demand
+        ctx = load_context(cfg, Report(quiet=True))
+        folder = state_dir(ctx) / demand
+        if provider == "claude":  # o contexto inteiro (planos, relatórios, referências) abre no app; cobre a pasta
+            shared = [d for d in session_dirs(ctx) if d.is_dir()]
+            folder = None if any(d == folder or d in folder.parents for d in shared) else folder
         manifest = load_manifest()
         installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
         if orchestrate and installed:
@@ -3376,12 +3396,12 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
     else:
         cmd = [exe]
-    for d in [*extra, *([folder] if folder else [])]:
+    for d in [*extra, *shared, *([folder] if folder else [])]:
         cmd += ["--add-dir", str(d)]
     if extra:
         print(f"[ok]    a demanda tem {len(extra) + 1} worktrees: a sessão abre em {target} e os outros entram por "
               "--add-dir (troque com --repo)")
-    elif demand and folder and not (target / ".git").exists():
+    elif demand and not (target / ".git").exists():
         print(f"[ok]    pasta da demanda {target}: os worktrees estão dentro; /aidw:diff troca o painel de diff entre eles")
     if prompt:
         cmd.append(prompt)
