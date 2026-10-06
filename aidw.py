@@ -10,7 +10,7 @@ Uso:
     python aidw.py uninstall [--dry-run]   # remove só o que o install acrescentou
     python aidw.py install --provider codex|all   # também no Codex (skills, agentes, hooks, rules, perfil aidw)
     python aidw.py open [--provider codex] [--demand <id>]   # abre o chat no worktree da demanda
-    python aidw.py worktree create --repo <pasta> --demand <id> [--slug s] [--base b]   # e list/inspect/remove/cleanup
+    python aidw.py worktree create --repo <pasta> --demand <id> [--slug s] [--base b] [--pr n]   # e list/inspect/remove/cleanup
     python aidw.py project detect [--path <pasta>] [--json]
     python aidw.py context list | check <nome> | use <nome> | create <nome> --description d
     python aidw.py demand set <id> [--step S] [--status active|paused|done] [--note n]   # e show/list
@@ -2048,7 +2048,8 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "3. **Retomar:** se a demanda já tem `demand.json`, **não recomece** — leia a pasta dela (plano, triagens, "
         "reviews, `estado.md`) e continue da etapa gravada (`step`).",
         f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
-        "o fluxo.",
+        "o fluxo. Pedido para revisar a PR de outra pessoa (`pr <n>`, um link de PR, \"revisar a PR\"): workflow "
+        "`pr-review` (seção *PR review*), sem plano nem implementação.",
         "5. **Modo da sessão:** `interativo` ou `auto` (o padrão, como sempre foi). Vale o que o pedido disser "
         "(`interativo`, `auto`, `automático`); senão o `mode` do `demand.json`, numa retomada; senão pergunte "
         + ("em texto, com as duas opções, e espere a resposta. " if codex else
@@ -2646,12 +2647,74 @@ def find_worktree(reg: dict, target: str, repo: str | None = None) -> list[dict]
     return hits
 
 
-def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str = "") -> dict:
-    """Cria (ou devolve, se já existe) o worktree da demanda. {ok, path, branch, base, ...} ou {ok: False, error}."""
+def pr_ref(pr: str) -> str:
+    return f"refs/aidw/pr/{pr}/merge"
+
+
+def fetch_pr(main: Path, pr: str) -> tuple[dict | None, str]:
+    """Busca a PR já mesclada no destino (`refs/pull/<n>/merge`, no Azure Repos e no GitHub): {head, base, source}.
+    `head` é esse merge, `base` o destino (1º pai) e `source` a ponta da PR (2º pai)."""
+    proc = git_proc(main, "fetch", "-q", "origin", f"+refs/pull/{pr}/merge:{pr_ref(pr)}")
+    if proc.returncode != 0:
+        return None, (f"não achei refs/pull/{pr}/merge no origin de {main.as_posix()}: a PR não é desse repositório, já "
+                      "foi concluída ou tem conflito com o destino (com conflito o servidor não gera o merge) "
+                      f"(git: {(proc.stderr or proc.stdout).strip()[-200:]})")
+    head = git_out(main, "rev-parse", pr_ref(pr)) or ""
+    parents = (git_out(main, "rev-list", "--parents", "-n", "1", head) or "").split()[1:]
+    return {"head": head, "base": parents[0] if parents else head,
+            "source": parents[1] if len(parents) > 1 else head}, ""
+
+
+def write_pr_diff(ctx: dict | None, demand: str, main: Path, name: str, args: list[str]) -> str:
+    """Grava `git diff <args>` (bytes, sem conversão) na pasta da demanda; devolve o caminho."""
+    folder = state_dir(ctx) / demand
+    folder.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(["git", "-C", str(main), "diff", *args], capture_output=True, timeout=600)
+    (folder / name).write_bytes(proc.stdout)
+    return (folder / name).as_posix()
+
+
+def pr_refresh(ctx: dict | None, e: dict, reg: dict) -> dict:
+    """Mesma PR de novo: o autor atualizou? Leva o worktree (destacado, sem alteração local) à versão nova e grava o
+    diff do que mudou desde a versão revisada, só nos arquivos da PR."""
+    main, path, pr = Path(e["repo"]), Path(e["path"]), e["pr"]
+    if git_out(path, "status", "--porcelain"):
+        return {"ok": False, "error": f"{e['path']} tem alterações locais; o worktree de PR é só leitura (descarte-as)"}
+    new, error = fetch_pr(main, pr)
+    if new is None:
+        return {"ok": False, "error": error}
+    if new["head"] == e["head"]:
+        return {"ok": True, "created": False, "updated": False, **e}
+    proc = git_proc(path, "checkout", "-q", "--detach", new["head"])
+    if proc.returncode != 0:
+        return {"ok": False, "error": f"não consegui atualizar o worktree: {(proc.stderr or proc.stdout).strip()[-300:]}"}
+    files = set()
+    for v in (e, new):
+        files |= set((git_out(main, "diff", "--name-only", v["base"], v["head"]) or "").splitlines())
+    rnd = len(e.get("versions", [e["head"]])) + 1
+    folder = wt_folder(e)
+    incremental = write_pr_diff(ctx, e["demand"], main, f"diff-pr{pr}-{folder}-r{rnd}.patch",
+                                [e["head"], new["head"], "--", *sorted(files)])
+    full = write_pr_diff(ctx, e["demand"], main, f"diff-pr{pr}-{folder}.patch", [new["base"], new["head"]])
+    previous = e["head"]
+    e.update(new, versions=[*e.get("versions", [previous]), new["head"]])
+    save_registry(reg)
+    update_demand_file(ctx, e["demand"], {k: e[k] for k in ("repo", "path", "branch", "base", "system", "pr", "head",
+                                                            "source")})
+    return {"ok": True, "created": False, "updated": True, "previous": previous, "round": rnd, "diff": full,
+            "incremental_diff": incremental, **e}
+
+
+def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str = "", pr: str = "") -> dict:
+    """Cria (ou devolve, se já existe) o worktree da demanda. {ok, path, branch, base, ...} ou {ok: False, error}.
+    Com `pr`: worktree destacado e só leitura na PR já mesclada no destino, para revisar a PR de outra pessoa."""
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
         return {"ok": False, "error": f"id de demanda inválido {demand!r} (use letras minúsculas, números e -)"}
+    pr = str(pr or "").strip().lstrip("#")
+    if pr and not pr.isdigit():
+        return {"ok": False, "error": f"número de PR inválido {pr!r}"}
     info = repo_info(repo)
     if info is None:
         return {"ok": False, "error": f"{repo} não é um repositório Git"}
@@ -2659,6 +2722,12 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     reg = load_registry()
     for e in reg["worktrees"]:
         if e["demand"] == demand and norm_path(e["repo"]) == norm_path(main) and Path(e["path"]).is_dir():
+            if pr and e.get("pr") == pr:
+                return pr_refresh(ctx, e, reg)
+            if pr or e.get("pr"):
+                return {"ok": False, "error": f"a demanda {demand} já tem worktree de {main.name} em {e['path']} "
+                                              f"({'PR ' + e['pr'] if e.get('pr') else 'branch ' + e['branch']}); "
+                                              "um repositório por demanda: use outra demanda para esta PR"}
             return {"ok": True, "created": False, **e}
     folder = main.name
     if any(e["demand"] == demand and Path(e["repo"]).name.lower() == folder.lower()
@@ -2673,23 +2742,34 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     if path.exists() and not was_link:
         return {"ok": False, "error": f"{path.as_posix()} já existe e não está no registro do AiDW; confira e remova à mão"}
     wt_cfg = ctx.get("worktree", {}) if ctx else {}
-    number = re.sub(r"^[a-z]+-", "", demand)
-    branch = f"{wt_cfg.get('branch_prefix', 'aidw/')}{number}" + (f"-{slugify(slug)[:40].strip('-')}" if slug else "")
-    if git_proc(main, "check-ref-format", "--branch", branch).returncode != 0:
-        return {"ok": False, "error": f"nome de branch inválido: {branch}"}
-    if git_out(main, "remote"):
-        if git_proc(main, "fetch", "-q", "origin").returncode != 0:
-            warnings.append("git fetch origin falhou; a base pode estar desatualizada")
-    base = base or default_base(main)
-    if git_proc(main, "rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
-        return {"ok": False, "error": f"base {base!r} não existe em {main.as_posix()}"}
-    main_dirty = bool(git_out(main, "status", "--porcelain"))
-    if main_dirty:
-        warnings.append("o working copy principal tem alterações locais; elas NÃO entram no worktree")
+    pr_info: dict = {}
+    main_dirty = False
+    if pr:  # sem branch: `pr/<n>` é só o rótulo no registro
+        branch = f"pr/{pr}"
+        fetched, error = fetch_pr(main, pr)
+        if fetched is None:
+            return {"ok": False, "error": error}
+        pr_info, base = fetched, fetched["base"]
+    else:
+        number = re.sub(r"^[a-z]+-", "", demand)
+        branch = f"{wt_cfg.get('branch_prefix', 'aidw/')}{number}" + (f"-{slugify(slug)[:40].strip('-')}" if slug else "")
+        if git_proc(main, "check-ref-format", "--branch", branch).returncode != 0:
+            return {"ok": False, "error": f"nome de branch inválido: {branch}"}
+        if git_out(main, "remote"):
+            if git_proc(main, "fetch", "-q", "origin").returncode != 0:
+                warnings.append("git fetch origin falhou; a base pode estar desatualizada")
+        base = base or default_base(main)
+        if git_proc(main, "rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
+            return {"ok": False, "error": f"base {base!r} não existe em {main.as_posix()}"}
+        main_dirty = bool(git_out(main, "status", "--porcelain"))
+        if main_dirty:
+            warnings.append("o working copy principal tem alterações locais; elas NÃO entram no worktree")
     path.parent.mkdir(parents=True, exist_ok=True)
     if was_link:
         remove_link(path)
-    if git_proc(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0:
+    if pr:
+        proc = git_proc(main, "worktree", "add", "--detach", str(path), pr_info["head"])
+    elif git_proc(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0:
         proc = git_proc(main, "worktree", "add", str(path), branch)  # branch já existe: reaproveita
     else:
         proc = git_proc(main, "worktree", "add", "-b", branch, str(path), base)
@@ -2713,18 +2793,24 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
                 remove_link(path / name)
         undone = git_proc(main, "worktree", "remove", "--force", str(path)).returncode == 0
         return {"ok": False, "error": f"falha ao criar a junction de dependências ({exc}); " + (
-            f"o worktree recém-criado foi desfeito (a branch {branch} ficou, sem commits novos)" if undone else
+            "o worktree recém-criado foi desfeito" + ("" if pr else f" (a branch {branch} ficou, sem commits novos)")
+            if undone else
             f"e não foi possível desfazer o worktree {path.as_posix()}: remova à mão (git worktree remove)")}
     system = system_for(ctx, main.as_posix())
     outside = link_outside(cfg, ctx, system, main, path, warnings)
     entry = {"demand": demand, "repo": main.as_posix(), "path": path.as_posix(), "branch": branch, "base": base,
              "links": links, "outside_links": outside, "status": "active", "context": ctx["name"] if ctx else None,
              "system": system, "layout": "demanda", "created_at": datetime.now().isoformat(timespec="seconds")}
+    extra = {}
+    if pr:
+        entry.update(pr=pr, head=pr_info["head"], source=pr_info["source"], versions=[pr_info["head"]])
+        extra["diff"] = write_pr_diff(ctx, demand, main, f"diff-pr{pr}-{path.name}.patch", [base, pr_info["head"]])
     reg["worktrees"].append(entry)
     save_registry(reg)
-    demand_file = update_demand_file(ctx, demand, {k: entry[k] for k in ("repo", "path", "branch", "base", "system")})
+    keys = ("repo", "path", "branch", "base", "system") + (("pr", "head", "source") if pr else ())
+    demand_file = update_demand_file(ctx, demand, {k: entry[k] for k in keys})
     return {"ok": True, "created": True, "main_dirty": main_dirty, "warnings": warnings,
-            "demand_file": demand_file.as_posix(), **entry}
+            "demand_file": demand_file.as_posix(), **extra, **entry}
 
 
 def link_outside(cfg: dict, ctx: dict | None, system: str | None, main: Path, path: Path, warnings: list) -> list[str]:
@@ -2775,7 +2861,8 @@ def worktree_state(e: dict) -> dict:
         failed = status if status.returncode != 0 else counts
         return {"exists": True, "error": f"não foi possível conferir o worktree (git: "
                                          f"{(failed.stderr or failed.stdout).strip()[-200:] or 'saída inesperada'})"}
-    published = bool(git_out(e["repo"], "branch", "-r", "--contains", e["branch"]))  # falha = não publicado
+    # worktree de PR não tem branch: o que ele tem é da PR, que já está no servidor
+    published = bool(e.get("pr")) or bool(git_out(e["repo"], "branch", "-r", "--contains", e["branch"]))
     return {"exists": True, "dirty": bool(status.stdout.strip()), "ahead": int(parts[1]), "behind": int(parts[0]),
             "published": published}
 
@@ -2806,6 +2893,8 @@ def worktree_remove(target: str, repo: str | None = None) -> dict:
             return {"ok": False, "error": f"git worktree remove falhou: {(proc.stderr or proc.stdout).strip()[-400:]}"}
     else:
         git_proc(e["repo"], "worktree", "prune")
+    if e.get("pr"):
+        git_proc(e["repo"], "update-ref", "-d", pr_ref(e["pr"]))
     reg["worktrees"] = [x for x in reg["worktrees"] if x is not e]
     save_registry(reg)
     folder = Path(e["path"]).parent
@@ -2816,7 +2905,8 @@ def worktree_remove(target: str, repo: str | None = None) -> dict:
                 remove_link(child)  # tira a junction, nunca apaga através dela
             folder.rmdir()
     return {"ok": True, "path": e["path"], "branch": e["branch"],
-            "note": f"a branch {e['branch']} foi mantida (apagar branch é ação travada)"}
+            "note": "worktree de PR, sem branch local" if e.get("pr") else
+            f"a branch {e['branch']} foi mantida (apagar branch é ação travada)"}
 
 
 def in_demand_folder(e: dict) -> bool:
@@ -2920,7 +3010,7 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
         print("AiDW: worktree mantido; remova com `python aidw.py worktree remove <demanda>`", file=sys.stderr)
         return 0
     if action == "create":
-        result = worktree_create(cfg, args.repo, args.demand, args.slug or "", args.base or "")
+        result = worktree_create(cfg, args.repo, args.demand, args.slug or "", args.base or "", args.pr or "")
     elif action == "remove":
         result = worktree_remove(args.target, args.repo)
     elif action == "cleanup":
@@ -2938,7 +3028,17 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
     if not result["ok"]:
         print(f"[erro]  {result['error']}")
         return 1
-    if action == "create":
+    if action == "create" and result.get("pr"):
+        state = "criado" if result["created"] else ("atualizado" if result.get("updated") else "já na última versão")
+        print(f"[ok]    worktree da PR {result['pr']} {state}: {result['path']} (só leitura, destacado)")
+        print(f"        merge {result['head'][:8]} = destino {result['base'][:8]} + PR {result['source'][:8]}; "
+              f"junctions: {', '.join(result['links'] + result.get('outside_links', [])) or 'nenhuma'}")
+        for key, label in (("diff", "diff da PR"), ("incremental_diff", "o que mudou desde a revisão")):
+            if result.get(key):
+                print(f"        {label}: {result[key]}")
+        for w in result.get("warnings", []):
+            print(f"[aviso] {w}")
+    elif action == "create":
         print(f"[ok]    worktree {'criado' if result['created'] else 'já existente'}: {result['path']}")
         print(f"        branch {result['branch']} (base {result['base']}); junctions: "
               f"{', '.join(result['links'] + result.get('outside_links', [])) or 'nenhuma'}")
@@ -4583,6 +4683,8 @@ def main() -> int:
     w_create.add_argument("--demand", required=True, help="id da demanda, ex.: us-1234")
     w_create.add_argument("--slug", help="resumo curto para o nome da branch")
     w_create.add_argument("--base", help="base do worktree (padrão: a branch padrão do origin)")
+    w_create.add_argument("--pr", help="revisar a PR <n> de outra pessoa: worktree só leitura na PR mesclada no "
+                          "destino, sem branch, e o diff na pasta da demanda; de novo, atualiza para a versão nova")
     wt.add_parser("list", help="worktrees registrados e a situação de cada um")
     for name, help_text in (("inspect", "detalhes de um worktree"), ("remove", "remove um worktree limpo e integrado")):
         w = wt.add_parser(name, help=help_text)
