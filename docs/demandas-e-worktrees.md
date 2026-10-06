@@ -115,6 +115,25 @@ python aidw.py status                   # inclui worktrees de demandas concluíd
 
 Apagar a branch é ação travada: peça ao orquestrador, que pede o seu OK.
 
+## Worktree de PR de outra pessoa
+
+Para revisar a PR que outra pessoa abriu (workflow `pr-review`):
+
+```powershell
+python aidw.py worktree create --repo C:\ProjetosLegados\Hope --demand us-127508 --pr 7639
+```
+
+- Busca `refs/pull/<n>/merge` no `origin`: a PR já mesclada no destino, como ficaria depois do merge. Funciona no
+  Azure Repos e no GitHub. Se a ref não existe, a PR é de outro repositório, já foi concluída ou tem conflito com o
+  destino.
+- Cria o worktree em `<raiz>/<demanda>/<repo>`, **destacado e sem branch**, com as junctions de dependências e as
+  pastas vizinhas (`worktree_link`), e grava `diff-pr<n>-<repo>.patch` na pasta da demanda. No registro, `base` é o
+  commit do destino, `source` a ponta da PR e `head` o merge.
+- Rodar de novo depois que o autor atualiza a PR leva o worktree à versão nova (recusa se houver alteração local) e
+  grava `diff-pr<n>-<repo>-r<N>.patch` só com o que mudou, nos arquivos da PR.
+- Um repositório por demanda: a mesma demanda não pode ter a PR e uma branch de trabalho no mesmo repositório.
+- `worktree remove` tira as junctions antes e remove o worktree e a ref da PR; não há branch para manter.
+
 ## Estado da demanda
 
 ```powershell

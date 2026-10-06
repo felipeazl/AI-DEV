@@ -538,6 +538,77 @@ class WorktreeTest(unittest.TestCase):
             code, listed = self.aidw_json(root, "worktree", "list", "--json")
             self.assertEqual(listed["worktrees"], [])
 
+    def test_worktree_de_pr(self) -> None:
+        """`worktree create --pr`: worktree destacado na PR mesclada no destino (refs/pull/<n>/merge), diff na pasta
+        da demanda, atualização quando o autor muda a PR (só o que mudou) e remoção sem branch."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            origin = tmp / "origem"
+            origin.mkdir()
+            git(origin, "init", "-q", "-b", "main")
+            (origin / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+            (origin / "app.txt").write_text("v1\n", encoding="utf-8")
+            git(origin, "add", ".")
+            git(origin, "commit", "-q", "-m", "inicial")
+
+            def publish_pr(content: str) -> None:  # o servidor gera o merge da PR com o destino
+                git(origin, "checkout", "-q", "-B", "feature/autor")
+                (origin / "app.txt").write_text(content, encoding="utf-8")
+                git(origin, "commit", "-q", "-am", f"autor: {content.strip()}")
+                git(origin, "checkout", "-q", "--detach", "main")
+                git(origin, "merge", "-q", "--no-ff", "-m", "merge da PR", "feature/autor")
+                git(origin, "update-ref", "refs/pull/1/merge", "HEAD")
+                git(origin, "checkout", "-q", "main")
+
+            publish_pr("v2\n")
+            repo = tmp / "repos" / "Aplicação"
+            repo.parent.mkdir(parents=True)
+            subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True, capture_output=True)
+            (repo / "node_modules" / "lib").mkdir(parents=True)
+            (repo / "node_modules" / "lib" / "index.js").write_text("// dependência\n", encoding="utf-8")
+            folder = root / "contexts" / "exemplo" / "demandas" / "us-7"
+
+            code, err = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
+                                       "--pr", "9", "--json")
+            self.assertEqual(code, 1)
+            self.assertIn("refs/pull/9/merge", err["error"])
+
+            code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
+                                      "--pr", "1", "--json")
+            self.assertEqual(code, 0, wt)
+            path = Path(wt["path"])
+            self.assertEqual((wt["branch"], wt["pr"]), ("pr/1", "1"))
+            self.assertEqual(git(path, "rev-parse", "--abbrev-ref", "HEAD").strip(), "HEAD", "destacado, sem branch")
+            self.assertEqual((path / "app.txt").read_text(encoding="utf-8"), "v2\n")
+            self.assertTrue((path / "node_modules" / "lib" / "index.js").is_file())
+            self.assertNotIn("feature/", git(repo, "branch"), "não cria branch local")
+            diff = (folder / "diff-pr1-Aplicação.patch").read_text(encoding="utf-8")
+            self.assertIn("+v2", diff)
+            self.assertEqual(json.loads((folder / "demand.json").read_text(encoding="utf-8"))["repos"][0]["pr"], "1")
+
+            code, same = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
+                                        "--pr", "1", "--json")
+            self.assertEqual((code, same["updated"]), (0, False))
+            code, other = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
+            self.assertEqual(code, 1, "a demanda já tem a PR nesse repositório")
+
+            publish_pr("v3\n")
+            code, upd = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
+                                       "--pr", "1", "--json")
+            self.assertEqual((code, upd["updated"], upd["round"]), (0, True, 2), upd)
+            self.assertEqual((path / "app.txt").read_text(encoding="utf-8"), "v3\n")
+            incremental = (folder / "diff-pr1-Aplicação-r2.patch").read_text(encoding="utf-8")
+            self.assertIn("-v2", incremental)
+            self.assertIn("+v3", incremental)
+            self.assertIn("+v3", (folder / "diff-pr1-Aplicação.patch").read_text(encoding="utf-8"))
+
+            code, done = self.aidw_json(root, "worktree", "remove", "us-7", "--json")
+            self.assertEqual(code, 0, done)
+            self.assertFalse(path.exists())
+            self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "a junction não pode apagar a origem")
+            self.assertEqual(git(repo, "for-each-ref", "refs/aidw").strip(), "", "a ref da PR sai junto")
+
     def test_worktree_link_de_pastas_vizinhas(self) -> None:
         """`worktree_link` do sistema: o caminho relativo que o código usa (HintPath `..\\..\\X`) vira junction ao
         lado do worktree; fora da raiz dos worktrees é recusado; o remove não apaga a junction compartilhada."""

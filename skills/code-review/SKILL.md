@@ -5,7 +5,9 @@ description: Review a diff against its spec and ticket and return structured fin
 
 # code-review
 
-Required input: SPEC, TICKET, DIFF (usually a file), TEST/BUILD RESULTS. Refuse without them.
+Required input: SPEC, TICKET, DIFF (usually a file), TEST/BUILD RESULTS. Refuse without them. In a review of
+someone else's pull request, the work item summary is the SPEC and the PR is the TICKET (the Reviewer's definition,
+*PR review*).
 
 Check, in order:
 

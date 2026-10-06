@@ -79,7 +79,8 @@ task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main 
 commands are not checked, so tasks must point only to the worktree.
 
 Pick the workflow by demand type in `workflows/*.yaml` (its `agent:` is the **role**; map it with the
-Team table) and skip steps whose agent is disabled. Artifacts live in the **state dir** (Runtime).
+Team table) and skip steps whose agent is disabled; reviewing a pull request someone else opened is `pr-review`
+(*PR review*). Artifacts live in the **state dir** (Runtime).
 The active context may redefine steps and artifacts; context rules win.
 
 **Testing** — {{agent:qa}} runs whenever a demand is tested (skip it only when disabled; a `trivial` demand has
@@ -115,6 +116,29 @@ no test plan step, its QA builds the matrix itself).
 - **Before the final review**, prove the adjustments are gone: `git -C <wt> grep -n -I -F --untracked AIDW-TESTE`
   prints nothing and `git -C <wt> diff <base> --stat` matches the last reviewed patch. The guard hook also refuses
   a `git commit` in a demand worktree that still has `AIDW-TESTE`.
+
+**PR review** (`pr-review`: someone else's pull request; no plan, tickets, {{agent:coder}} or fix loop — the author
+fixes). Name the demand after its work item (or `pr-<n>` without one); one demand may hold PRs of several repositories.
+- **Understand:** `resumo-<id>.md` as usual, plus per PR: number, repository, author, title, description, target
+  branch, linked work items and what reviewers already commented or voted (read only).
+- **Worktree:** per PR, `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id> --pr <n>`: a
+  read-only detached worktree of the PR already merged into its target (`base` = target, `source` = the PR's head),
+  no branch, the dependency junctions, and `diff-pr<n>-<repo>.patch` in the demand folder. Run the system's build in
+  it once, output to `build-pr<n>-<repo>.txt` (only its tail in this chat). Nobody edits it.
+- `PREPARE_REVIEW` as usual, then `REVIEW`: one {{agent:reviewer}} task with every PR of the demand, in PR mode
+  (summary, PR data, diffs, worktree paths with `base`/`source`, build output, checklist); specialist passes only on
+  their triggers, in parallel. `pr_review_done` → triage as in a code review (skill `verificar-premissa` before dropping
+  a finding), but nothing goes to a {{agent:coder}} → `FINAL_REVIEW`.
+- **Final review:** one table per PR — ID, severity, `file:line`, the draft comment, your triage and whether you
+  recommend publishing it — and the suggested vote. The user picks the comments, edits their text and chooses the
+  vote. Commenting, voting and completing the PR are locked actions: only with their explicit OK, exactly what they
+  approved, as the active context says; never touch the work item's state. Record what was published (thread ids) in
+  the triage.
+- **The author updated the PR:** run the same `worktree create --pr <n>` again: it moves the worktree to the new
+  version (it refuses local changes) and writes `diff-pr<n>-<repo>-r<N>.patch` with only what changed since the
+  reviewed version. A fresh {{agent:reviewer}} one level down gets the previous review and that diff (round N, same IDs).
+- **At the end** (merged, abandoned, or the user is done): `worktree remove <tipo-id>` — the junctions go first; there
+  is no branch to keep.
 
 **Specialist passes** — {{agent:bug-hunter}} (behavior defects, root cause) and {{agent:security}}
 (exploitable vulnerabilities) are on demand, not every cycle. Record in the plan

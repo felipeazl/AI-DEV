@@ -74,6 +74,10 @@ Revisa o **plano** e o plano de testes (confere cada `arquivo:linha`, o comporta
 checklist e as convenções do contexto). Devolve achados com IDs estáveis e severidade (CRITICO, IMPORTANTE,
 SUGESTAO). Não altera código. Usa a skill `code-review` (pré-carregada) e `verificar-premissa`.
 
+No **modo PR** (a PR de outra pessoa, workflow `pr-review`), cada achado que vale contar ao autor vem com o rascunho do
+comentário (arquivo, linha, lado do diff e texto de até ~5 linhas), e a revisão traz um voto sugerido. Ele nunca
+comenta, vota nem conclui a PR: isso é do orquestrador, com o seu OK.
+
 ### API
 Opera os ambientes de desenvolvimento e qualidade: consulta APIs, banco (só leitura, pelo validador do contexto) e
 logs; gera ou ajusta dados de teste, descobre ids, investiga integrações. **Toda escrita é proposta** com o comando
@@ -201,7 +205,7 @@ Todo agente termina com **um** bloco JSON. Os campos comuns:
 | explorador | `exploration_complete`, `environment_blocked` |
 | planejador | `spec_ready`, `plan_has_open_questions`, `plan_needs_exploration`, `tickets_ready` |
 | codificador | `implementation_complete`, `implementation_failed`, `environment_blocked`, `ticket_has_open_questions`, `policy_requires_approval` |
-| revisor | `review_approved`, `review_changes_requested`, `review_has_open_questions`, `plan_review_approved`, `plan_review_changes_requested`, `plan_review_has_open_questions` |
+| revisor | `review_approved`, `review_changes_requested`, `review_has_open_questions`, `plan_review_approved`, `plan_review_changes_requested`, `plan_review_has_open_questions`, `pr_review_done` (modo PR) |
 | api | `task_complete`, `policy_requires_approval`, `environment_blocked` |
 | documentador | `docs_complete`, `environment_blocked`, `policy_requires_approval` |
 | bugs · seguranca | `audit_clean`, `audit_findings`, `audit_has_open_questions` |
