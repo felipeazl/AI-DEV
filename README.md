@@ -98,6 +98,7 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 ```text
 /aidw:orquestrar 1234                 ← id do card, link ou uma descrição do que fazer
 /aidw:orquestrar 1234 interativo      ← pede o seu OK antes de cada delegação
+/aidw:orquestrar 1234 pr 7639         ← revisa a PR de outra pessoa (sem implementar)
 /aidw:orquestrar                      ← sem argumento: retoma a demanda desta pasta
 ```
 
@@ -189,6 +190,9 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
   autenticação, dados pessoais…), em paralelo com a 1ª revisão.
 - **Limite de voltas:** cada laço (explorar ⇄ planejar, revisar ⇄ corrigir) tem `max_retries`; esgotou, o
   orquestrador para e pergunta.
+
+Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
+comentário e um voto sugerido, e você escolhe o que é publicado ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
 
 Detalhes, estados e regras de triagem: [docs/fluxo.md](docs/fluxo.md). Worktrees e demandas com vários
 repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).

@@ -49,8 +49,9 @@ Entender → Explorar → Planejar → Plano de testes → Revisar o plano ⇄ C
 
 - **`trivial`:** sem plano. O orquestrador vai direto para a tarefa.
 - **`simples`:** sem revisão do plano. Se o card já aponta os arquivos, sem exploração: o planejador lê os arquivos.
-- **Workflow por tipo:** `workflows/feature.yaml`, `bugfix.yaml`, `refactor.yaml` e `hotfix.yaml` listam as etapas de
-  cada tipo de demanda. O hotfix, por exemplo, reproduz e corrige sem plano, mas mantém revisão e aprovação humana.
+- **Workflow por tipo:** `workflows/feature.yaml`, `bugfix.yaml`, `refactor.yaml`, `hotfix.yaml` e `pr-review.yaml`
+  listam as etapas de cada tipo de demanda. O hotfix, por exemplo, reproduz e corrige sem plano, mas mantém revisão e
+  aprovação humana; o `pr-review` revisa a PR de outra pessoa ([Revisar a PR de outra pessoa](#revisar-a-pr-de-outra-pessoa)).
   Etapas de agente desligado são puladas (ou feitas pelo orquestrador).
 
 ## Como o orquestrador decide o próximo passo
@@ -75,6 +76,7 @@ Todo agente termina com um bloco JSON e um `state`. O orquestrador procura esse 
 | `test_adjustment_needed` | `TEST_ADJUST` | o codificador aplica o ajuste temporário e um qa novo continua |
 | `orchestrator_test_needed` | `ORCHESTRATOR_TEST` | o qa não conseguiu usar o navegador: o orquestrador testa pelo plano, um qa novo confere e as divergências são debatidas com você |
 | `review_approved` · `review_changes_requested` | `MANUAL_TEST` · `CODER_FIX` | sem roteiro manual pendente, `MANUAL_TEST` vai direto para `DOCS` |
+| `pr_review_done` | `FINAL_REVIEW` | revisão da PR de outra pessoa: triagem e você escolhe o que publicar; nada vai ao codificador |
 | `task_complete` · `exploration_complete` · `audit_clean` · `audit_findings` | `RETURN` | agentes de apoio voltam para a etapa que os chamou |
 | `docs_complete` | `FINAL_REVIEW` | |
 | `policy_requires_approval` | `HUMAN_APPROVAL` | ação travada proposta (commit, push, SQL de escrita) |
@@ -156,6 +158,31 @@ O `qa` entra sempre que a demanda é testada ([agentes.md](agentes.md#qa)):
   fazer, o que deve acontecer e a evidência a mandar. Você executa e manda a evidência; ele confere, registra no
   roteiro e mostra o próximo. Um passo que falha volta para o codificador e, depois da correção revisada, só esse
   passo (e os que dependem dele) é testado de novo.
+
+## Revisar a PR de outra pessoa
+
+Workflow `pr-review`: o orquestrador revisa a PR que outra pessoa abriu, sem plano, tickets nem correção. Quem corrige
+é o autor; você escolhe o que é publicado.
+
+```text
+/aidw:orquestrar us-127508 pr 7639 7640     ← o card e as PRs (podem ser de repositórios diferentes)
+```
+
+1. **Entender:** o `resumo-<id>.md` traz o card e, por PR, autor, descrição, destino, itens ligados e o que já foi
+   comentado.
+2. **Worktree da PR:** `aidw.py worktree create --repo <repo> --demand <id> --pr <n>` busca a PR já mesclada no destino
+   (`refs/pull/<n>/merge`, no Azure Repos e no GitHub), cria um worktree só leitura e sem branch, com as junctions de
+   dependências, e grava `diff-pr<n>-<repo>.patch` na pasta da demanda. O orquestrador roda o build nele uma vez.
+3. **Revisão:** um revisor no modo PR, com todas as PRs da demanda. Cada achado vem com o rascunho do comentário
+   (arquivo, linha, lado do diff e texto curto) e a revisão traz um voto sugerido (aprovar, aprovar com sugestões ou
+   aguardar o autor). Bugs e segurança só quando um gatilho se aplica.
+4. **Triagem e revisão final:** o orquestrador confere as premissas e te mostra uma tabela por PR (achado, severidade,
+   comentário proposto, se recomenda publicar) e o voto sugerido. Você escolhe os comentários, ajusta o texto e decide o
+   voto. Comentar, votar e concluir a PR são ações travadas: saem só com o seu OK. O estado do card nunca muda.
+5. **O autor atualizou a PR:** o mesmo `worktree create --pr <n>` leva o worktree à versão nova e grava
+   `diff-pr<n>-<repo>-r<N>.patch` só com o que mudou. Um revisor novo recebe o review anterior e esse diff, com os
+   mesmos IDs.
+6. **Fim:** `aidw.py worktree remove <id>` tira as junctions primeiro e remove o worktree; não há branch para manter.
 
 ## Quando você é chamado
 

@@ -1,0 +1,25 @@
+name: pr-review
+description: Revisão da PR de outra pessoa; sem plano, tickets nem correção (quem corrige é o autor). O usuário escolhe o que é publicado na PR.
+steps:
+  - id: understand      # resumo-<id>.md: card, critérios e, por PR, autor, descrição, destino e o que já foi comentado
+    agent: orchestrator
+  - id: prepare_pr      # `aidw.py worktree create --pr <n>` por PR (só leitura, PR mesclada no destino) e o build nele
+    agent: orchestrator
+  - id: prepare_review  # checklist-revisao.md
+    agent: orchestrator
+  - id: review          # revisor no modo PR: achados com o rascunho do comentário e o voto sugerido
+    agent: reviewer
+    skill: code-review
+  - id: bug_hunt        # opcional — o orquestrador decide (ORCHESTRATOR.md, specialist passes);
+    agent: bug-hunter   # roda em paralelo com a revisão
+    skill: bug-hunt
+    optional: true
+  - id: security_audit  # opcional — idem
+    agent: security
+    skill: security-audit
+    optional: true
+  - id: final_review    # o usuário escolhe os comentários e o voto; publicar é ação travada
+    agent: orchestrator
+gates:
+  - before: publish
+    require: human_approval

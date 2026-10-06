@@ -1,6 +1,6 @@
 ---
 name: preparar-worktree
-description: Create, inspect and remove the git worktree of a demand with `aidw.py worktree` — right base (including an unmerged branch it depends on, or an old commit for a simulation/rework), feature branch, junctions for untracked build dependencies (packages/, node_modules/), registry and demand.json. Use whenever a demand changes code.
+description: Create, inspect and remove the git worktree of a demand with `aidw.py worktree` — right base (including an unmerged branch it depends on, or an old commit for a simulation/rework), feature branch, junctions for untracked build dependencies (packages/, node_modules/), registry and demand.json; also the read-only worktree of someone else's pull request (`--pr`). Use whenever a demand changes code or reviews a PR.
 ---
 
 # preparar-worktree
@@ -18,6 +18,12 @@ working copy (a hook blocks it). Run it by the absolute path of `aidw.py` shown 
    inside) on branch `<prefix><id>-<slug>` (prefix from the context), reuses the branch if it already exists,
    links `packages/`/`node_modules/` and writes `demand.json`. Running it again returns the same worktree. If
    `main_dirty` is true, tell the user once that the main working copy's local changes are not in the worktree.
+   **Someone else's pull request** (workflow `pr-review`): `worktree create --repo <repo> --demand <tipo-id>
+   --pr <n>` instead of `--slug`/`--base`. It fetches `refs/pull/<n>/merge` (the PR merged into its target; Azure
+   Repos and GitHub), creates a detached, read-only worktree with no branch, and writes `diff-pr<n>-<repo>.patch`
+   in the demand folder; `base` is the target commit and `source` the PR's head. Running it again after the author
+   updates the PR moves it to the new version and writes `diff-pr<n>-<repo>-r<N>.patch` (only what changed). If
+   the ref does not exist, the PR is in another repository, already completed, or has a conflict with its target.
 3. **Move the session (Claude):** a demand with more than one repository gets one `create` per repository.
    - Desktop app: `mcp__ccd_directory__change_directory` to the worktree (one repository) or to the demand folder
      (more than one); the diff pane follows it, and `/aidw:diff` switches it between the repositories. Then add

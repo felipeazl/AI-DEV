@@ -43,6 +43,7 @@ review_ready = "REVIEW"
 review_changes_requested = "CODER_FIX"          # CRITICO/IMPORTANTE pendentes
 review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ciclo segue
 review_approved = "MANUAL_TEST"                 # roteiro manual pendente → usuário testa; sem roteiro → DOCS
+pr_review_done = "FINAL_REVIEW"                 # PR de outra pessoa: triagem e o usuário escolhe o que publicar
 max_retries_exceeded = "HUMAN_APPROVAL"
 
 # Agentes de apoio (api, explorador): devolvem o fluxo para a etapa que os chamou
