@@ -36,7 +36,8 @@ name = "claude"           # "claude" = tudo no Claude Code · "codex" = tudo no 
 ```
 
 Um provedor por instalação no modo projeto. O plugin do Claude e a instalação do Codex podem coexistir
-(`install --provider all`).
+(`install --provider all`); depois disso, o `install` sem `--provider` atualiza os dois, e o `doctor` avisa se o Codex
+ficar desatualizado.
 
 ### `[delegation]`
 

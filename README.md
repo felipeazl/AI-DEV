@@ -74,8 +74,8 @@ python aidw.py install                            # Claude: o AiDW passa a exist
 | Etapa | O que faz |
 |---|---|
 | `setup` | Garante o Python, roda o **wizard** (provedor, pastas dos projetos, raiz dos worktrees, contexto, MCPs, nome e modelo dos agentes) e grava o `aidw.config.toml`. Confere Git, Node, os CLIs e o login, cria as pastas que faltam, roda o `apply`, oferece registrar os MCPs que o contexto exige e termina com o `doctor`. |
-| `install` | Gera o plugin **`aidw`** e o instala no Claude Code (CLI e app desktop). Acrescenta ao `~/.claude/settings.json` as regras de segurança do AiDW, só os itens dele. |
-| `install --provider codex` | O mesmo para o Codex: skills `aidw-*`, agentes `aidw-*`, regras, hooks e o perfil `aidw`. Depois rode `codex --profile aidw` num terminal uma vez e escolha **Trust all and continue** para aprovar os hooks. |
+| `install` | Gera o plugin **`aidw`** e o instala no Claude Code (CLI e app desktop). Acrescenta ao `~/.claude/settings.json` as regras de segurança do AiDW, só os itens dele. Se o Codex já foi instalado, atualiza ele junto. |
+| `install --provider codex` | O mesmo para o Codex: skills `aidw-*`, agentes `aidw-*`, regras, hooks e o perfil `aidw`. Depois rode `codex --profile aidw` num terminal uma vez e escolha **Trust all and continue** para aprovar os hooks (de novo sempre que o `doctor` disser que eles mudaram). |
 | `doctor` | Verifica núcleo, CLIs, login, contexto, variáveis de ambiente, MCPs, pastas e instalação. Não altera nada. |
 
 Depois do `install`, **abra um chat novo**. O comando `/aidw:orquestrar` aparece em qualquer pasta.

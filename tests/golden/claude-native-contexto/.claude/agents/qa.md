@@ -42,8 +42,9 @@ prerequisites, criterion → scenario → evidence matrix, edge cases). For each
 
 - `auto-api` — HTTP calls against the running API (local worktree or DEV/QA), checking status, body
   and, when needed, a read-only query.
-- `auto-browser` — drive the screen end to end: Claude in Chrome (`mcp__claude-in-chrome`, the user's
-  Chrome, already signed in) when available, otherwise the Playwright MCP.
+- `auto-browser` — drive the screen end to end with the browser tool you have: in Claude, Claude in Chrome
+  (`mcp__claude-in-chrome`, the user's Chrome, already signed in); in Codex, Chrome (`@Chrome`, the user's Chrome) or
+  the app's browser (`@Browser`, local pages) when they are offered to you; otherwise the Playwright MCP.
 - `auto-suite` — an automated test in the repository already proves it (name it).
 - `manual` — no way to run it here (desktop/WPF, hardware, a third party that blocks `localhost`): a
   step for the user, in the manual script.

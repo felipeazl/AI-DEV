@@ -1210,6 +1210,15 @@ def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, ser
     return entry
 
 
+def agent_tool_policy(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict) -> dict:
+    """MCPs que o agente pode usar (None = sem lista: todos) e ferramentas MCP bloqueadas. O Claude aplica isso
+    pelo `tools`/`disallowedTools` do subagente; no Codex, que não limita MCP por agente, quem aplica é o guard."""
+    entry = claude_agent_entry(role, meta, prompt, ctx, servers)
+    mcp = sorted({t[5:].split("__")[0] for t in entry.get("tools", []) if t.startswith("mcp__")})
+    return {"mcp": mcp if entry.get("tools") else None,
+            "deny_tools": [t for t in entry.get("disallowedTools", []) if t.startswith("mcp__")]}
+
+
 def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     eff = routing.get("effort", {})
     levels = eff.get("levels", {})
@@ -1957,7 +1966,9 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "state_dir": sdir.as_posix(),
         "agents": {role: {"name": a["name"], "display": a["display"], "enabled": a["enabled"],
                           "model": a["model"]["key"], "model_id": a["model"]["model_id"],
-                          "effort": a["effort"], "skills": a["skills"], "preload": a["preload"]}
+                          "effort": a["effort"], "skills": a["skills"], "preload": a["preload"],
+                          **({"tools": agent_tool_policy(role, b["agents"][role]["meta"], b["agents"][role]["prompt"],
+                                                         ctx, servers)} if role in b["agents"] else {})}
                    for role, a in resolved.items()},
         "mcp": list(servers),
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),
@@ -2385,6 +2396,7 @@ def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, wi
             "marketplace": MARKETPLACE_NAME, "context": plug["ctx"]["name"] if plug["ctx"] else None,
             "files": {k: sha(v) for k, v in files.items()}, "settings": owned,
             "mcp_added": sorted(set(mcp_added)), "cli": not skip_cli, "cli_done": cli_done,
+            **({"codex": codex} if (codex := load_manifest().get("codex")) else {}),  # o registro do Codex fica
         }, indent=2, ensure_ascii=False) + "\n", dry, Report(quiet=True))
 
     save_manifest(cli_done=skip_cli)
@@ -2482,7 +2494,12 @@ def uninstall(dry: bool, skip_cli: bool) -> bool:
             if not any(MARKETPLACE_DIR.iterdir()):
                 MARKETPLACE_DIR.rmdir()
         if not rep.errors:
-            INSTALL_MANIFEST.unlink()
+            codex = load_manifest().get("codex")
+            if codex:  # o Codex continua instalado: fica só o registro dele
+                write_if_changed(INSTALL_MANIFEST, json.dumps({"codex": codex}, indent=2, ensure_ascii=False) + "\n",
+                                 dry, Report(quiet=True))
+            else:
+                INSTALL_MANIFEST.unlink()
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
           f"{f' com {len(rep.errors)} erro(s)' if rep.errors else ''}.")
     return not rep.errors
@@ -3172,8 +3189,8 @@ def codex_node_path() -> tuple[str | None, str]:
 
 
 def codex_profile(cfg: dict, ctx: dict | None, resolved: dict, servers: dict) -> str:
-    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo só do AiDW. A confiança dos hooks o Codex grava no
-    config.toml do usuário (nunca no perfil), que o AiDW não toca."""
+    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo do AiDW. Aberto com `--profile aidw`, o Codex grava nele a
+    confiança dos hooks (`[hooks.state]`), que o install mantém (`with_hooks_state`)."""
     orch = resolved[ORCHESTRATOR]
     writable = list(dict.fromkeys([ROOT.as_posix(), *code_dirs(cfg, ctx)]))
     env = {**({k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {}), **codex_git_env(cfg, ctx)}
@@ -3201,7 +3218,7 @@ def codex_hook_groups() -> dict[str, list]:
     cmd = f'python "{GUARD_SCRIPT.as_posix()}"'
     group = lambda matcher=None: {**({"matcher": matcher} if matcher else {}),  # noqa: E731
                                   "hooks": [{"type": "command", "command": cmd}]}
-    return {"PreToolUse": [group("apply_patch")], "UserPromptSubmit": [group()],
+    return {"PreToolUse": [group("apply_patch|Bash|mcp__.*")], "UserPromptSubmit": [group()],
             "SessionStart": [group("compact|resume")]}
 
 
@@ -3270,16 +3287,38 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
 
 
+def hook_groups_signature(groups: dict) -> str:
+    """O que vence a aprovação no Codex: o grupo inteiro (o matcher entra no hash: conferido no 0.157)."""
+    return sha(json.dumps(groups, sort_keys=True).encode("utf-8"))
+
+
 def codex_hook_signature() -> str:
-    return sha(json.dumps(codex_hook_groups(), sort_keys=True).encode("utf-8"))
+    return hook_groups_signature(codex_hook_groups())
+
+
+def toml_hooks_state(path: Path) -> dict:
+    try:
+        return load_toml(path).get("hooks", {}).get("state", {}) if path.is_file() else {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
 
 def codex_trust_state() -> dict:
-    """`[hooks.state]` do config.toml do Codex: onde o TUI grava a confiança (`trusted_hash`) de cada hook."""
-    try:
-        return load_toml(CODEX_HOME / "config.toml").get("hooks", {}).get("state", {})
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+    """`[hooks.state]` onde o TUI grava a confiança (`trusted_hash`) de cada hook: o config.toml do usuário e, aberto
+    com `--profile aidw`, o próprio perfil (conferido no 0.157), que vale por cima."""
+    return {**toml_hooks_state(CODEX_HOME / "config.toml"), **toml_hooks_state(CODEX_PROFILE)}
+
+
+def with_hooks_state(profile: str) -> str:
+    """O perfil regenerado mantém a confiança que o Codex gravou nele; sem isso, todo install apagava a aprovação."""
+    state = toml_hooks_state(CODEX_PROFILE)
+    if not state:
+        return profile
+    lines = ["", "# Gravado pelo Codex ao aprovar os hooks (o install mantém)", "[hooks.state]"]
+    for key, entry in state.items():
+        lines += ["", f"[hooks.state.{toml_value(key)}]",
+                  *[f"{k} = {toml_value(v)}" for k, v in entry.items() if isinstance(v, (str, bool, int))]]
+    return profile.rstrip("\n") + "\n" + "\n".join(lines) + "\n"
 
 
 def aidw_hook_keys() -> list[str]:
@@ -3326,18 +3365,22 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
     rep.ok(f"{agents} agentes em {CODEX_AGENTS_HOME}, {skills} skills em {CODEX_SKILLS_HOME}, rules em "
            f"{CODEX_GLOBAL_RULES.name} ({changed} arquivo(s) {'a mudar' if dry else 'mudaram'})")
     profile = codex_profile(cfg, built["ctx"], built["resolved"], built["servers"])
-    write_if_changed(CODEX_PROFILE, profile, dry, rep)
+    write_if_changed(CODEX_PROFILE, with_hooks_state(profile), dry, rep)
     try:
         hooks = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")) if CODEX_HOOKS_FILE.exists() else {}
     except json.JSONDecodeError:
         rep.error(f"{CODEX_HOOKS_FILE} não é JSON válido; corrija antes de instalar")
         return False
+    current = {ev: [g for g in gs if is_aidw_hook_group(g)] for ev, gs in hooks.get("hooks", {}).items()}
+    current = {ev: gs for ev, gs in current.items() if gs}
     write_if_changed(CODEX_HOOKS_FILE, json.dumps(merge_codex_hooks(hooks, add=True), indent=2,
                                                   ensure_ascii=False) + "\n", dry, rep)
     signature = codex_hook_signature()
+    # sem o registro anterior no manifesto (o install do Claude o apagava), vale o próprio hooks.json
+    before = old.get("hooks_signature") or (hook_groups_signature(current) if current else None)
     stale = dict(old.get("stale_trust", {}))
-    if old.get("hooks_signature") and old["hooks_signature"] != signature:
-        # o comando/matcher dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
+    if before and before != signature:
+        # o comando dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
         ours = {norm_path(k) for k in aidw_hook_keys()}
         stale.update({norm_path(k): v.get("trusted_hash") for k, v in codex_trust_state().items() if norm_path(k) in ours})
     if not dry:
@@ -3414,17 +3457,22 @@ def codex_hooks_trusted() -> bool | None:
     return True
 
 
-def check_codex_install(rep: Report) -> None:
+def check_codex_install(rep: Report, cfg: dict, catalog: dict) -> None:
     heading("Instalação global (Codex)")
     old = load_manifest().get("codex")
     if not old:
         rep.info("não instalada (opcional): `python aidw.py install --provider codex`")
         return
     missing = [k for k in old.get("files", {}) if not Path(k).is_file()]
+    built = build_codex_install(cfg, catalog, Report(quiet=True))
+    stale = [] if built is None else [p for p, c in built["files"].items() if not p.is_file() or p.read_bytes() != c]
     if missing:
         rep.warn(f"{len(missing)} arquivo(s) do AiDW sumiram do Codex (ex.: {missing[0]}) — rode o install")
+    elif stale:
+        rep.warn(f"o Codex está desatualizado ({len(stale)} arquivo(s), ex.: {stale[0].name}): rode "
+                 "`python aidw.py install` (atualiza o Claude e o Codex)")
     else:
-        rep.ok(f"{len(old.get('files', {}))} arquivos do AiDW no Codex; perfil {CODEX_PROFILE.name}")
+        rep.ok(f"{len(old.get('files', {}))} arquivos do AiDW no Codex, em dia; perfil {CODEX_PROFILE.name}")
     node_dir, node_note = codex_node_path()
     if node_note and not node_dir:
         rep.warn(node_note)
@@ -3444,7 +3492,7 @@ def demand_worktrees(demand: str) -> list[dict]:
 
 
 def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True,
-                 repo: str = "") -> int:
+                 repo: str = "", app: bool = False) -> int:
     """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
     `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão). Demanda com mais de
     um repositório: a sessão abre na pasta da demanda, que tem os worktrees dentro (`/aidw:diff` troca o painel
@@ -3473,7 +3521,7 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         extra = [Path(e["path"]) for e in hits if e is not main]
         demand, target = main["demand"], Path(main["path"])
         parents = {norm_path(Path(e["path"]).parent) for e in hits}
-        if provider == "claude" and not repo and len(hits) > 1 and len(parents) == 1 and \
+        if (provider == "claude" or app) and not repo and len(hits) > 1 and len(parents) == 1 and \
                 all(in_demand_folder(e) for e in hits):
             target, extra = Path(main["path"]).parent, []  # a pasta da demanda: os worktrees estão dentro dela
         ctx = load_context(cfg, Report(quiet=True))
@@ -3492,6 +3540,11 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
     if not exe:
         print(f"[erro]  CLI `{provider}` não encontrado")
         return 1
+    if app:  # app desktop do Codex: abre a pasta como workspace, com o perfil do AiDW; a conversa começa vazia
+        cmd = [exe, "app", str(target), "-c", f"profile={toml_value(CODEX_PROFILE_NAME)}"]
+        print(f"[ok]    no app, comece a conversa com `{prompt or '$aidw-orquestrar <demanda>'}`")
+        print(f"Abrindo o app do Codex em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
+        return 0 if print_only else subprocess.run(cmd, cwd=target).returncode
     if provider == "codex":
         cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
     else:
@@ -4477,7 +4530,7 @@ def doctor(cfg: dict, catalog: dict) -> bool:
     if cfg["provider"]["name"] == "claude":
         check_global_install(cfg, catalog, rep)
     if shutil.which("codex") or load_manifest().get("codex"):
-        check_codex_install(rep)
+        check_codex_install(rep, cfg, catalog)
 
     heading("Ambiente gerado")
     pending = pending_apply(cfg, catalog)
@@ -4660,8 +4713,8 @@ def main() -> int:
     p_inst.add_argument("--mcp", action="store_true",
                         help="registra no escopo do usuário os MCPs do catálogo que faltam (sobem em toda sessão)")
     p_inst.add_argument("--skip-cli", action="store_true", help=argparse.SUPPRESS)  # testes: sem o CLI do Claude
-    p_inst.add_argument("--provider", choices=("claude", "codex", "all"), default="claude",
-                        help="onde instalar (padrão: claude)")
+    p_inst.add_argument("--provider", choices=("claude", "codex", "all"),
+                        help="onde instalar (padrão: o Claude e, se já estiver instalado, o Codex)")
     p_uninst = sub.add_parser("uninstall", help="remove do Claude só o que o install acrescentou")
     p_uninst.add_argument("--dry-run", action="store_true", help="mostra o que mudaria, sem alterar nada")
     p_uninst.add_argument("--skip-cli", action="store_true", help=argparse.SUPPRESS)
@@ -4672,6 +4725,8 @@ def main() -> int:
     p_open.add_argument("--path", help="pasta (padrão: a atual)")
     p_open.add_argument("--print", action="store_true", help="só mostra o comando")
     p_open.add_argument("--no-orchestrate", action="store_true", help="com --demand: abre sem chamar o orquestrador")
+    p_open.add_argument("--app", action="store_true", help="com --provider codex: abre o app desktop do Codex na pasta "
+                        "(o worktree, ou a pasta da demanda com vários) em vez do terminal")
     p_open.add_argument("--repo", help="com --demand de mais de um repositório: o worktree onde a sessão abre "
                         "(caminho ou nome do repositório; padrão: o primeiro criado)")
     p_status = sub.add_parser("status", help="visão rápida: instalação, demandas ativas, worktrees e pendências")
@@ -4813,6 +4868,8 @@ def main() -> int:
         return 0
     if command == "install":
         ok = True
+        if not args.provider:  # os dois ficam iguais: quem tem o Codex instalado atualiza os dois de uma vez
+            args.provider = "all" if load_manifest().get("codex") else "claude"
         if args.provider in ("claude", "all"):
             ok = install(cfg, catalog, args.dry_run, args.force, args.skip_cli, args.mcp) and ok
         if args.provider in ("codex", "all"):
@@ -4826,8 +4883,11 @@ def main() -> int:
             ok = uninstall(args.dry_run, args.skip_cli) and ok
         return 0 if ok else 1
     if command == "open":
+        if args.app and args.provider != "codex":
+            print("[erro]  --app é do Codex (`--provider codex --app`); no Claude, o app desktop abre a pasta pelo seletor")
+            return 1
         return open_command(cfg, args.provider, args.demand or "", args.path or "", args.print,
-                            not args.no_orchestrate, args.repo or "")
+                            not args.no_orchestrate, args.repo or "", args.app)
     if command == "status":
         return status_command(cfg, catalog, args.json)
     if command == "doctor":
