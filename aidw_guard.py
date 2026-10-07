@@ -95,12 +95,39 @@ def commit_guard(data: dict) -> dict | None:
     return None
 
 
+def agent_policy(agent: str) -> tuple[dict, set]:
+    """(`tools` do runtime para o agente — `aidw:codificador-high`, `aidw-codificador` ou `codificador-high` —,
+    MCPs que o AiDW distribui entre os papéis). Servidor fora desse conjunto é do próprio CLI e não é julgado aqui."""
+    base = agent.split(":", 1)[1] if ":" in agent else agent[5:] if agent.startswith("aidw-") else agent
+    agents = [a for a in (read_json(RUNTIME, {}).get("agents") or {}).values() if isinstance(a, dict) and a.get("name")]
+    managed = {s for a in agents for s in ((a.get("tools") or {}).get("mcp") or [])}
+    hits = [a for a in agents if base == a["name"] or base.startswith(a["name"] + "-")]
+    return (max(hits, key=lambda a: len(a["name"])).get("tools") or {}) if hits else {}, managed
+
+
+def mcp_guard(agent: str, tool: str) -> dict | None:
+    """Ferramenta MCP fora do papel do agente. O Claude já aplica pelo subagente; o Codex não limita MCP por agente
+    (o hook é o que garante lá)."""
+    policy, managed = agent_policy(agent)
+    parts = tool.split("__", 2)
+    server = parts[1] if len(parts) == 3 else ""
+    if tool in policy.get("deny_tools", []):
+        return deny(f"AiDW: {tool} é bloqueada para o agente {agent}. Proponha a ação e devolva "
+                    "`policy_requires_approval`; quem executa é o orquestrador, com o OK do usuário.")
+    if policy.get("mcp") is not None and server in managed and server not in policy["mcp"]:
+        return deny(f"AiDW: o MCP {server} não é do papel do agente {agent} (permitidos: "
+                    f"{', '.join(policy['mcp']) or 'nenhum'}). Peça ao orquestrador se precisar dele.")
+    return None
+
+
 def pre_tool_use(data: dict) -> dict | None:
     if data.get("tool_name") in ("Bash", "PowerShell"):
         return commit_guard(data)
     agent = data.get("agent_type") or ""
     if not agent or not is_aidw_agent(agent):
         return None
+    if str(data.get("tool_name") or "").startswith("mcp__"):
+        return mcp_guard(agent, data["tool_name"])
     ti = data.get("tool_input") or {}
     if data.get("tool_name") == "apply_patch":  # Codex: os caminhos vêm nas linhas do patch
         targets = [(a or b).strip() for a, b in PATCH_FILE_RE.findall(str(ti.get("command") or ""))]

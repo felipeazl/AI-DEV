@@ -34,7 +34,14 @@
       ],
       "preload": [
         "to-spec"
-      ]
+      ],
+      "tools": {
+        "mcp": [
+          "context7",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "explorer": {
       "name": "explorador",
@@ -44,7 +51,14 @@
       "model_id": "haiku",
       "effort": "",
       "skills": [],
-      "preload": []
+      "preload": [],
+      "tools": {
+        "mcp": [
+          "context7",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "coder": {
       "name": "codificador",
@@ -57,7 +71,19 @@
         "preparar-worktree",
         "skill-exemplo"
       ],
-      "preload": []
+      "preload": [],
+      "tools": {
+        "mcp": [
+          "chrome-devtools",
+          "context7",
+          "figma",
+          "playwright",
+          "servidor-exemplo"
+        ],
+        "deny_tools": [
+          "mcp__servidor-exemplo__escrever"
+        ]
+      }
     },
     "reviewer": {
       "name": "revisor",
@@ -72,7 +98,16 @@
       ],
       "preload": [
         "code-review"
-      ]
+      ],
+      "tools": {
+        "mcp": [
+          "context7",
+          "figma",
+          "playwright",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "api-db": {
       "name": "api",
@@ -84,7 +119,14 @@
       "skills": [
         "database-safe"
       ],
-      "preload": []
+      "preload": [],
+      "tools": {
+        "mcp": [
+          "context7",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "qa": {
       "name": "qa",
@@ -94,7 +136,17 @@
       "model_id": "sonnet",
       "effort": "medium",
       "skills": [],
-      "preload": []
+      "preload": [],
+      "tools": {
+        "mcp": [
+          "chrome-devtools",
+          "claude-in-chrome",
+          "context7",
+          "playwright",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "documenter": {
       "name": "documentador",
@@ -104,7 +156,15 @@
       "model_id": "haiku",
       "effort": "",
       "skills": [],
-      "preload": []
+      "preload": [],
+      "tools": {
+        "mcp": [
+          "context7",
+          "figma",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "bug-hunter": {
       "name": "bugs",
@@ -119,7 +179,16 @@
       ],
       "preload": [
         "bug-hunt"
-      ]
+      ],
+      "tools": {
+        "mcp": [
+          "chrome-devtools",
+          "context7",
+          "playwright",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     },
     "security": {
       "name": "seguranca",
@@ -134,7 +203,14 @@
       ],
       "preload": [
         "security-audit"
-      ]
+      ],
+      "tools": {
+        "mcp": [
+          "context7",
+          "servidor-exemplo"
+        ],
+        "deny_tools": []
+      }
     }
   },
   "mcp": [

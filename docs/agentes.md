@@ -21,7 +21,7 @@ O **papel** é fixo e é o que o AiDW usa internamente (`coder`, `reviewer`…).
 | `documentador` | `documenter` | leitura, edição, shell | só documentação |
 | `bugs` | `bug-hunter` | leitura, shell, grava o relatório | não |
 | `seguranca` | `security` | leitura, shell, grava o relatório | não |
-| `qa` | `qa` | leitura, shell, navegador (Claude in Chrome, Playwright), grava o plano de testes, o relatório e o roteiro | não (pede ajustes ao codificador) |
+| `qa` | `qa` | leitura, shell, navegador (Claude in Chrome ou `@Chrome` no Codex, Playwright), grava o plano de testes, o relatório e o roteiro | não (pede ajustes ao codificador) |
 
 Além disso, cada papel recebe os servidores MCP que `config/mcp.toml` libera para ele (Playwright para quem testa
 tela, Figma para quem implementa layout, Context7 para todos…) e as ferramentas que o contexto bloqueia saem da
@@ -101,7 +101,8 @@ Entra **sempre que a demanda é testada**, em dois momentos:
 1. **Plano de testes** (modo `plan`, logo depois do plano do planejador): grava `plano-testes-<id>.md` com a forma
    de provar cada critério de aceite:
    - `auto-api`: chamadas na API local ou de DEV/QA;
-   - `auto-browser`: a tela de ponta a ponta, pelo Claude in Chrome (o seu Chrome, já logado) ou pelo Playwright;
+   - `auto-browser`: a tela de ponta a ponta, pelo seu Chrome já logado (Claude in Chrome; no Codex, `@Chrome`) ou pelo
+     Playwright;
    - `auto-suite`: um teste que já existe;
    - `manual`: o que não dá para rodar aqui, como desktop/WPF.
 
