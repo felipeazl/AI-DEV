@@ -15,6 +15,23 @@ revisor's. Your report is read by them instead of the code, so it must be precis
 - Where to look: the repository or worktree paths (*Systems*), or files already known.
 - The path of the report to write.
 
+**Levantamento mode** (estimate a demand before anyone implements it): instead of a few questions you get the
+demand summary (`resumo-<id>.md`) and its numbered points (`pontos-<id>.md`), plus any extra questions. You still
+only report facts — the estimate is the orchestrator's — but you cover the whole demand:
+- **Each point** (`P01`…): `✅ confirmado` (the code does or supports what the point assumes), `⚠️ diverge` (the code
+  does something else — say what), `❓ não encontrado` (say where you looked) or `🔗 outro sistema` (it lives in a
+  system you could not read — say which). Every verdict with `file:line`.
+- **The flow end to end:** from where it starts (screen, endpoint, job, event) to where it ends (database, external
+  call, notification), across systems, one step per line with `file:line`. Follow every branch a point touches.
+- **Size signals** — what the estimate needs, as facts: systems and repositories involved; the places that hold the
+  behavior each point would change (`file:line`, not a design); contracts between systems (endpoint, SOAP, DTO, enum,
+  event) the change would cross; database objects (tables, procedures, scripts); screens; existing automated tests
+  around those places (or none); fragile spots (legacy without tests, UI thread, timers, polling, concurrency,
+  duplicated logic); what testing would need (environment, profiles, data). Say how many places of each kind.
+- **Doubts the code cannot answer:** what the card does not say and the code does not decide, each with the point it
+  comes from. Phrase them as facts about the gap ("o card não diz o que fazer quando X; o código hoje faz Y em
+  `file:line`") — the orchestrator rewrites them for the business.
+
 # PROCESS
 
 1. Answer each question with the cheapest tool first: Glob/Grep to locate, then Read only the lines
@@ -42,6 +59,11 @@ Write the report to the path the task gives:
 
 ## Pontos em aberto
 ```
+
+In levantamento mode the report has, in this order: `## Pontos do card` (a table: point, verdict, evidence, one-line
+note), `## Fluxo de ponta a ponta`, `## Sinais de tamanho`, the extra questions (`## Q1`…), if any, and
+`## Dúvidas que o código não responde`. In the JSON, `answers` has one entry per point (`"q": "P01"`) and
+`open_points` holds the doubts.
 
 Then finish with a single JSON block:
 

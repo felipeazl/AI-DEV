@@ -99,6 +99,7 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 /aidw:orquestrar 1234                 ← id do card, link ou uma descrição do que fazer
 /aidw:orquestrar 1234 interativo      ← pede o seu OK antes de cada delegação
 /aidw:orquestrar 1234 pr 7639         ← revisa a PR de outra pessoa (sem implementar)
+/aidw:levantamento 1234               ← levantamento: valida o card no código e estima (sem implementar)
 /aidw:orquestrar                      ← sem argumento: retoma a demanda desta pasta
 ```
 
@@ -120,6 +121,7 @@ Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na ret
 | Claude | Codex | O que faz |
 |---|---|---|
 | `/aidw:orquestrar [demanda] [modo]` | `$aidw-orquestrar` | Assume o chat como orquestrador e conduz a demanda |
+| `/aidw:levantamento <card ou texto>` | `$aidw-levantamento` | Levantamento antes de implementar: valida cada ponto do card no código, mapeia o fluxo e estima esforço (horas), story points e complexidade, com as dúvidas |
 | `/aidw:sair` | `$aidw-sair` | Grava onde parou e devolve o chat ao modo normal |
 | `/aidw:diff [repo\|sair]` | — | Leva o painel de diff para o próximo repositório da demanda (em círculo); `sair` volta para a pasta da demanda |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (build, armadilhas, convenções) e faz commit e push do contexto |
@@ -193,6 +195,10 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
 
 Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
 comentário e um voto sugerido, e você escolhe o que é publicado ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
+
+Para estimar um card antes de implementar, `/aidw:levantamento 1234`: um explorador valida cada ponto do card no código e
+mapeia o fluxo, e o orquestrador estima horas, story points e complexidade e lista as dúvidas em linguagem simples
+([docs/fluxo.md](docs/fluxo.md#levantamento-de-demanda)).
 
 Detalhes, estados e regras de triagem: [docs/fluxo.md](docs/fluxo.md). Worktrees e demandas com vários
 repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).

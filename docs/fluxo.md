@@ -49,9 +49,11 @@ Entender → Explorar → Planejar → Plano de testes → Revisar o plano ⇄ C
 
 - **`trivial`:** sem plano. O orquestrador vai direto para a tarefa.
 - **`simples`:** sem revisão do plano. Se o card já aponta os arquivos, sem exploração: o planejador lê os arquivos.
-- **Workflow por tipo:** `workflows/feature.yaml`, `bugfix.yaml`, `refactor.yaml`, `hotfix.yaml` e `pr-review.yaml`
+- **Workflow por tipo:** `workflows/feature.yaml`, `bugfix.yaml`, `refactor.yaml`, `hotfix.yaml`, `pr-review.yaml` e
+  `levantamento.yaml`
   listam as etapas de cada tipo de demanda. O hotfix, por exemplo, reproduz e corrige sem plano, mas mantém revisão e
-  aprovação humana; o `pr-review` revisa a PR de outra pessoa ([Revisar a PR de outra pessoa](#revisar-a-pr-de-outra-pessoa)).
+  aprovação humana; o `pr-review` revisa a PR de outra pessoa ([Revisar a PR de outra pessoa](#revisar-a-pr-de-outra-pessoa))
+  e o `levantamento` estima um card antes de implementar ([Levantamento de demanda](#levantamento-de-demanda)).
   Etapas de agente desligado são puladas (ou feitas pelo orquestrador).
 
 ## Como o orquestrador decide o próximo passo
@@ -183,6 +185,33 @@ Workflow `pr-review`: o orquestrador revisa a PR que outra pessoa abriu, sem pla
    `diff-pr<n>-<repo>-r<N>.patch` só com o que mudou. Um revisor novo recebe o review anterior e esse diff, com os
    mesmos IDs.
 6. **Fim:** `aidw.py worktree remove <id>` tira as junctions primeiro e remove o worktree; não há branch para manter.
+
+## Levantamento de demanda
+
+Workflow `levantamento`: entender e estimar um card **antes** de implementar. Só leitura: sem worktree, plano, tickets,
+build nem código.
+
+```text
+/aidw:levantamento 1234                  ← o card (id ou link)
+/aidw:levantamento "<texto da demanda>"   ← sem card: os pontos saem do texto
+```
+
+1. **Entender:** o orquestrador lê o card (campos, critérios, comentários e itens ligados), grava `resumo-<id>.md` e
+   numera tudo o que o card pede ou afirma em `pontos-<id>.md` (`P01`, `P02`…, com a origem de cada um).
+2. **Explorar:** um explorador na célula do nível `critica` (no contexto safeweb, Sonnet high) no **modo
+   levantamento**: diz se cada ponto está confirmado, diverge, não foi encontrado ou mora em outro sistema, sempre com
+   `arquivo:linha`; mapeia o fluxo de ponta a ponta; junta os sinais de tamanho (sistemas, pontos de contato,
+   contratos, banco, telas, testes existentes, trechos frágeis, o que o teste exige) e as dúvidas que o código não
+   responde. Relatório: `exploracao-levantamento.md`.
+3. **Estimar:** o orquestrador aplica a régua aos sinais (referência *levantamento*; a do contexto, *regua-estimativa*,
+   vale sobre a padrão) e grava `levantamento-<id>.md`: horas por frente numa faixa mínimo–máximo, story points em
+   Fibonacci, complexidade, confiança e o que a mudaria, riscos, a quebra sugerida acima de 13 SP e as **dúvidas**:
+   uma pergunta por item, em linguagem do negócio, com o porquê e para quem.
+4. **Fim:** a estimativa e as dúvidas aparecem no chat, e o orquestrador oferece publicar um comentário curto no card
+   (ação travada: só com o seu OK). Story points e estado do card ele nunca muda.
+
+Se o card for implementado depois, `/aidw:orquestrar 1234` reaproveita o resumo, os pontos e a exploração do
+levantamento e começa pelo plano.
 
 ## Quando você é chamado
 

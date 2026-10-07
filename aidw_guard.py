@@ -5,8 +5,8 @@
   worktree. A conversa principal não tem regra: o usuário continua livre no working copy dele.
 - PreToolUse (Bash/PowerShell) — `git commit` num worktree ativo de demanda que ainda tem a marca `AIDW-TESTE`
   (ajuste temporário de teste) é recusado, para qualquer sessão: o ajuste é revertido antes do commit.
-- UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:orquestrar` no Claude,
-  `$aidw-orquestrar` no Codex) ou saiu dele (`/aidw:sair`, `$aidw-sair`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
+- UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:orquestrar` ou `/aidw:levantamento`
+  no Claude, `$aidw-orquestrar` ou `$aidw-levantamento` no Codex) ou saiu dele (`/aidw:sair`, `$aidw-sair`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
 - SessionStart (compact|resume) — numa sessão no modo orquestrador, lembra de reler a skill e o
   demand.json (o Claude recoloca só o começo da skill depois de uma compactação).
 """
@@ -27,8 +27,8 @@ SESSIONS = ROOT / "state" / "sessions.json"
 RUNTIME = ROOT / ".aidw" / "runtime.json"
 MARKETPLACE = ROOT / ".aidw" / "marketplace"
 CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
-# Claude: /aidw:orquestrar · Codex: $aidw-orquestrar; sair e done encerram o modo
-MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(orquestrar|sair|done)\b(.*)", re.S)
+# Claude: /aidw:orquestrar · Codex: $aidw-orquestrar (levantamento também entra no modo); sair e done encerram o modo
+MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(orquestrar|levantamento|sair|done)\b(.*)", re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
 # `git [-C <pasta>] [-c k=v] commit`; o grupo 1 tem as opções antes do subcomando
 GIT_COMMIT_RE = re.compile(r"\bgit((?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|\S+))*)\s+commit\b")
@@ -171,9 +171,10 @@ def user_prompt_submit(data: dict) -> None:
         sessions = read_json(SESSIONS, {})
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=14)).isoformat(timespec="seconds")
         sessions = {k: v for k, v in sessions.items() if v.get("since", "") >= cutoff}  # sessões antigas saem
-        if m.group(3) == "orquestrar":
+        if m.group(3) in ("orquestrar", "levantamento"):  # a skill orquestrar entende "levantamento <id>"
+            argument = ("levantamento " if m.group(3) == "levantamento" else "") + m.group(4).strip()
             sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
-                                 "argument": m.group(4).strip()[:200], "cwd": data.get("cwd"),
+                                 "argument": argument.strip()[:200], "cwd": data.get("cwd"),
                                  "since": datetime.datetime.now().isoformat(timespec="seconds")}
         else:
             sessions.pop(session, None)
