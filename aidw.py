@@ -118,7 +118,8 @@ PROVIDER_LABEL = {"claude": "Claude (Claude Code)", "codex": "Codex (Codex CLI)"
 DELEGATION_MODES = ("native", "headless")
 
 ACTIONS = {"EXPLORE", "TEST_PLAN", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "TEST_ADJUST", "ORCHESTRATOR_TEST",
-           "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "DOCS", "FINAL_REVIEW", "DONE", "HUMAN_APPROVAL", "RETURN"}
+           "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "ESTIMATE", "DOCS", "FINAL_REVIEW", "DONE",
+           "HUMAN_APPROVAL", "RETURN"}
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
 
@@ -2018,10 +2019,13 @@ def guard_skill(text: str) -> str:
 
 
 def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
-                       provider: str = "claude") -> str:
+                       provider: str = "claude", survey: bool = False) -> str:
+    """`orquestrar`, ou `levantamento` (survey): o mesmo orquestrador, já no workflow levantamento."""
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-sair" if codex else f"/{plugin}:sair"
+    name = "levantamento" if survey else "orquestrar"
+    request = "o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"
     workspace = ("7. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
                  "do Codex deixa só leitura: peça aprovação (escalada) para esse comando. Se a raiz dos worktrees não for "
@@ -2038,18 +2042,28 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                  "por vez: `/"
                  f"{plugin}:diff` troca para o próximo, `/{plugin}:diff <repo>` vai para um e `/{plugin}:diff sair` "
                  "volta para a pasta da demanda.")
-    description = (f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
+    description = (f"{PLUGIN_GUARD} Levantamento de uma demanda antes de implementar: o orquestrador AiDW lê o "
+                   "card, um explorador valida cada ponto no código e mapeia o fluxo, e sai a estimativa de esforço, "
+                   "story points e complexidade, com as dúvidas. Só leitura." if survey else
+                   f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
                    "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
+    survey_intro = [
+        "**Levantamento:** esta chamada é o workflow `levantamento` (seção *Levantamento*; procedimento, régua e "
+        "formato na referência *levantamento*). O pedido é o card (id ou link) ou o texto da demanda (sem card, a "
+        "demanda é `lev-<slug>`, um slug curto do texto); sem pedido, pergunte qual. Só leitura: sem worktree, plano, tickets nem código, e sem a pergunta de modo (vale `auto`). "
+        "Demanda que já existe: se está em andamento (tem plano), faça o levantamento sem mudar `step` nem `status` "
+        "dela; se já tem `levantamento-<id>.md`, refaça-o sobre o card atual, reaproveitando a exploração no que não "
+        "mudou. Terminado, o modo orquestrador acaba junto, salvo se o usuário pedir para implementar.", ""] if survey else []
     return "\n".join([
-        "---", f"name: {CODEX_NS + 'orquestrar' if codex else 'orquestrar'}",
+        "---", f"name: {CODEX_NS + name if codex else name}",
         f"description: {json.dumps(description, ensure_ascii=False)}",
         *([] if codex else ["disable-model-invocation: true"]), "---", "",
         f"<!-- {GENERATED_MARK} install; não edite: altere as fontes e rode `python aidw.py install`. -->", "",
-        "# Modo orquestrador AiDW", "",
+        "# Levantamento AiDW" if survey else "# Modo orquestrador AiDW", "",
         f"A partir desta mensagem você é o orquestrador AiDW nesta sessão, até o usuário chamar "
         f"`{leave}`, fechar a tarefa com `{'$aidw-done' if codex else '/' + plugin + ':done'}` ou pedir para parar. "
-        "Pedido do usuário (pode estar vazio): " +
-        ("o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"), "",
+        "Pedido do usuário (pode estar vazio): " + request, "",
+        *survey_intro,
         f"Depois de uma compactação da conversa, releia `{skill_path.as_posix()}` antes de continuar.", "",
         "## Ao ser chamado: abrir ou retomar a demanda", "",
         f"1. Rode `{aidw} project detect --json` (pasta atual) e `{aidw} demand list --active --json`.",
@@ -2057,10 +2071,13 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "a da pasta (`demand`, quando o chat está num worktree); senão a única ativa deste repositório. Mais de "
         "uma candidata, ou nenhuma e sem pedido: pergunte ao usuário, com as opções.",
         "3. **Retomar:** se a demanda já tem `demand.json`, **não recomece** — leia a pasta dela (plano, triagens, "
-        "reviews, `estado.md`) e continue da etapa gravada (`step`).",
+        "reviews, `estado.md`) e continue da etapa gravada (`step`). Exceção: a que só teve levantamento "
+        "(`levantamento-<id>.md` e nenhum plano), chamada para implementar, começa o workflow dela pelo `EXPLORE` "
+        "reaproveitando o levantamento (seção *Levantamento*).",
         f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
         "o fluxo. Pedido para revisar a PR de outra pessoa (`pr <n>`, um link de PR, \"revisar a PR\"): workflow "
-        "`pr-review` (seção *PR review*), sem plano nem implementação.",
+        "`pr-review` (seção *PR review*), sem plano nem implementação. Pedido de levantamento ou estimativa "
+        "(`levantamento <id>`, \"estimar\", \"quantos pontos\"): workflow `levantamento` (seção *Levantamento*).",
         "5. **Modo da sessão:** `interativo` ou `auto` (o padrão, como sempre foi). Vale o que o pedido disser "
         "(`interativo`, `auto`, `automático`); senão o `mode` do `demand.json`, numa retomada; senão pergunte "
         + ("em texto, com as duas opções, e espere a resposta. " if codex else
@@ -2185,6 +2202,9 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 files[f"{base}/skills/{name}/{f.relative_to(src).as_posix()}"] = data
     put(f"{base}/skills/orquestrar/SKILL.md",
         orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "orquestrar" / "SKILL.md"))
+    put(f"{base}/skills/levantamento/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "levantamento" / "SKILL.md",
+                           survey=True))
     put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin))
     for name, r in b["orchestrator_refs"].items():
@@ -3274,6 +3294,10 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
                                                  provider="codex").encode("utf-8")
     files[orq / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    lev = CODEX_SKILLS_HOME / f"{CODEX_NS}levantamento"
+    files[lev / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], lev / "SKILL.md",
+                                                 provider="codex", survey=True).encode("utf-8")
+    files[lev / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     for name, r in b["orchestrator_refs"].items():
         files[ref_dir / f"{name}.md"] = r["content"].encode("utf-8")
     sair = CODEX_SKILLS_HOME / f"{CODEX_NS}sair"

@@ -84,7 +84,7 @@ commands are not checked, so tasks must point only to the worktree.
 
 Pick the workflow by demand type in `workflows/*.yaml` (its `agent:` is the **role**; map it with the
 Team table) and skip steps whose agent is disabled; reviewing a pull request someone else opened is `pr-review`
-(*PR review*). Artifacts live in the **state dir** (Runtime).
+(*PR review*); estimating a demand before implementing it is `levantamento` (*Levantamento*). Artifacts live in the **state dir** (Runtime).
 The active context may redefine steps and artifacts; context rules win.
 
 **Testing** — qa runs whenever a demand is tested (skip it only when disabled; a `trivial` demand has
@@ -145,6 +145,22 @@ fixes). Name the demand after its work item (or `pr-<n>` without one); one deman
 - **At the end** (merged, abandoned, or the user is done): `worktree remove <tipo-id>` — the junctions go first; there
   is no branch to keep.
 
+**Levantamento** (`levantamento`: understand and estimate a demand before anyone implements it; read only — no
+worktree, plan, tickets, build or code). The procedure, the estimate rubric and the report format are in the reference
+*levantamento*: read it when the workflow starts.
+- **Understand:** `resumo-<id>.md` as usual, then every point the card asks or asserts, numbered, in `pontos-<id>.md`.
+- **Explore** (`EXPLORE`): one explorador task in levantamento mode at the `critica` cell — the whole flow is
+  the deliverable, so this is the deepest exploration of the table. It validates each point in the code, maps the flow
+  end to end and returns the size signals in `exploracao-levantamento.md`.
+- **Estimate** (`ESTIMATE`): you apply the rubric to the size signals and write `levantamento-<id>.md` — effort in
+  hours per front, story points, complexity, confidence, risks and the doubts, written plainly for whoever answers
+  them.
+- **End:** show the estimate and the doubts, offer the card comment (a locked action, as the active context says),
+  then `DONE`. Never change the card's state or fields.
+- **Implementing later:** a demand whose folder has `levantamento-<id>.md` and no plan starts its workflow from
+  `EXPLORE`, reusing `resumo-<id>.md` (refresh it if the card changed), `pontos-<id>.md` and
+  `exploracao-levantamento.md`; ask the explorer only what the plan still needs.
+
 **Specialist passes** — bugs (behavior defects, root cause) and seguranca
 (exploitable vulnerabilities) are on demand, not every cycle. Record in the plan
 `Passadas extras: bugs sim/não — <why>; segurança sim/não — <why>`; the triggers and how to run them
@@ -162,7 +178,7 @@ review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to th
 `PLAN_FIX` (planejador in fix mode bumps the version; then a fresh review of only the changes),
 `TICKETS` (planejador in tickets mode),
 `IMPLEMENT`, `TEST`, `TEST_ADJUST`, `ORCHESTRATOR_TEST` and `MANUAL_TEST` (see *Testing*), `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`,
-`DOCS`, `FINAL_REVIEW`, `DONE`,
+`ESTIMATE` (see *Levantamento*), `DOCS`, `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).
 
 # SHOWING RESULTS
@@ -282,6 +298,7 @@ Where each system lives and how to validate it. Use these commands as given; do 
 
 Not in your context until you read it. Read a file when its moment comes (the workflow names it) — and again after a context compaction, if you are in that step.
 
+- *levantamento* `<ROOT>/.aidw/reference/levantamento.md` — fazer o levantamento de uma demanda (workflow levantamento) — os pontos do card, a tarefa do explorador, a régua de estimativa, como escrever as dúvidas e o formato do levantamento-<id>.md
 - *passadas-extras* `<ROOT>/.aidw/reference/passadas-extras.md` — decidir no plano se a demanda leva passada de bugs e/ou segurança, ou rever essa decisão depois de uma revisão
 - *etapa* `<ROOT>/.aidw/reference/etapa.md` — na etapa de exemplo
 - *sob-demanda* `<ROOT>/.aidw/reference/sob-demanda.md` — preparar a revisão no contexto de exemplo

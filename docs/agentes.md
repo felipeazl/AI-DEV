@@ -42,6 +42,10 @@ X?") e responde cada uma com `arquivo:linha`. Não desenha a solução nem alter
 exploração por assunto, nunca repetida**. Haiku na maioria dos níveis: ler e citar é barato e não precisa de um
 modelo grande.
 
+No **modo levantamento** (workflow `levantamento`), recebe o resumo e os pontos numerados do card em vez de perguntas:
+valida cada ponto no código, mapeia o fluxo de ponta a ponta e devolve os sinais de tamanho e as dúvidas que o código
+não responde. Continua só levantando fatos: quem estima é o orquestrador.
+
 ### Planejador
 Três modos, sempre num agente novo:
 - **spec:** escreve o `plano-<id>.md` a partir do resumo e da exploração (skill `to-spec`, pré-carregada): comportamento

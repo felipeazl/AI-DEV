@@ -1,0 +1,14 @@
+name: levantamento
+description: Levantamento de uma demanda antes de implementar — valida cada ponto do card no código, mapeia o fluxo de ponta a ponta e estima esforço, story points e complexidade, com as dúvidas que ficaram. Só leitura; sem worktree, plano, tickets nem código.
+steps:
+  - id: understand      # resumo-<id>.md (card, critérios, decisões dos comentários) + lista numerada dos pontos do card
+    agent: orchestrator
+  - id: explore         # explorador na célula do nível critica, modo levantamento: cada ponto confirmado ou não no
+    agent: explorer     # código, o fluxo de ponta a ponta e os sinais de tamanho → exploracao-levantamento.md
+  - id: estimate        # levantamento-<id>.md: a régua (referência *levantamento*) aplicada aos sinais, e as dúvidas
+    agent: orchestrator
+  - id: final_review    # o usuário vê o levantamento; publicar no card é ação travada
+    agent: orchestrator
+gates:
+  - before: publish
+    require: human_approval
