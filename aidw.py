@@ -3189,8 +3189,8 @@ def codex_node_path() -> tuple[str | None, str]:
 
 
 def codex_profile(cfg: dict, ctx: dict | None, resolved: dict, servers: dict) -> str:
-    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo só do AiDW. A confiança dos hooks o Codex grava no
-    config.toml do usuário (nunca no perfil), que o AiDW não toca."""
+    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo do AiDW. Aberto com `--profile aidw`, o Codex grava nele a
+    confiança dos hooks (`[hooks.state]`), que o install mantém (`with_hooks_state`)."""
     orch = resolved[ORCHESTRATOR]
     writable = list(dict.fromkeys([ROOT.as_posix(), *code_dirs(cfg, ctx)]))
     env = {**({k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {}), **codex_git_env(cfg, ctx)}
@@ -3287,16 +3287,38 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
 
 
+def hook_groups_signature(groups: dict) -> str:
+    """O que vence a aprovação no Codex: o grupo inteiro (o matcher entra no hash: conferido no 0.157)."""
+    return sha(json.dumps(groups, sort_keys=True).encode("utf-8"))
+
+
 def codex_hook_signature() -> str:
-    return sha(json.dumps(codex_hook_groups(), sort_keys=True).encode("utf-8"))
+    return hook_groups_signature(codex_hook_groups())
+
+
+def toml_hooks_state(path: Path) -> dict:
+    try:
+        return load_toml(path).get("hooks", {}).get("state", {}) if path.is_file() else {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
 
 def codex_trust_state() -> dict:
-    """`[hooks.state]` do config.toml do Codex: onde o TUI grava a confiança (`trusted_hash`) de cada hook."""
-    try:
-        return load_toml(CODEX_HOME / "config.toml").get("hooks", {}).get("state", {})
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+    """`[hooks.state]` onde o TUI grava a confiança (`trusted_hash`) de cada hook: o config.toml do usuário e, aberto
+    com `--profile aidw`, o próprio perfil (conferido no 0.157), que vale por cima."""
+    return {**toml_hooks_state(CODEX_HOME / "config.toml"), **toml_hooks_state(CODEX_PROFILE)}
+
+
+def with_hooks_state(profile: str) -> str:
+    """O perfil regenerado mantém a confiança que o Codex gravou nele; sem isso, todo install apagava a aprovação."""
+    state = toml_hooks_state(CODEX_PROFILE)
+    if not state:
+        return profile
+    lines = ["", "# Gravado pelo Codex ao aprovar os hooks (o install mantém)", "[hooks.state]"]
+    for key, entry in state.items():
+        lines += ["", f"[hooks.state.{toml_value(key)}]",
+                  *[f"{k} = {toml_value(v)}" for k, v in entry.items() if isinstance(v, (str, bool, int))]]
+    return profile.rstrip("\n") + "\n" + "\n".join(lines) + "\n"
 
 
 def aidw_hook_keys() -> list[str]:
@@ -3343,7 +3365,7 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
     rep.ok(f"{agents} agentes em {CODEX_AGENTS_HOME}, {skills} skills em {CODEX_SKILLS_HOME}, rules em "
            f"{CODEX_GLOBAL_RULES.name} ({changed} arquivo(s) {'a mudar' if dry else 'mudaram'})")
     profile = codex_profile(cfg, built["ctx"], built["resolved"], built["servers"])
-    write_if_changed(CODEX_PROFILE, profile, dry, rep)
+    write_if_changed(CODEX_PROFILE, with_hooks_state(profile), dry, rep)
     try:
         hooks = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")) if CODEX_HOOKS_FILE.exists() else {}
     except json.JSONDecodeError:
@@ -3354,10 +3376,11 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
     write_if_changed(CODEX_HOOKS_FILE, json.dumps(merge_codex_hooks(hooks, add=True), indent=2,
                                                   ensure_ascii=False) + "\n", dry, rep)
     signature = codex_hook_signature()
+    # sem o registro anterior no manifesto (o install do Claude o apagava), vale o próprio hooks.json
+    before = old.get("hooks_signature") or (hook_groups_signature(current) if current else None)
     stale = dict(old.get("stale_trust", {}))
-    # o próprio hooks.json diz se os grupos do AiDW mudaram (vale também sem o registro anterior no manifesto)
-    if (old.get("hooks_signature") and old["hooks_signature"] != signature) or (current and current != codex_hook_groups()):
-        # o comando/matcher dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
+    if before and before != signature:
+        # o comando dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
         ours = {norm_path(k) for k in aidw_hook_keys()}
         stale.update({norm_path(k): v.get("trusted_hash") for k, v in codex_trust_state().items() if norm_path(k) in ours})
     if not dry:

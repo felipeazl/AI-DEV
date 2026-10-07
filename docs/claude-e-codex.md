@@ -37,7 +37,9 @@ O padrão. Os agentes são subagentes do próprio CLI:
   Os agentes ficam em `~/.codex/agents/aidw-<agente>.toml`. O Codex não limita MCP por agente: um `mcp_servers`
   parcial invalida o arquivo do agente, e `disabled_tools` nele não bloqueia a ferramenta (conferido no Codex 0.157).
   Por isso o guard recebe toda chamada MCP de um agente do AiDW e recusa o que não é do papel dele, pela política que o
-  `apply` grava em `.aidw/runtime.json`. Os MCPs do próprio Codex (ex.: `node_repl`) não são julgados.
+  `apply` grava em `.aidw/runtime.json`. Os MCPs do próprio Codex (ex.: `node_repl`) não são julgados. Os hooks rodam
+  dentro dos subagentes, e o payload traz `agent_type` (`aidw-<agente>`), `agent_id`, `tool_name` e `cwd`: conferido
+  com um `aidw-explorador` real, que teve a chamada MCP bloqueada e o shell liberado.
 
 Depois de cada subagente, o orquestrador roda `aidw.py record` com os números reais (no Codex, `--codex-task` lê o
 consumo da sessão).
@@ -63,8 +65,10 @@ ações travadas voltam como `denials`. Serve para automação; o plugin exige o
 - Os worktrees que o app do Codex cria são dele (`$CODEX_HOME/worktrees`); os da demanda são do AiDW e abrem pelo
   `aidw open`.
 - O sandbox deixa o `.git` só leitura: o `worktree create` pede aprovação e os agentes não fazem commit (você faz).
-- Hooks: o Codex só roda hook aprovado. Aprove uma vez no terminal (`codex --profile aidw` → "Trust all and
-  continue") e de novo quando um `install` mudar os hooks; o `doctor` avisa nos dois casos.
+- Hooks: o Codex só roda hook aprovado, e qualquer mudança no grupo (comando ou matcher) pede nova aprovação. Aprove
+  no terminal (`codex --profile aidw` → "Trust all and continue"); aberto com o perfil, o Codex grava a aprovação no
+  próprio `aidw.config.toml`, e o `install` mantém essa parte quando regenera o perfil. O `doctor` lê o `config.toml` e
+  o perfil e avisa quando falta aprovar.
 - No Windows, o AiDW libera `safe.directory` só para as pastas do AiDW, dos projetos e dos worktrees, por variáveis
   `GIT_CONFIG_*`, sem tocar no `.gitconfig`.
 - Se o `node` do PATH mora no perfil do usuário (ex.: nvm), o sandbox não o lê: o `install --provider codex` põe um

@@ -1117,7 +1117,7 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("codex", json.loads(manifest_path.read_text(encoding="utf-8")),
                           "o install do Claude não apaga o registro do Codex")
 
-            # confiança: o Codex grava no config.toml do usuário (nunca no perfil); o AiDW não toca nele
+            # confiança: o Codex grava no config.toml do usuário ou, com --profile aidw, no perfil; o AiDW não apaga
             os.environ["CODEX_HOME"], os.environ["AIDW_CODEX_SKILLS_DIR"] = str(home), str(skills)
             try:
                 aidw = load_aidw(root)
@@ -1141,10 +1141,19 @@ class CodexInstallTest(unittest.TestCase):
             self.assertTrue(aidw.codex_hooks_trusted())
             self.assertIn("sha256:novo", (home / "config.toml").read_text(encoding="utf-8"), "config.toml intocado")
 
+            # aprovação gravada no perfil (codex --profile aidw): vale, e o install não a apaga
+            (home / "config.toml").write_text("", encoding="utf-8")
+            with open(home / "aidw.config.toml", "a", encoding="utf-8") as f:
+                f.write("\n[hooks.state]\n" + trust("sha256:perfil"))
+            self.assertTrue(aidw.codex_hooks_trusted(), "confiança gravada no perfil")
+            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
+            self.assertTrue(aidw.codex_hooks_trusted(), "o install mantém a confiança gravada no perfil")
+            self.assertIn("sha256:perfil", (home / "aidw.config.toml").read_text(encoding="utf-8"))
+
             # sem o registro no manifesto (o install do Claude o apagava), a mudança aparece no próprio hooks.json
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
             m["codex"].pop("hooks_signature")
-            m["codex"].pop("stale_trust", None)
+            m["codex"]["stale_trust"] = {}
             manifest_path.write_text(json.dumps(m), encoding="utf-8")
             old = json.loads((home / "hooks.json").read_text(encoding="utf-8"))
             old["hooks"]["PreToolUse"][-1]["matcher"] = "apply_patch"  # hooks de uma versão anterior, aprovados
