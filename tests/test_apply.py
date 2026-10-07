@@ -937,6 +937,14 @@ class SessionModeTest(unittest.TestCase):
             hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-done"})
             self.assertEqual(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}), "",
                              "o done fecha a tarefa e encerra o modo orquestrador, como o sair")
+            lv = {"session_id": "l1", "cwd": str(tmp)}
+            hook({**lv, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:levantamento us-8"})
+            out = json.loads(hook({**lv, "hook_event_name": "SessionStart", "source": "compact"}))
+            ctx_lev = out["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("aidw/skills/orquestrar/SKILL.md", ctx_lev, "a orquestrar entende o pedido de levantamento")
+            self.assertIn('"levantamento us-8"', ctx_lev)
+            code, d = wt.aidw_json(root, "demand", "set", "us-8", "--step", "ESTIMATE", "--json")
+            self.assertEqual((code, d["step"]), (0, "ESTIMATE"), d)
 
 
     def test_contexto_e_arquivo_corrompido(self) -> None:
@@ -981,6 +989,14 @@ class SessionModeTest(unittest.TestCase):
                          "**seguinte**", "`sair`: a pasta da demanda"):
                 self.assertIn(step, diff)
             self.assertIn("/aidw:diff sair", orq)
+            self.assertIn("workflow `levantamento`", orq)
+            lev = files["plugins/aidw/skills/levantamento/SKILL.md"].decode("utf-8")
+            self.assertIn("name: levantamento", lev)
+            self.assertIn("disable-model-invocation: true", lev)
+            self.assertIn("**Levantamento:**", lev)
+            self.assertIn("**Levantamento** (`levantamento`", lev, "leva o contexto inteiro do orquestrador")
+            self.assertLess(lev.index("**Levantamento:**"), lev.index("# ROLE"))
+            self.assertIn("plugins/aidw/reference/levantamento.md", files)
             self.assertIn("--status paused", sair)
             self.assertIn("disable-model-invocation: true", sair)
 
@@ -1091,6 +1107,11 @@ class CodexInstallTest(unittest.TestCase):
             self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
             self.assertIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
+            lev = (skills / "aidw-levantamento" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-levantamento", lev)
+            self.assertNotIn("disable-model-invocation", lev)
+            self.assertIn("allow_implicit_invocation: false",
+                          (skills / "aidw-levantamento" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
             done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-done", done)

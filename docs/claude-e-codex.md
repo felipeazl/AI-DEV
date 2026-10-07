@@ -8,10 +8,10 @@ muda é como cada CLI chama subagentes, muda de pasta, abre o navegador e aplica
 | | Claude Code | Codex |
 |---|---|---|
 | Instalação | `install` → plugin `aidw` | `install --provider codex` + perfil `aidw`; depois, o `install` atualiza os dois |
-| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:sair`, `/aidw:done` | `$aidw-orquestrar`, `$aidw-sair`, `$aidw-done` |
+| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:levantamento`, `/aidw:sair`, `/aidw:done` | `$aidw-orquestrar`, `$aidw-levantamento`, `$aidw-sair`, `$aidw-done` |
 | Agentes | `aidw:<agente>`, uma variante por modelo e effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |
-| Workflows (feature, bugfix, refactor, hotfix, `pr-review`), QA, revisão | ✅ | ✅ |
+| Workflows (feature, bugfix, refactor, hotfix, `pr-review`, `levantamento`), QA, revisão | ✅ | ✅ |
 | Abrir e retomar demanda, modos auto e interativo | ✅ | ✅ |
 | Worktree por demanda (inclusive `--pr`) | ✅ | ✅ (o sandbox pede aprovação no `worktree create`) |
 | Levar o chat ao worktree | ✅ `change_directory` (app) ou `EnterWorktree` (terminal) | na abertura: `aidw open --provider codex --demand <id>` (terminal) ou `--app` (app desktop); depois, pelo caminho absoluto |
