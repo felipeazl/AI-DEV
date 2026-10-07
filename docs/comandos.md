@@ -5,6 +5,7 @@
 | Claude | Codex | O que faz |
 |---|---|---|
 | `/aidw:orquestrar [demanda] [auto\|interativo]` | `$aidw-orquestrar` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
+| `/aidw:levantamento <card ou texto>` | `$aidw-levantamento` | Levantamento antes de implementar (workflow `levantamento`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `levantamento-<id>.md` com horas, story points, complexidade e dúvidas ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
 | `/aidw:sair` | `$aidw-sair` | Grava a etapa e o próximo passo (`paused`) e volta o chat ao normal |
 | `/aidw:diff [repo\|sair]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demandas-e-worktrees.md](demandas-e-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou, valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
