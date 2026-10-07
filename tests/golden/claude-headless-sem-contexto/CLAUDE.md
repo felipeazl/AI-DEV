@@ -102,8 +102,9 @@ no test plan step, its QA builds the matrix itself).
   (`git -C <wt> apply <patch>`; if it no longer applies, `TEST_ADJUST` again). Review and commit always see the
   delivery without them.
 - **Browser fallback** (`ORCHESTRATOR_TEST`): the qa could not drive a browser. Run its
-  `needs_orchestrator` criteria yourself, exactly as the test plan says, with the adjustments applied (Claude in
-  Chrome, or the browser built into the app). Write `teste-orquestrador-<id>-r<N>.md`: per criterion, what you did,
+  `needs_orchestrator` criteria yourself, exactly as the test plan says, with the adjustments applied — in Claude,
+  Claude in Chrome or the browser built into the app; in the Codex app, `@Chrome` (the user's Chrome, signed in) or
+  `@Browser` (local pages); in the Codex CLI, the Playwright MCP. Write `teste-orquestrador-<id>-r<N>.md`: per criterion, what you did,
   what happened, the evidence (screenshot path, network or console excerpt) and your verdict. Then a fresh
   qa one level down in verify mode adds its verdict. Show the user one table — criterion, evidence, your
   verdict, the qa's — and debate with them every criterion where you and the qa differ or one of you has a doubt;
