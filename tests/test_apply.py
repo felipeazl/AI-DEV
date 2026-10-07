@@ -609,6 +609,27 @@ class WorktreeTest(unittest.TestCase):
             self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "a junction não pode apagar a origem")
             self.assertEqual(git(repo, "for-each-ref", "refs/aidw").strip(), "", "a ref da PR sai junto")
 
+    def test_guard_mcp_por_agente(self) -> None:
+        """O Codex não limita MCP por agente: o guard recusa o servidor fora do papel e a ferramenta bloqueada pelo
+        contexto; MCP do próprio CLI e a conversa principal passam."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "codex", "native", "exemplo")
+            proc = run_aidw(root, "apply")
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+            def call(agent: str | None, tool: str) -> str:
+                return self.guard(root, {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": {},
+                                         **({"agent_type": agent} if agent else {})})
+
+            self.assertIn('"deny"', call("aidw-codificador", "mcp__servidor-exemplo__escrever"), "bloqueada pelo contexto")
+            self.assertIn('"deny"', call("aidw:codificador-high", "mcp__servidor-exemplo__escrever"), "variante do Claude")
+            self.assertEqual(call("aidw-codificador", "mcp__servidor-exemplo__ler"), "")
+            self.assertIn('"deny"', call("aidw-explorador", "mcp__playwright__browser_click"), "não é do papel")
+            self.assertEqual(call("aidw-qa", "mcp__playwright__browser_click"), "")
+            self.assertEqual(call("aidw-explorador", "mcp__node_repl__js"), "", "MCP do próprio Codex")
+            self.assertEqual(call(None, "mcp__servidor-exemplo__escrever"), "", "a conversa principal")
+
     def test_worktree_link_de_pastas_vizinhas(self) -> None:
         """`worktree_link` do sistema: o caminho relativo que o código usa (HintPath `..\\..\\X`) vira junction ao
         lado do worktree; fora da raiz dos worktrees é recusado; o remove não apaga a junction compartilhada."""
@@ -1082,14 +1103,21 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn(str(tmp / "wt").replace("\\", "\\\\"), profile, "raiz dos worktrees gravável no perfil")
             hooks = json.loads((home / "hooks.json").read_text(encoding="utf-8"))["hooks"]
             self.assertEqual(hooks["Stop"], [user_hook], "o hook do usuário fica")
-            self.assertEqual(hooks["PreToolUse"][0]["matcher"], "apply_patch")
+            self.assertEqual(hooks["PreToolUse"][0]["matcher"], "apply_patch|Bash|mcp__.*")
 
             before = (home / "hooks.json").read_text(encoding="utf-8")
             again = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
             self.assertEqual((home / "hooks.json").read_text(encoding="utf-8"), before, "hooks.json idempotente")
 
-            # confiança: o Codex grava no config.toml do usuário (nunca no perfil); o AiDW não toca nele
+            manifest_path = root / ".aidw" / "install-manifest.json"
+            both = run_aidw(root, "install", "--skip-cli")  # sem --provider: o Codex já instalado é atualizado junto
+            self.assertEqual(both.returncode, 0, both.stdout + both.stderr)
+            self.assertIn("Instalação global no Codex", both.stdout)
+            self.assertIn("codex", json.loads(manifest_path.read_text(encoding="utf-8")),
+                          "o install do Claude não apaga o registro do Codex")
+
+            # confiança: o Codex grava no config.toml do usuário ou, com --profile aidw, no perfil; o AiDW não apaga
             os.environ["CODEX_HOME"], os.environ["AIDW_CODEX_SKILLS_DIR"] = str(home), str(skills)
             try:
                 aidw = load_aidw(root)
@@ -1112,6 +1140,26 @@ class CodexInstallTest(unittest.TestCase):
             (home / "config.toml").write_text(trust("sha256:novo"), encoding="utf-8")  # o usuário reaprovou
             self.assertTrue(aidw.codex_hooks_trusted())
             self.assertIn("sha256:novo", (home / "config.toml").read_text(encoding="utf-8"), "config.toml intocado")
+
+            # aprovação gravada no perfil (codex --profile aidw): vale, e o install não a apaga
+            (home / "config.toml").write_text("", encoding="utf-8")
+            with open(home / "aidw.config.toml", "a", encoding="utf-8") as f:
+                f.write("\n[hooks.state]\n" + trust("sha256:perfil"))
+            self.assertTrue(aidw.codex_hooks_trusted(), "confiança gravada no perfil")
+            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
+            self.assertTrue(aidw.codex_hooks_trusted(), "o install mantém a confiança gravada no perfil")
+            self.assertIn("sha256:perfil", (home / "aidw.config.toml").read_text(encoding="utf-8"))
+
+            # sem o registro no manifesto (o install do Claude o apagava), a mudança aparece no próprio hooks.json
+            m = json.loads(manifest_path.read_text(encoding="utf-8"))
+            m["codex"].pop("hooks_signature")
+            m["codex"]["stale_trust"] = {}
+            manifest_path.write_text(json.dumps(m), encoding="utf-8")
+            old = json.loads((home / "hooks.json").read_text(encoding="utf-8"))
+            old["hooks"]["PreToolUse"][-1]["matcher"] = "apply_patch"  # hooks de uma versão anterior, aprovados
+            (home / "hooks.json").write_text(json.dumps(old), encoding="utf-8")
+            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
+            self.assertFalse(aidw.codex_hooks_trusted(), "o matcher mudou: a aprovação antiga não vale")
 
             gone = run_aidw(root, "uninstall", "--provider", "codex")
             self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)

@@ -150,7 +150,7 @@ O `qa` entra sempre que a demanda é testada ([agentes.md](agentes.md#qa)):
   - antes da revisão final, o orquestrador prova que não sobrou nada: a busca pela marca vem vazia e o diff bate com
     o último patch revisado;
   - o hook do AiDW recusa um `git commit` num worktree de demanda que ainda tenha a marca.
-- **Sem navegador no subagente:** quando o qa não consegue usar o Claude in Chrome nem o Playwright, o orquestrador
+- **Sem navegador no subagente:** quando o qa não consegue usar nenhum navegador (Claude in Chrome, `@Chrome` do Codex ou Playwright), o orquestrador
   executa esses critérios no navegador dele, seguindo o plano de testes, e grava a evidência. Um qa novo confere
   cada uma contra o plano. Você recebe uma tabela com os dois vereditos; o que diverge ou ficou em dúvida é debatido
   com você, que fecha cada ponto.
