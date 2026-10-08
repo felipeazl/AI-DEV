@@ -68,6 +68,21 @@ the test plan has manual steps) → Documentation (documentador) → Final revie
 - A `trivial` demand needs no plan. If one of these agents is disabled, do its step yourself (skill `to-spec`,
   the cheapest exploration available).
 
+**Knowledge** (when the Runtime lists a knowledge base) — what earlier demands learned, so nobody rediscovers it.
+Notes link to each other (`[[nome]]`); each fact lives in one note.
+- **Start** (Understand, every workflow): `kb show <system>` for each system the card touches and
+  `kb search <2–3 terms of the card>`. In `resumo-<id>.md`, a `## Conhecimento` section lists the notes that matter,
+  one line each on why. Every task names those note paths: agents read them instead of rediscovering, and the
+  explorer is asked only what the notes do not answer, plus to confirm in the code what the change depends on.
+- **During the demand**, keep `aprendizados-<id>.md` in the demand folder: one line per verified fact worth keeping
+  for the next demand — its source (`file:line`, command output, who decided and when) and the note it belongs to
+  (`[[nome]]`, or `nova: <tipo>/<nome>`). Add to it when an exploration report has a `## Base de conhecimento`
+  section, a premise is verified or refuted, an environment block is solved, the user or the business decides
+  something durable, a review finds a trap of the system, or a note proves wrong. Never a secret or personal data.
+  It is what survives a context compaction.
+- **End** (`DONE`, also for PR review and levantamento): tell the user that `/aidw:done` writes it into the knowledge
+  base — the demand's note and the notes it touched — and commits the context.
+
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "<ROOT>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
@@ -208,6 +223,7 @@ whenever you stop for the user.
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
+- Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
 - Session folders (add them to the session in the desktop app, *Workspace*): `<ROOT>/contexts/exemplo`
 - AiDW root: `<ROOT>`
 
@@ -279,10 +295,11 @@ Before every delegation, name in the task only the servers whose trigger clearly
 
 ## Systems
 
-Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning.
+Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning. *Knowledge*: the system's note in the knowledge base — what earlier demands learned (architecture, contracts, traps, decisions). Read it before exploring or changing that system and follow its `[[links]]` only as far as the task needs; when the code disagrees, trust the code and report the difference. A note describes how the code **is**, legacy deviations included — a fact, not a rule: which pattern new code follows is decided by the team's guidelines and the policies, never by a note alone.
 
 ### Sistema A (`sistema-a`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaA`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-a.md`
 - Stack: .NET 10
 - Depends on: `sistema-b`
 - Build: `dotnet build '<repo>' -v q`
@@ -290,6 +307,7 @@ Where each system lives and how to validate it. Use these commands as given; do 
 
 ### Sistema B (`sistema-b`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaB`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-b.md`
 - Stack: Vue
 - Build: `npm run build`
 - Test: `npm test`

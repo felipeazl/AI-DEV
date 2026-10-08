@@ -1048,6 +1048,135 @@ class ContextTest(unittest.TestCase):
             self.assertTrue(any("state_dir" in e for e in chk["errors"]), chk)
 
 
+class KnowledgeTest(unittest.TestCase):
+    """`aidw.py kb`: a base de conhecimento do contexto (notas ligadas por [[links]])."""
+
+    def test_base_de_conhecimento(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            kb = root / "contexts" / "exemplo" / "conhecimento"
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertEqual((code, chk["errors"], chk["notes"]), (0, [], 4), chk)
+
+            code, a = wt.aidw_json(root, "kb", "show", "sistema-a", "--json")
+            self.assertEqual(code, 0, a)
+            self.assertEqual([l["key"] for l in a["links"]], ["sistema-b", "contrato-ab", "solicitacao"])
+            self.assertEqual([b["key"] for b in a["backlinks"]], ["contrato-ab", "solicitacao"],
+                             "[[sistemas/sistema-a.md|A]] também conta como link para o sistema-a")
+            code, b = wt.aidw_json(root, "kb", "show", "sistema-b", "--json")
+            self.assertEqual(b["meta"]["sistemas"], ["sistema-b"], "lista em bloco, como o Obsidian grava")
+            code, alias = wt.aidw_json(root, "kb", "show", "Protocolo", "--json")
+            self.assertEqual(alias["key"], "solicitacao", "acha pelo alias, sem caixa")
+            code, miss = wt.aidw_json(root, "kb", "show", "nao-existe", "--json")
+            self.assertEqual(code, 1)
+
+            code, found = wt.aidw_json(root, "kb", "search", "solicitacao", "--json")
+            self.assertEqual(found["hits"][0]["key"], "solicitacao", "sem acento acha 'Solicitação'; o título pesa mais")
+            self.assertEqual({h["key"] for h in found["hits"]}, {"solicitacao", "sistema-a"})
+
+            code, idx = wt.aidw_json(root, "kb", "index", "--json")
+            index = (kb / "index.md").read_text(encoding="utf-8")
+            self.assertIn("## Sistemas (2)", index)
+            self.assertIn("| [[solicitacao\\|Solicitação]] | pedido, request |", index)
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertEqual(chk["errors"], [], "o índice gerado não quebra o check")
+
+            self.assertEqual(run_aidw(root, "apply").returncode, 0)
+            gen = (root / ".claude" / "agents" / "codificador.md").read_text(encoding="utf-8")
+            self.assertIn(f"- Knowledge: `{(kb / 'sistemas' / 'sistema-a.md').as_posix()}`", gen)
+            self.assertIn("kb show <system|note>", gen)
+            self.assertIn("a fact, not a rule", gen, "a nota descreve; o guia do time e as policies decidem")
+
+            longa = kb / "integracoes" / "contrato-ab.md"
+            longa.write_text(longa.read_text(encoding="utf-8").replace("atualizado: 2026-10-07", "atualizado: 2020-01-01")
+                             + "".join(f"- linha {i}\n" for i in range(160)), encoding="utf-8")
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertEqual(chk["errors"], [], "tamanho e idade são avisos, não erros")
+            avisos = "\n".join(chk["warnings"])
+            self.assertIn("contrato-ab.md: 1", avisos)
+            self.assertIn("divida em notas ligadas", avisos)
+            self.assertIn("conferida pela última vez em 2020-01-01", avisos)
+            self.assertNotIn("solicitacao.md: conferida", avisos)
+
+            (kb / "sistemas" / "sistema-b.md").unlink()
+            (kb / "integracoes" / "quebrada.md").write_text(
+                "---\ntipo: integracao\nresumo: x\nsistemas: [sistema-z]\natualizado: 2026-10-07\n---\n\n"
+                "Ver [[inexistente]]. Password=abc12345\n", encoding="utf-8")
+            (kb / "conceitos" / "sistema-a.md").write_text("---\ntipo: conceito\nresumo: x\n---\n", encoding="utf-8")
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertEqual(code, 1)
+            errors = "\n".join(chk["errors"])
+            for expected in ("nome repetido 'sistema-a'", "link quebrado [[sistema-b]]", "link quebrado [[inexistente]]",
+                             "falta `fontes`", "sistema-z", "parece segredo"):
+                self.assertIn(expected, errors)
+            self.assertTrue(any("sistema 'sistema-b' sem nota" in w for w in chk["warnings"]), chk["warnings"])
+            code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
+            self.assertEqual(code, 1)
+            self.assertTrue(any(e.startswith("base de conhecimento:") for e in ctx["errors"]), ctx)
+
+            code, made = wt.aidw_json(root, "context", "create", "novo", "--description", "Novo", "--json")
+            novo = root / "contexts" / "novo"
+            self.assertIn('[knowledge]\ndir = "conhecimento"', (novo / "context.toml").read_text(encoding="utf-8"))
+            self.assertIn("# Base de conhecimento — Novo", (novo / "conhecimento" / "README.md").read_text(encoding="utf-8"))
+            self.assertTrue((novo / "conhecimento" / "demandas").is_dir())
+            graph = json.loads((novo / ".obsidian" / "graph.json").read_text(encoding="utf-8"))
+            self.assertIn("path:conhecimento/sistemas", [g["query"] for g in graph["colorGroups"]],
+                          "o vault é a pasta do contexto: as cores apontam para dentro da base")
+
+
+    def test_vault_no_contexto_upstream_e_colheita(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            tmp = Path(tmp).resolve()
+            root = make_sandbox(tmp, "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            ctx_dir = root / "contexts" / "exemplo"
+            kb = ctx_dir / "conhecimento"
+            nota = kb / "sistemas" / "sistema-b.md"
+            nota.write_text(nota.read_text(encoding="utf-8") + "\nSegue a policy [[regra]].\n", encoding="utf-8")
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertEqual(chk["errors"], [], "[[regra]] acha policies/regra.md: o vault é a pasta do contexto")
+            code, b = wt.aidw_json(root, "kb", "show", "sistema-b", "--json")
+            self.assertTrue(b["links"][0]["outside"][0].endswith("policies/regra.md"), b["links"])
+
+            (kb / "conceitos" / "guia.md").write_text(
+                "---\ntipo: conceito\nresumo: x\natualizado: 2026-10-07\n---\n\n[[sistema-a]]\n", encoding="utf-8")
+            wt.aidw_json(root, "kb", "index", "--json")
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertTrue(any("'guia' também existe em shared/guia.md" in w for w in chk["warnings"]), chk)
+            self.assertFalse(any("index.md desatualizado" in w for w in chk["warnings"]))
+            (kb / "conceitos" / "guia.md").unlink()
+            code, chk = wt.aidw_json(root, "kb", "check", "--json")
+            self.assertTrue(any("index.md desatualizado" in w for w in chk["warnings"]), chk)
+            wt.aidw_json(root, "kb", "index", "--json")
+            self.assertIn("[[conhecimento/README|README]]", (kb / "index.md").read_text(encoding="utf-8"))
+
+            guide = tmp / "guideline"
+            guide.mkdir()
+            for args in (["init", "-q", "-b", "main"], ["config", "user.email", "t@t"], ["config", "user.name", "t"],
+                         ["commit", "-q", "--allow-empty", "-m", "primeiro"]):
+                subprocess.run(["git", "-C", str(guide), *args], check=True)
+            first = subprocess.run(["git", "-C", str(guide), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            toml = ctx_dir / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8") + f'\n[upstream.guia]\nrepo = "{guide.as_posix()}"\n'
+                            f'synced = "{first}"\ncovers = ["shared/guia.md"]\n', encoding="utf-8")
+            code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
+            self.assertFalse(any("upstream" in w for w in ctx["warnings"]), "em dia: sem aviso")
+            subprocess.run(["git", "-C", str(guide), "commit", "-q", "--allow-empty", "-m", "AutoMapper proibido"], check=True)
+            code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
+            self.assertTrue(any("upstream guia" in w and "AutoMapper proibido" in w for w in ctx["warnings"]), ctx)
+
+            wt.aidw_json(root, "demand", "set", "us-9", "--status", "done", "--json")
+            demand_dir = root / "contexts" / "exemplo" / "demandas" / "us-9"
+            (demand_dir / "aprendizados-us-9.md").write_text("- fato\n", encoding="utf-8")
+            code, st = wt.aidw_json(root, "status", "--json")
+            self.assertTrue(any("us-9" in a and "/aidw:done" in a for a in st["attention"]), st["attention"])
+            (kb / "demandas").mkdir(exist_ok=True)
+            (kb / "demandas" / "us-9.md").write_text("---\ntipo: demanda\nresumo: x\n---\n", encoding="utf-8")
+            code, st = wt.aidw_json(root, "status", "--json")
+            self.assertFalse(any("us-9" in a for a in st["attention"]), "colhida: não avisa mais")
+
+
 class PluginMigrationTest(unittest.TestCase):
     """O install troca um plugin antigo (ex.: `aidw-<contexto>`) pelo `aidw`, com o CLI simulado."""
 

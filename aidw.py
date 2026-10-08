@@ -51,6 +51,7 @@ ROUTING_FILE = ROOT / "orchestrator" / "config" / "routing.toml"
 ORCHESTRATOR_MD = ROOT / "orchestrator" / "ORCHESTRATOR.md"
 ORCH_REF_DIR = ROOT / "orchestrator" / "reference"   # lidas sob demanda pelo orquestrador
 POLICIES_DIR = ROOT / "orchestrator" / "policies"
+KB_README_TEMPLATE = ROOT / "orchestrator" / "templates" / "conhecimento-README.md"  # `context create`
 AGENTS_DIR = ROOT / "agents"
 SKILLS_DIR = ROOT / "skills"
 CONTEXTS_DIR = ROOT / "contexts"
@@ -933,6 +934,10 @@ def create_context(name: str, description: str, required_mcp: list[str], require
         f"required_env = {toml_value(required_env)}",
         f"required_mcp = {toml_value(required_mcp)}",
         "",
+        "# Base de conhecimento: notas ligadas por [[links]] (vault do Obsidian); convenções em conhecimento/README.md.",
+        "[knowledge]",
+        'dir = "conhecimento"',
+        "",
         "[env]",
         "",
         "# Worktree por demanda: branch `<prefixo><número>-<slug>` e junctions de dependências fora do git.",
@@ -968,7 +973,18 @@ def create_context(name: str, description: str, required_mcp: list[str], require
         "Repositório Git **separado e privado**; o AiDW ignora esta pasta.\n\n"
         "Depois de editar, rode `python aidw.py apply` na raiz do AiDW.\n",
         encoding="utf-8", newline="\n")
-    (d / ".gitignore").write_text(".env\n.env.*\ndemandas/\n", encoding="utf-8", newline="\n")
+    kb = d / "conhecimento"
+    for tipo_dir in KB_TYPES.values():
+        (kb / tipo_dir).mkdir(parents=True, exist_ok=True)
+        (kb / tipo_dir / ".gitkeep").touch()
+    (kb / "README.md").write_text(KB_README_TEMPLATE.read_text(encoding="utf-8").replace("{description}", description),
+                                  encoding="utf-8", newline="\n")
+    (d / ".obsidian").mkdir(exist_ok=True)  # o vault é a pasta do contexto: notas, policies e guias no mesmo grafo
+    for fname, data in obsidian_config("conhecimento", ["demandas/"]).items():
+        (d / ".obsidian" / fname).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                                             encoding="utf-8", newline="\n")
+    (d / ".gitignore").write_text(".env\n.env.*\n/demandas/\n/.obsidian/*\n!/.obsidian/graph.json\n!/.obsidian/app.json\n",
+                                  encoding="utf-8", newline="\n")
     (d / ".gitattributes").write_text("* text=auto eol=lf\n*.ps1 text eol=crlf\n", encoding="utf-8", newline="\n")
     if shutil.which("git"):
         run(["git", "init", "-b", "main"], cwd=d)
@@ -1052,6 +1068,9 @@ def runtime_lines(cfg: dict, ctx: dict | None, orchestrator: bool = False) -> li
         f"- Project dirs (search here for repositories): {dirs}",
         f"- State dir: `{state_dir(ctx).as_posix()}`",
         f"- Context: {ctx_label}",
+        *([f"- Knowledge base: `{kb_dir(ctx).as_posix()}` (index: `index.md`) — "
+           f"`{aidw_command(True)} kb show <system|note>` prints a note with its links and backlinks; "
+           f"`{aidw_command(True)} kb search <words>` finds notes"] if kb_dir(ctx) else []),
         *([] if not orchestrator or cfg["provider"]["name"] == "codex" else
           ["- Session folders (add them to the session in the desktop app, *Workspace*): "
            + ", ".join(f"`{d.as_posix()}`" for d in session_dirs(ctx))]),
@@ -1063,15 +1082,26 @@ def systems_section(ctx: dict | None, detailed: bool) -> str:
     systems = ctx.get("systems", {}) if ctx else {}
     if not systems:
         return ""
-    lines = ["## Systems", "",
-             "Where each system lives and how to validate it. Use these commands as given; do not "
+    base = kb_dir(ctx)
+    intro = ("Where each system lives and how to validate it. Use these commands as given; do not "
              "search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is "
              "none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, "
-             "events) in that repo before planning.", ""]
+             "events) in that repo before planning.")
+    if base:
+        intro += (" *Knowledge*: the system's note in the knowledge base — what earlier demands learned "
+                  "(architecture, contracts, traps, decisions). Read it before exploring or changing that system "
+                  "and follow its `[[links]]` only as far as the task needs; when the code disagrees, trust the code "
+                  "and report the difference. A note describes how the code **is**, legacy deviations included — a "
+                  "fact, not a rule: which pattern new code follows is decided by the team's guidelines and the "
+                  "policies, never by a note alone.")
+    lines = ["## Systems", "", intro, ""]
     for key, s in systems.items():
         lines.append(f"### {s.get('name', key)} (`{key}`)")
         if s.get("repos"):
             lines.append(f"- Repos: {', '.join(f'`{r}`' for r in s['repos'])}")
+        note = base / KB_TYPES["sistema"] / f"{key}.md" if base else None
+        if note and note.is_file():
+            lines.append(f"- Knowledge: `{note.as_posix()}`")
         if s.get("stack"):
             lines.append(f"- Stack: {s['stack']}")
         if s.get("depends_on"):
@@ -1567,7 +1597,7 @@ def delegate_allow_rules() -> list[str]:
     for tool in ("Bash", "PowerShell"):
         for py in ("python", "py"):
             for script in dict.fromkeys(["aidw.py", script_posix, script_win]):
-                rules += [f"{tool}({py} {script} {sub} *)" for sub in ("delegate", "record")]
+                rules += [f"{tool}({py} {script} {sub} *)" for sub in ("delegate", "record", "kb")]
                 rules += [f"{tool}({py} {script} {sub})" for sub in ("show", "doctor")]
     return rules
 
@@ -2242,7 +2272,8 @@ def global_managed_settings(cfg: dict, ctx: dict | None, servers: dict) -> dict:
     forms = {"Bash": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', gitbash])),
              "PowerShell": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', windows]))}
     aidw_rules = [f"{tool}(python {form} {sub})" for tool, tool_forms in forms.items() for form in tool_forms
-                  for sub in ("record *", "show", "doctor", "project *", "demand *", "worktree *", "context *")]
+                  for sub in ("record *", "show", "doctor", "project *", "demand *", "worktree *", "context *",
+                              "kb *")]
     return {
         "allow": list(dict.fromkeys([*perms.get("allow", []), *aidw_rules,
                                      *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
@@ -3631,6 +3662,12 @@ def status_data(cfg: dict, catalog: dict) -> dict:
         elif e.get("context") == (ctx["name"] if ctx else None):
             attention.append(f"worktree de {e['demand']} ({e['path']}) sem demand.json: "
                              f"`aidw.py demand set {e['demand']} --status active` ou `worktree remove`")
+    notes_dir = kb_dir(ctx) / KB_TYPES["demanda"] if kb_dir(ctx) else None
+    for d in demand_list(cfg) if notes_dir else []:
+        if (d["status"] == "done" and any(Path(d["folder"]).glob("aprendizados-*.md"))
+                and not (notes_dir / f"{d['id']}.md").is_file()):
+            attention.append(f"a demanda concluída {d['id']} tem aprendizados que não foram para a base de "
+                             "conhecimento: rode `/aidw:done` numa sessão dela")
     if claude["installed"] and ctx and claude.get("context") != ctx["name"]:
         attention.append(f"o plugin foi instalado com o contexto {claude.get('context')!r} e o ativo é {ctx['name']!r}: "
                          "`aidw.py install`")
@@ -3743,6 +3780,11 @@ def context_check(cfg: dict, catalog: dict, name: str) -> dict:
     rep = Report(quiet=True)
     build(test_cfg, catalog, rep)
     errors, warnings = list(rep.errors), list(rep.warnings)
+    ctx = load_context(test_cfg, Report(quiet=True))
+    kb = kb_check(ctx)
+    errors += [f"base de conhecimento: {e}" for e in kb["errors"]]
+    warnings += [f"base de conhecimento: {w}" for w in kb["warnings"]]
+    warnings += upstream_check(ctx)
     st = context_status(cfg, name)
     if not st.get("git"):
         warnings.append(f"{rel(CONTEXTS_DIR / name)} não é um repositório Git próprio (rode `git init` nele)")
@@ -3753,6 +3795,28 @@ def context_check(cfg: dict, catalog: dict, name: str) -> dict:
         if other != name and context_status(cfg, other).get("state_dir") == mine:
             errors.append(f"state_dir {mine!r} é o mesmo do contexto {other!r}: cada contexto precisa da sua pasta")
     return {"ok": not errors, "errors": errors, "warnings": warnings, **{k: st.get(k) for k in ("description", "systems")}}
+
+
+def upstream_check(ctx: dict | None) -> list[str]:
+    """[upstream.<nome>]: repositório de fora que o contexto resume (ex.: o guia de código do time). Avisa quando ele
+    tem commits depois do `synced` — as cópias no contexto podem ter ficado para trás."""
+    warnings = []
+    for name, up in (ctx or {}).get("upstream", {}).items():
+        repo, synced, covers = up.get("repo", ""), up.get("synced", ""), ", ".join(up.get("covers", [])) or "o contexto"
+        if not Path(repo).is_dir():
+            warnings.append(f"upstream {name}: {repo} não existe nesta máquina (não dá para conferir {covers})")
+            continue
+        if not synced:
+            warnings.append(f"upstream {name}: falta `synced` (o commit de {repo} que {covers} reflete)")
+            continue
+        log = git_proc(repo, "log", "--format=%h %ad %s", "--date=short", f"{synced}..HEAD")
+        if log.returncode:
+            warnings.append(f"upstream {name}: o commit `synced` {synced[:10]} não existe em {repo} (faça pull?)")
+        elif log.stdout.strip():
+            new = log.stdout.strip().splitlines()
+            warnings.append(f"upstream {name}: {repo} tem {len(new)} commit(s) depois de {synced[:10]} "
+                            f"(ex.: {'; '.join(new[:3])}) — reconfira {covers} e atualize `synced`")
+    return warnings
 
 
 def set_active_context(name: str) -> None:
@@ -3840,6 +3904,346 @@ def context_command(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
                   (f" — plugin {result['plugin']}; abra um chat novo" if result.get("plugin") else "") +
                   (" — abra um chat novo" if action == "use" and not result.get("plugin") else ""))
     return 0 if result["ok"] else 1
+
+
+# ---------------------------------------------------------------------------
+# Base de conhecimento do contexto ([knowledge] dir): notas ligadas por [[links]], um vault do Obsidian.
+# aidw.py kb show / search / check / index
+# ---------------------------------------------------------------------------
+
+# tipo → pasta onde a nota mora (a ordem é a do índice)
+KB_TYPES = {"sistema": "sistemas", "componente": "componentes", "integracao": "integracoes", "conceito": "conceitos",
+            "ambiente": "ambiente", "decisao": "decisoes", "demanda": "demandas"}
+KB_TITLES = {"sistema": "Sistemas", "componente": "Componentes", "integracao": "Integrações e contratos",
+             "conceito": "Conceitos do domínio", "ambiente": "Ambiente e operação", "decisao": "Decisões",
+             "demanda": "Demandas"}
+KB_SPECIAL = {"index", "readme"}                     # o índice gerado e as convenções: fora das regras de nota
+KB_NEEDS_SOURCE = set(KB_TYPES) - {"conceito", "demanda"}
+KB_NEEDS_KEYWORDS = {"sistema", "componente", "integracao", "ambiente"}  # notas técnicas: busca por identificador
+KB_MAX_LINES = 150       # acima disso, quem lê a nota paga caro: divida
+KB_STALE_DAYS = 180      # nota sem conferência há mais tempo: reconfira no código (demanda e decisão não envelhecem)
+WIKILINK_RE = re.compile(r"!?\[\[([^\]|#^]+)(?:[#^][^\]|]*)?(?:\|[^\]]*)?\]\]")
+KB_SECRET_RE = re.compile(
+    r"\b(password|pwd|senha|secret|client_secret|api_?key)\s*=\s*[^\s;'\"<>{}]{4,}"
+    r"|\bbearer\s+[A-Za-z0-9._~+/-]{20,}"
+    r"|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
+    r"|\b(data source|server)\s*=[^;\n]+;[^\n]*\b(user id|uid)\s*=", re.I)
+KB_CPF_RE = re.compile(r"\b(?!000\.000\.000)\d{3}\.\d{3}\.\d{3}-\d{2}\b")
+
+
+KB_COLORS = {"sistema": 5012441, "componente": 2860442, "integracao": 15241530, "conceito": 10185944,
+             "ambiente": 8034890, "decisao": 14242639, "demanda": 13214247}
+
+
+def obsidian_config(kb_rel: str, ignore: list[str]) -> dict[str, dict]:
+    """graph.json (uma cor por tipo de nota, mais policies e guias; índice e READMEs fora) e app.json (links curtos
+    `[[nome]]`, pastas excluídas) do vault na pasta do contexto."""
+    groups = [{"query": f"path:{kb_rel}/{folder}", "color": {"a": 1, "rgb": KB_COLORS[tipo]}}
+              for tipo, folder in KB_TYPES.items()]
+    groups += [{"query": "path:policies", "color": {"a": 1, "rgb": 12597547}},
+               {"query": "path:agents OR path:skills", "color": {"a": 1, "rgb": 7701657}},
+               {"query": "path:shared OR path:reference", "color": {"a": 1, "rgb": 11184810}}]
+    return {"graph.json": {"search": "-file:index -file:README", "showOrphans": True, "colorGroups": groups,
+                           "collapse-color-groups": False, "nodeSizeMultiplier": 1.2, "repelStrength": 12,
+                           "linkDistance": 220},
+            "app.json": {"newLinkFormat": "shortest", "useMarkdownLinks": False, "alwaysUpdateLinks": True,
+                         "userIgnoreFilters": ignore}}
+
+
+def kb_dir(ctx: dict | None) -> Path | None:
+    d = (ctx or {}).get("knowledge", {}).get("dir")
+    return ctx["dir"] / d if d else None
+
+
+def kb_frontmatter(text: str) -> tuple[dict, str]:
+    """Frontmatter YAML simples: `chave: valor`, listas `[a, b]` ou em bloco (`  - a`, como o Obsidian grava)."""
+    text = text.replace("\r\n", "\n")
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---", 3)
+    if end < 0:
+        return {}, text
+    meta: dict = {}
+    current = None
+    for line in text[4:end].splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.lstrip().startswith("- ") and current is not None:
+            if not isinstance(meta.get(current), list):
+                meta[current] = []
+            meta[current].append(line.lstrip()[2:].strip().strip("'\""))
+            continue
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        current, value = key.strip(), value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            meta[current] = [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
+        else:
+            meta[current] = value.strip("'\"") if value else []
+    return meta, text[end + 4:].lstrip("-").lstrip("\n")
+
+
+def kb_key(target: str) -> str:
+    """`[[sistemas/Hope.md]]` → `hope`: o Obsidian acha a nota pelo nome, em qualquer pasta."""
+    name = target.strip().replace("\\", "/").split("/")[-1]
+    return (name[:-3] if name.lower().endswith(".md") else name).strip().lower()
+
+
+def kb_norm(text: str) -> str:
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+
+
+def kb_load(base: Path) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """({chave: nota}, {chave repetida: [caminhos]}). Pastas que começam com `.` (o .obsidian) ficam de fora."""
+    notes: dict[str, dict] = {}
+    dups: dict[str, list[str]] = {}
+    for p in sorted(base.rglob("*.md")):
+        relp = p.relative_to(base)
+        if any(part.startswith(".") for part in relp.parts):
+            continue
+        meta, body = kb_frontmatter(p.read_text(encoding="utf-8"))
+        title = next((ln[2:].strip() for ln in body.splitlines() if ln.startswith("# ")), p.stem)
+        links = []
+        for m in WIKILINK_RE.finditer(body):
+            target = m.group(1)
+            if "." in target.split("/")[-1] and not target.lower().endswith(".md"):
+                continue  # anexo (imagem, pdf)
+            if kb_key(target) not in links:
+                links.append(kb_key(target))
+        note = {"key": p.stem.lower(), "path": p, "rel": relp.as_posix(), "meta": meta, "body": body,
+                "title": title, "links": links}
+        if note["key"] in notes:
+            dups.setdefault(note["key"], [notes[note["key"]]["rel"]]).append(note["rel"])
+        else:
+            notes[note["key"]] = note
+    for n in notes.values():
+        n["backlinks"] = sorted(k for k, o in notes.items() if n["key"] in o["links"] and k != n["key"])
+    return notes, dups
+
+
+def kb_list(meta: dict, key: str) -> list[str]:
+    v = meta.get(key, [])
+    return v if isinstance(v, list) else [v] if v else []
+
+
+def kb_check(ctx: dict | None) -> dict:
+    base = kb_dir(ctx)
+    if base is None:
+        return {"ok": True, "errors": [], "warnings": [], "notes": 0}
+    if not base.is_dir():
+        return {"ok": False, "errors": [f"[knowledge] dir aponta para {rel(base)}, que não existe"], "warnings": [],
+                "notes": 0}
+    notes, dups = kb_load(base)
+    errors = [f"nome repetido {k!r}: {', '.join(paths)} (o [[link]] fica ambíguo)" for k, paths in dups.items()]
+    warnings: list[str] = []
+    systems = set(ctx.get("systems", {}))
+    outside = kb_outside(ctx)
+    for key in sorted(set(notes) & set(outside) - KB_SPECIAL):
+        warnings.append(f"{notes[key]['rel']}: o nome {key!r} também existe em {', '.join(outside[key])} — com o vault "
+                        "na pasta do contexto o [[link]] fica ambíguo no Obsidian; renomeie a nota")
+    index = base / "index.md"
+    if index.is_file() and index.read_text(encoding="utf-8").replace("\r\n", "\n") != kb_index_text(ctx, notes):
+        warnings.append("index.md desatualizado: rode `aidw.py kb index`")
+    for n in notes.values():
+        if n["key"] in KB_SPECIAL:
+            continue
+        where, meta = n["rel"], n["meta"]
+        tipo = meta.get("tipo")
+        if tipo not in KB_TYPES:
+            errors.append(f"{where}: `tipo` {tipo!r} inválido (use: {', '.join(KB_TYPES)})")
+        elif n["rel"].split("/")[0] != KB_TYPES[tipo]:
+            warnings.append(f"{where}: tipo {tipo!r} mora em {KB_TYPES[tipo]}/")
+        if not meta.get("resumo"):
+            errors.append(f"{where}: falta `resumo` (uma linha)")
+        if tipo in KB_NEEDS_SOURCE and not kb_list(meta, "fontes"):
+            errors.append(f"{where}: falta `fontes` (de onde veio o fato)")
+        if tipo in KB_NEEDS_KEYWORDS and not kb_list(meta, "palavras-chave"):
+            warnings.append(f"{where}: falta `palavras-chave` (identificadores, chaves de config, rotas, tabelas e "
+                            "sinônimos que alguém digitaria para achar esta nota)")
+        stamp = str(meta.get("atualizado", ""))
+        try:
+            checked = date.fromisoformat(stamp) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamp) else None
+        except ValueError:
+            checked = None
+        if checked is None:
+            warnings.append(f"{where}: falta `atualizado: AAAA-MM-DD`")
+        elif tipo not in ("demanda", "decisao") and (date.today() - checked).days > KB_STALE_DAYS:
+            warnings.append(f"{where}: conferida pela última vez em {stamp} (mais de {KB_STALE_DAYS} dias) — "
+                            "reconfira no código e atualize a data")
+        size = len(n["path"].read_text(encoding="utf-8").splitlines())
+        if size > KB_MAX_LINES:
+            warnings.append(f"{where}: {size} linhas (máximo sugerido {KB_MAX_LINES}) — divida em notas ligadas "
+                            "(ex.: uma parte vira integração ou componente) para quem lê pagar menos")
+        unknown = [s for s in kb_list(meta, "sistemas") if s not in systems]
+        if unknown:
+            errors.append(f"{where}: `sistemas` cita {', '.join(unknown)}, que não está em [systems] do context.toml")
+        for target in n["links"]:
+            if target not in notes and target not in outside:
+                errors.append(f"{where}: link quebrado [[{target}]]")
+        if not [k for k in n["links"] if k not in KB_SPECIAL] and not [k for k in n["backlinks"] if k not in KB_SPECIAL]:
+            warnings.append(f"{where}: nota órfã (nenhum link de ou para outra nota)")
+        text = n["path"].read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), 1):
+            if KB_SECRET_RE.search(line):
+                errors.append(f"{where}:{i}: parece segredo (senha, token ou connection string) — tire da nota")
+            elif KB_CPF_RE.search(line):
+                warnings.append(f"{where}:{i}: parece CPF — dado pessoal não entra na base")
+    for key in sorted(systems):
+        if key not in notes or notes[key]["meta"].get("tipo") != "sistema":
+            warnings.append(f"sistema {key!r} sem nota (crie {KB_TYPES['sistema']}/{key}.md)")
+    return {"ok": not errors, "errors": errors, "warnings": warnings, "notes": len(notes)}
+
+
+def kb_outside(ctx: dict) -> dict[str, list[str]]:
+    """Os outros .md do contexto ({nome: [caminhos]}): com o vault do Obsidian na pasta do contexto, uma nota pode
+    citar uma policy ou um guia por [[nome]]. Ficam de fora a base, as pastas ocultas e o estado das demandas."""
+    base, state = kb_dir(ctx), state_dir(ctx)
+    found: dict[str, list[str]] = {}
+    for p in sorted(ctx["dir"].rglob("*.md")):
+        relp = p.relative_to(ctx["dir"])
+        if (any(part.startswith(".") for part in relp.parts) or base in p.parents
+                or state == p.parent or state in p.parents):
+            continue
+        found.setdefault(p.stem.lower(), []).append(relp.as_posix())
+    return found
+
+
+def kb_index(ctx: dict) -> Path:
+    path = kb_dir(ctx) / "index.md"
+    path.write_text(kb_index_text(ctx, kb_load(kb_dir(ctx))[0]), encoding="utf-8", newline="\n")
+    return path
+
+
+def kb_index_text(ctx: dict, notes: dict[str, dict]) -> str:
+    """index.md: as notas por tipo, com o resumo, e o glossário dos conceitos (campo `evitar`)."""
+    readme = (kb_dir(ctx) / "README").relative_to(ctx["dir"]).as_posix()  # caminho: há outros README no vault
+    lines = ["---", "tipo: indice", f"resumo: Mapa da base de conhecimento do contexto {ctx['name']}.", "---", "",
+             f"# Base de conhecimento — {ctx['description']}", "",
+             f"<!-- Gerado por `python aidw.py kb index`; não edite. Convenções: [[{readme}|README]]. -->", ""]
+    for tipo, title in KB_TITLES.items():
+        group = sorted((n for n in notes.values() if n["meta"].get("tipo") == tipo),
+                       key=lambda n: n["key"], reverse=(tipo == "demanda"))
+        if not group:
+            continue
+        lines += [f"## {title} ({len(group)})", ""]
+        lines += [f"- [[{n['key']}]] — {n['meta'].get('resumo', '')}".rstrip(" —") for n in group]
+        lines.append("")
+    glossary = sorted((n for n in notes.values() if n["meta"].get("tipo") == "conceito"), key=lambda n: n["key"])
+    if any(kb_list(n["meta"], "evitar") for n in glossary):
+        lines += ["## Glossário", "", "| Termo | Não use |", "|---|---|"]
+        lines += [f"| [[{n['key']}\\|{n['title']}]] | {', '.join(kb_list(n['meta'], 'evitar')) or '—'} |"
+                  for n in glossary]
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def kb_find(notes: dict[str, dict], name: str) -> dict | None:
+    """Pelo nome do arquivo, chave de sistema, caminho, alias ou título."""
+    key = kb_key(name)
+    if key in notes:
+        return notes[key]
+    wanted = kb_norm(name.strip())
+    for n in notes.values():
+        if wanted in {kb_norm(a) for a in kb_list(n["meta"], "aliases")} | {kb_norm(n["title"])}:
+            return n
+    return None
+
+
+def kb_brief(n: dict) -> dict:
+    return {"key": n["key"], "path": n["path"].as_posix(), "tipo": n["meta"].get("tipo"),
+            "resumo": n["meta"].get("resumo", "")}
+
+
+def kb_search(notes: dict[str, dict], term: str, limit: int = 15) -> list[dict]:
+    """Notas que têm todas as palavras (sem acento, sem caixa); título, alias e nome valem mais."""
+    words = [kb_norm(w) for w in term.split() if w.strip()]
+    hits = []
+    for n in notes.values():
+        if n["key"] == "index":
+            continue
+        raw = n["path"].read_text(encoding="utf-8").replace("\r\n", "\n")
+        text = kb_norm(raw)
+        if not words or not all(w in text for w in words):
+            continue
+        head = kb_norm(" ".join([n["key"], n["title"], *kb_list(n["meta"], "aliases"),
+                                 *kb_list(n["meta"], "palavras-chave")]))
+        score = sum(text.count(w) for w in words) + 20 * sum(w in head for w in words)
+        lines = [(i, ln.strip()) for i, ln in enumerate(raw.splitlines(), 1)
+                 if any(w in kb_norm(ln) for w in words) and not ln.startswith("---")]
+        hits.append({**kb_brief(n), "score": score,
+                     "lines": [{"line": i, "text": t[:200]} for i, t in lines[:4]]})
+    return sorted(hits, key=lambda h: -h["score"])[:limit]
+
+
+def kb_command(cfg: dict, args: argparse.Namespace) -> int:
+    ctx = load_context(cfg, Report(quiet=True))
+    base = kb_dir(ctx)
+    action = args.kb_action
+
+    def out(result: dict, text: list[str]) -> int:
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("\n".join(text))
+        return 0 if result.get("ok", True) else 1
+
+    if base is None or not base.is_dir():
+        why = ("sem contexto ativo" if not ctx else
+               f"o contexto {ctx['name']} não tem [knowledge] dir" if base is None else f"{rel(base)} não existe")
+        return out({"ok": False, "errors": [f"base de conhecimento indisponível: {why}"]},
+                   [f"[erro]  base de conhecimento indisponível: {why}"])
+    if action == "check":
+        r = kb_check(ctx)
+        return out(r, [*(f"[erro]  {e}" for e in r["errors"]), *(f"[aviso] {w}" for w in r["warnings"]),
+                       f"[{'ok' if r['ok'] else 'erro'}]    {r['notes']} notas em {rel(base)}"])
+    if action == "index":
+        path = kb_index(ctx)
+        return out({"ok": True, "path": path.as_posix()}, [f"[ok]    {rel(path)} regenerado"])
+    notes, _ = kb_load(base)
+    if action == "search":
+        term = " ".join(args.term)
+        hits = kb_search(notes, term, args.limit)
+        text = [f"{len(hits)} nota(s) para {term!r} em {rel(base)}"]
+        for h in hits:
+            text.append(f"\n[[{h['key']}]] ({h['tipo']}) — {h['resumo']}\n  {h['path']}")
+            text += [f"  {ln['line']:>4}: {ln['text']}" for ln in h["lines"]]
+        return out({"ok": True, "term": term, "hits": hits}, text)
+    note = kb_find(notes, args.name)
+    if note is None:
+        hits = kb_search(notes, args.name, 5)
+        sug = ", ".join(f"[[{h['key']}]]" for h in hits) or "nenhuma"
+        return out({"ok": False, "errors": [f"nota {args.name!r} não encontrada"], "suggestions": hits},
+                   [f"[erro]  nota {args.name!r} não encontrada. Parecidas: {sug}"])
+    outside = kb_outside(ctx)
+
+    def target(k: str) -> dict:
+        if k in notes:
+            return kb_brief(notes[k])
+        if k in outside:  # policy, guia, agente: arquivo do contexto fora da base
+            return {"key": k, "outside": [(ctx["dir"] / p).as_posix() for p in outside[k]]}
+        return {"key": k, "missing": True}
+
+    links = [target(k) for k in note["links"]]
+    back = [kb_brief(notes[k]) for k in note["backlinks"] if k not in KB_SPECIAL]
+    result = {"ok": True, **kb_brief(note), "meta": note["meta"], "links": links, "backlinks": back}
+    if not args.json:
+        def item(b: dict) -> str:
+            if b.get("missing"):
+                return f"- [[{b['key']}]] — QUEBRADO"
+            if b.get("outside"):
+                return f"- [[{b['key']}]] (contexto, fora da base) — `{b['outside'][0]}`"
+            resumo = b["resumo"] if len(b["resumo"]) <= 110 else b["resumo"][:107].rstrip() + "…"
+            return f"- [[{b['key']}]] ({b['tipo'] or '—'}) {resumo} — `{notes[b['key']]['rel']}`"
+        body = note["path"].read_text(encoding="utf-8").replace("\r\n", "\n").rstrip()
+        text = [f"<!-- {note['path'].as_posix()} (caminhos abaixo relativos a {base.as_posix()}) -->", body, "",
+                f"## Links desta nota ({len(links)})"]
+        text += [item(l) for l in links] or ["- nenhum"]
+        text += ["", f"## Citada por ({len(back)})"]
+        text += [item(b) for b in back] or ["- ninguém"]
+        print("\n".join(text))
+        return 0
+    return out(result, [])
 
 
 # ---------------------------------------------------------------------------
@@ -4805,6 +5209,17 @@ def main() -> int:
     d_list.add_argument("--active", action="store_true", help="só as não concluídas")
     for d in dm.choices.values():
         d.add_argument("--json", action="store_true", help="saída em JSON")
+    p_kb = sub.add_parser("kb", help="base de conhecimento do contexto: show, search, check, index")
+    kb = p_kb.add_subparsers(dest="kb_action", required=True)
+    k_show = kb.add_parser("show", help="uma nota com os links dela e quem a cita")
+    k_show.add_argument("name", help="nome da nota, chave do sistema, alias ou título")
+    k_search = kb.add_parser("search", help="notas com todas as palavras (sem acento nem caixa)")
+    k_search.add_argument("term", nargs="+")
+    k_search.add_argument("--limit", type=int, default=15)
+    kb.add_parser("check", help="links quebrados, nomes repetidos, frontmatter, órfãs e segredos")
+    kb.add_parser("index", help="regenera o index.md (notas por tipo e glossário)")
+    for k in kb.choices.values():
+        k.add_argument("--json", action="store_true", help="saída em JSON")
     p_proj = sub.add_parser("project", help="projeto da pasta: repositório, sistema, contexto e demanda")
     proj = p_proj.add_subparsers(dest="proj_action", required=True)
     p_detect = proj.add_parser("detect", help="detecta o projeto a partir de uma pasta")
@@ -4882,6 +5297,8 @@ def main() -> int:
         return demand_command(cfg, args)
     if command == "context":
         return context_command(cfg, catalog, args)
+    if command == "kb":
+        return kb_command(cfg, args)
     if command == "project":
         result = project_detect(cfg, args.path)
         if args.json:

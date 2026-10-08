@@ -61,6 +61,7 @@ describes the code that was actually shipped.
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
+- Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
 - AiDW root: `<ROOT>`
 
 ## MCP tools
@@ -74,10 +75,11 @@ Use a server when the task names it. Use one the task does not name only when it
 
 ## Systems
 
-Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning.
+Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning. *Knowledge*: the system's note in the knowledge base — what earlier demands learned (architecture, contracts, traps, decisions). Read it before exploring or changing that system and follow its `[[links]]` only as far as the task needs; when the code disagrees, trust the code and report the difference. A note describes how the code **is**, legacy deviations included — a fact, not a rule: which pattern new code follows is decided by the team's guidelines and the policies, never by a note alone.
 
 ### Sistema A (`sistema-a`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaA`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-a.md`
 - Stack: .NET 10
 - Depends on: `sistema-b`
 - Build: `dotnet build '<repo>' -v q`
@@ -87,6 +89,7 @@ Where each system lives and how to validate it. Use these commands as given; do 
 
 ### Sistema B (`sistema-b`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaB`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-b.md`
 - Stack: Vue
 - Build: `npm run build`
 - Test: `npm test`
