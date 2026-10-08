@@ -78,7 +78,12 @@ análise, a **recomendação** e o porquê. Pergunte mais sempre que a análise 
    - `agents/orchestrator.md`: o fluxo do time (passos, quando parar para o usuário, o que vai no card) — sem
      repetir o núcleo do AiDW.
    - `agents/<papel>.md` e `shared/guia-*.md`: só o que cada papel usa sempre; o resto em `reference/` com `when`.
-3. `python "{{root}}/aidw.py" context check <nome>` — corrija até não haver erro.
+   - `conhecimento/` (base de conhecimento, já criada com o `README.md` das convenções): uma nota por sistema em
+     `sistemas/<chave>.md` com o que a análise achou de como ele funciona, onde fica cada coisa, documentação do
+     repositório (citada, não copiada) e as integrações (`integracoes/`, uma por contrato entre sistemas, ligada aos
+     dois lados). Termos do domínio que apareceram nas respostas viram `conceitos/`. Cada fato numa nota só; build e
+     teste ficam no `context.toml`. Depois, `python "{{root}}/aidw.py" kb index`.
+3. `python "{{root}}/aidw.py" context check <nome>` — corrija até não haver erro (ele também roda o `kb check`).
 
 ## 5. Entregar
 

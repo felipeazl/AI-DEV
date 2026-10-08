@@ -124,7 +124,8 @@ Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na ret
 | `/aidw:levantamento <card ou texto>` | `$aidw-levantamento` | Levantamento antes de implementar: valida cada ponto do card no código, mapeia o fluxo e estima esforço (horas), story points e complexidade, com as dúvidas |
 | `/aidw:sair` | `$aidw-sair` | Grava onde parou e devolve o chat ao modo normal |
 | `/aidw:diff [repo\|sair]` | — | Leva o painel de diff para o próximo repositório da demanda (em círculo); `sair` volta para a pasta da demanda |
-| `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (build, armadilhas, convenções) e faz commit e push do contexto |
+| `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base de conhecimento que ela tocou; build e ambiente no `context.toml`) e faz commit e push do contexto |
+| `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
 | `/aidw:contexto-listar` · `contexto-usar <nome>` · `contexto-criar` | `$aidw-contexto-*` | Administram os contextos (seção 6) |
 
 ### Conversar com o orquestrador
@@ -259,11 +260,14 @@ deixa as entregas melhores sem mudar o nome de nada:
 - **Políticas:** aprovações, ambientes, segredos, escopo do time.
 - **Permissões, MCPs, worktree:** o que roda sem perguntar, o que sempre pede OK, servidores obrigatórios, prefixo de branch.
 - **Skills e ferramentas:** procedimentos e validadores do time (ex.: SQL só leitura dentro de `ROLLBACK`).
+- **Base de conhecimento:** o que as demandas aprenderam sobre cada sistema, em notas ligadas por `[[links]]` (um vault
+  do Obsidian), sem fato repetido; os agentes leem a nota do sistema antes do código e o `/aidw:done` a atualiza.
 
 ```text
 /aidw:contexto-criar          ← analisa os repositórios, faz no mínimo 10 perguntas e gera o contexto
 /aidw:contexto-usar <nome>    ← valida, ativa e regenera o plugin (abra um chat novo)
 /aidw:done                    ← no fim de cada tarefa, o contexto aprende o que ela descobriu
+/aidw:conhecimento <tema>     ← o que a base já sabe sobre um sistema, contrato ou conceito
 ```
 
 Sem contexto, o AiDW funciona com as regras genéricas. Estrutura, `context.toml` campo a campo e boas práticas:

@@ -8,7 +8,8 @@
 | `/aidw:levantamento <card ou texto>` | `$aidw-levantamento` | Levantamento antes de implementar (workflow `levantamento`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `levantamento-<id>.md` com horas, story points, complexidade e dúvidas ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
 | `/aidw:sair` | `$aidw-sair` | Grava a etapa e o próximo passo (`paused`) e volta o chat ao normal |
 | `/aidw:diff [repo\|sair]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demandas-e-worktrees.md](demandas-e-worktrees.md#ver-o-diff-de-cada-repositório)) |
-| `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou, valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
+| `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base de conhecimento que ela tocou; build e ambiente no `context.toml`), valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
+| `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | Consulta a base de conhecimento do contexto: a nota de um sistema, contrato, conceito ou demanda, com os links e quem a cita; corrige uma nota quando você pede ([contextos.md](contextos.md#base-de-conhecimento)) |
 | `/aidw:contexto-listar` | `$aidw-contexto-listar` | Contextos, qual está ativo, repositório, sistemas, situação do plugin |
 | `/aidw:contexto-usar <nome>` | `$aidw-contexto-usar` | Valida e ativa um contexto e regenera o ambiente |
 | `/aidw:contexto-criar` | `$aidw-contexto-criar` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
@@ -25,7 +26,7 @@
 | `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugin `aidw` e regras globais; `--mcp` registra os MCPs do catálogo. Codex: skills `aidw-*` em `~/.agents/skills`, agentes `aidw-*` em `~/.codex/agents`, `aidw.rules`, hooks (merge) e o perfil `aidw` |
 | `uninstall [--provider claude\|codex\|all] [--dry-run]` | Remove só o que o `install` acrescentou |
 | `doctor` | Núcleo, CLIs e login, contexto, variáveis, MCPs, pastas, instalação e ambiente gerado; termina com **PRONTO** ou **NÃO PRONTO** |
-| `status [--json]` | Visão rápida, sem chamar os CLIs: contexto, instalação, demandas ativas com etapa e worktree, e o que pede atenção |
+| `status [--json]` | Visão rápida, sem chamar os CLIs: contexto, instalação, demandas ativas com etapa e worktree, e o que pede atenção (inclusive demanda concluída com aprendizados que não foram para a base de conhecimento) |
 | `show` | Nome, papel, modelo e effort de cada agente |
 
 ### Dia a dia
@@ -45,9 +46,18 @@
 | Comando | O que faz |
 |---|---|
 | `context list` | Lista |
-| `context check <nome>` | Valida (build completo com o contexto, repositório próprio, pasta de estado exclusiva) |
+| `context check <nome>` | Valida (build completo com o contexto, repositório próprio, pasta de estado exclusiva, base de conhecimento) |
 | `context use [<nome>]` | Ativa (troca só a linha `active`) |
 | `context create <nome> --description d` | Cria a estrutura com git próprio |
+
+### Base de conhecimento
+
+| Comando | O que faz |
+|---|---|
+| `kb show <sistema\|nota> [--json]` | Uma nota, os links dela e quem a cita (aceita a chave do sistema, o nome, um alias ou o título) |
+| `kb search <palavras> [--limit n] [--json]` | Notas com todas as palavras, sem acento nem caixa; título e alias pesam mais |
+| `kb check [--json]` | Links quebrados, nomes repetidos, frontmatter, `sistemas` inexistentes, sistema sem nota, órfãs e texto com cara de segredo; avisa nota com mais de 150 linhas e sem conferência há mais de 6 meses (também roda no `context check`) |
+| `kb index` | Regenera o `index.md`: as notas por tipo e o glossário dos conceitos |
 
 ### Usados pelo orquestrador
 

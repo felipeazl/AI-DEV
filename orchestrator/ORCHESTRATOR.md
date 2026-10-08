@@ -64,6 +64,21 @@ the test plan has manual steps) → Documentation ({{agent:documenter}}) → Fin
 - A `trivial` demand needs no plan. If one of these agents is disabled, do its step yourself (skill `to-spec`,
   the cheapest exploration available).
 
+**Knowledge** (when the Runtime lists a knowledge base) — what earlier demands learned, so nobody rediscovers it.
+Notes link to each other (`[[nome]]`); each fact lives in one note.
+- **Start** (Understand, every workflow): `kb show <system>` for each system the card touches and
+  `kb search <2–3 terms of the card>`. In `resumo-<id>.md`, a `## Conhecimento` section lists the notes that matter,
+  one line each on why. Every task names those note paths: agents read them instead of rediscovering, and the
+  explorer is asked only what the notes do not answer, plus to confirm in the code what the change depends on.
+- **During the demand**, keep `aprendizados-<id>.md` in the demand folder: one line per verified fact worth keeping
+  for the next demand — its source (`file:line`, command output, who decided and when) and the note it belongs to
+  (`[[nome]]`, or `nova: <tipo>/<nome>`). Add to it when an exploration report has a `## Base de conhecimento`
+  section, a premise is verified or refuted, an environment block is solved, the user or the business decides
+  something durable, a review finds a trap of the system, or a note proves wrong. Never a secret or personal data.
+  It is what survives a context compaction.
+- **End** (`DONE`, also for PR review and levantamento): tell the user that `/aidw:done` writes it into the knowledge
+  base — the demand's note and the notes it touched — and commits the context.
+
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
