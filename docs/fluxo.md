@@ -243,6 +243,7 @@ Tudo da demanda fica na pasta `<pasta de estado>/<tipo>-<id>/` (a pasta de estad
 | `tarefa-<agente>-<assunto>.md` | cada delegação |
 | `diff-<ticket>-r<N>.patch` · `review-<id>-r<N>.md` · `triagem-<id>-r<N>.md` | cada rodada do ciclo |
 | `checklist-revisao.md` · `revisao-final.md` | preparação e pacote final |
+| `aprendizados-<id>.md` | o que a demanda descobriu e vale para as próximas, com a fonte e a nota da base onde vai morar (o `/aidw:done` grava na base) |
 | `metricas.md` | uma linha por delegação: agente, nível, modelo, effort, tokens, ferramentas, duração |
 
 ### Métricas
@@ -259,6 +260,20 @@ terminal. Depois de uma compactação da conversa, um hook lembra o orquestrador
 
 ### Concluir
 
-`/aidw:done` fecha a tarefa: grava no contexto só o que foi **verificado** e vale para as próximas demandas (comando de
-build que funcionou, bloqueio de ambiente e como destravar, armadilha do código, convenção), valida, reinstala e faz
-commit e push **só do repositório do contexto**. É assim que o contexto melhora a cada demanda.
+`/aidw:done` fecha a tarefa: grava no contexto só o que foi **verificado** e vale para as próximas demandas, valida,
+reinstala e faz commit e push **só do repositório do contexto**. Com base de conhecimento, ele cria a nota da demanda
+(desenvolvimento, revisão de PR ou levantamento) e atualiza as notas que ela tocou — sistema, contrato, conceito,
+decisão — ligando em vez de copiar; build e bloqueio de ambiente continuam no `context.toml`. É assim que o contexto
+melhora a cada demanda.
+
+## A base de conhecimento no fluxo
+
+Quando o contexto tem uma base de conhecimento ([contextos.md](contextos.md#base-de-conhecimento)):
+
+- **No começo**, o orquestrador roda `kb show` dos sistemas do card e `kb search` dos termos dele, e lista no
+  `resumo-<id>.md` as notas que importam. Toda tarefa leva esses caminhos: os agentes leem as notas antes do código e
+  o explorador só é perguntado sobre o que elas não respondem.
+- **Durante**, o explorador devolve uma seção *Base de conhecimento* (o que uma nota tinha de errado, fatos novos com
+  `arquivo:linha`), e o orquestrador anota em `aprendizados-<id>.md` tudo o que foi verificado e vale para a próxima:
+  premissas, desbloqueios de ambiente, decisões, armadilhas que a revisão achou.
+- **No fim**, `/aidw:done` leva isso para a base e faz o commit do contexto.

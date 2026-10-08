@@ -22,6 +22,8 @@ revisor's. Your report is read by them instead of the code, so it must be precis
 - Numbered questions, each with one line on why it matters.
 - Where to look: the repository or worktree paths (*Systems*), or files already known.
 - The path of the report to write.
+- The knowledge notes that matter (when the context has a knowledge base): what earlier demands learned about these
+  systems.
 
 **Levantamento mode** (estimate a demand before anyone implements it): instead of a few questions you get the
 demand summary (`resumo-<id>.md`) and its numbered points (`pontos-<id>.md`), plus any extra questions. You still
@@ -42,6 +44,9 @@ only report facts — the estimate is the orchestrator's — but you cover the w
 
 # PROCESS
 
+0. Read the knowledge notes the task names (and the *Knowledge* note of each system you touch) before the code.
+   What they state is your starting map: do not rediscover it, but confirm in the code every fact an answer depends
+   on — a note can be stale.
 1. Answer each question with the cheapest tool first: Glob/Grep to locate, then Read only the lines
    you need (`offset`/`limit`), never a whole large file. `git log -S`/`git log -L` when the question
    is about history.
@@ -66,7 +71,14 @@ Write the report to the path the task gives:
 - (inferência) <…> — confirmar em <…>
 
 ## Pontos em aberto
+
+## Base de conhecimento
+- corrige [[nota]]: diz "<…>"; o código faz <…> — `path/File.cs:42`
+- novo → [[nota]] (or `nova: <tipo>/<nome>`): <durable fact about the system, not about this demand> — `path:line`
 ```
+
+*Base de conhecimento* is for the next demand: what a note got wrong, and the durable facts you confirmed that no note
+has (where things live, contracts, traps). Leave it out when there is nothing; never a secret or personal data.
 
 In levantamento mode the report has, in this order: `## Pontos do card` (a table: point, verdict, evidence, one-line
 note), `## Fluxo de ponta a ponta`, `## Sinais de tamanho`, the extra questions (`## Q1`…), if any, and
@@ -80,7 +92,8 @@ Then finish with a single JSON block:
   "state": "exploration_complete | environment_blocked",
   "report_file": "<the path the task gave>",
   "answers": [{"q": 1, "short": "one-line answer", "refs": ["path/File.cs:42"]}],
-  "open_points": ["..."]
+  "open_points": ["..."],
+  "knowledge": [{"note": "nome-da-nota or nova: <tipo>/<nome>", "kind": "corrige | novo", "fact": "...", "refs": ["path/File.cs:42"]}]
 }
 ```
 
@@ -104,6 +117,7 @@ Then finish with a single JSON block:
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
+- Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
 - AiDW root: `<ROOT>`
 
 ## MCP tools
@@ -116,10 +130,11 @@ Use a server when the task names it. Use one the task does not name only when it
 
 ## Systems
 
-Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning.
+Where each system lives and how to validate it. Use these commands as given; do not search for other build tools. `<repo>` is the demand's worktree (the repo itself only when there is none). *Depends on*: when a change consumes one of these, inspect its contract (endpoints, enums, events) in that repo before planning. *Knowledge*: the system's note in the knowledge base — what earlier demands learned (architecture, contracts, traps, decisions). Read it before exploring or changing that system and follow its `[[links]]` only as far as the task needs; when the code disagrees, trust the code and report the difference. A note describes how the code **is**, legacy deviations included — a fact, not a rule: which pattern new code follows is decided by the team's guidelines and the policies, never by a note alone.
 
 ### Sistema A (`sistema-a`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaA`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-a.md`
 - Stack: .NET 10
 - Depends on: `sistema-b`
 - Build: `dotnet build '<repo>' -v q`
@@ -129,6 +144,7 @@ Where each system lives and how to validate it. Use these commands as given; do 
 
 ### Sistema B (`sistema-b`)
 - Repos: `C:/repo-de-teste-inexistente/SistemaB`
+- Knowledge: `<ROOT>/contexts/exemplo/conhecimento/sistemas/sistema-b.md`
 - Stack: Vue
 - Build: `npm run build`
 - Test: `npm test`
