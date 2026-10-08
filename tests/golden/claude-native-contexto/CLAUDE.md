@@ -256,6 +256,7 @@ python aidw.py record --agent <name> [--effort <effort>] --level <level> --label
 ```
 
   `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.
+- With the `aidw-demanda` mod loaded, the record is automatic: the Agent result (or, for a background agent, a note when it finishes) carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run `record` for it; run it yourself only when that line is missing or says the mod could not record.
 - Code exploration: the `explorador` agent (its column in *Effort per task*), not this chat and not a generic explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder (the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the next step needs; one exploration per topic, reused, not repeated.
 
 ## Effort per task

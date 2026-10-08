@@ -96,7 +96,7 @@ para o diff, use o `/aidw:diff`.
 ```powershell
 python aidw.py open --demand 1234                    # abre o Claude na demanda já chamando /aidw:orquestrar
 python aidw.py open --demand 1234 --repo Front       # num repositório específico; os outros entram por --add-dir
-python aidw.py open --provider codex --demand 1234   # o Codex no worktree, com o perfil aidw
+python aidw.py open --provider codex --demand 1234   # o Codex no worktree, com multi_agent_v2 e a pasta do AiDW
 python aidw.py open --demand 1234 --no-orchestrate   # só abre, sem chamar o orquestrador
 ```
 
