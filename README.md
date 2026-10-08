@@ -1,6 +1,7 @@
 # AiDW
 
-**AiDW** (AI Development Workflow) é uma camada de **desenvolvimento agêntico** para o Claude Code e o Codex.
+**AiDW** (AI Development Workflow) é um plugin de **desenvolvimento agêntico** para o **Claude Code**: um workflow, um time
+de agentes e um conjunto de skills.
 Você conversa com **um único chat**, o **orquestrador**, como conversaria com um tech lead. Ele entende o pedido,
 manda um agente barato ler o código, encomenda o plano, divide em tickets, delega cada ticket, revisa, corrige e só
 te chama quando importa: uma dúvida real, uma ação de risco (commit, push, SQL de escrita) e **uma revisão final**
@@ -19,6 +20,11 @@ com tudo junto.
             ▼
       documentador ─► revisão final (você) ─► pronto
 ```
+
+> **Feito para o Claude Code.** É nele que o AiDW roda inteiro e onde nasce toda funcionalidade nova. **No Codex, o
+> AiDW é só agentes e skills:** o `install --provider codex` copia os agentes e as skills `aidw-*` e nada mais, sem
+> regras de permissão, hooks (guard), perfil, MCP por agente nem mods. O fluxo da demanda roda, mas as proteções ficam
+> com o seu Codex. Detalhes em [docs/claude-e-codex.md](docs/claude-e-codex.md).
 
 ## Por que usar
 
@@ -56,7 +62,8 @@ com tudo junto.
 | **Python 3.11+** | o `aidw.py` (só biblioteca padrão, nada de `pip install`) | `winget install Python.Python.3.13` (o `setup.ps1` oferece) |
 | **Git** | repositórios, worktrees e o próprio AiDW | `winget install Git.Git` |
 | **Node.js LTS** | servidores MCP locais via `npx` | `winget install OpenJS.NodeJS.LTS` |
-| **Claude Code** e/ou **Codex CLI** | rodam o orquestrador e os agentes | `irm https://claude.ai/install.ps1 \| iex` · `npm i -g @openai/codex` |
+| **Claude Code** | roda o orquestrador e os agentes | `irm https://claude.ai/install.ps1 \| iex` |
+| **Codex CLI** (opcional) | uso limitado: agentes e skills | `npm i -g @openai/codex` |
 
 Não é preciso API key: tudo roda com o login do CLI (assinatura do Claude ou conta do ChatGPT).
 
@@ -74,8 +81,8 @@ python aidw.py install                            # Claude: o AiDW passa a exist
 | Etapa | O que faz |
 |---|---|
 | `setup` | Garante o Python, roda o **wizard** (provedor, pastas dos projetos, raiz dos worktrees, contexto, MCPs, nome e modelo dos agentes) e grava o `aidw.config.toml`. Confere Git, Node, os CLIs e o login, cria as pastas que faltam, roda o `apply`, oferece registrar os MCPs que o contexto exige e termina com o `doctor`. |
-| `install` | Gera o plugin **`aidw`** e o instala no Claude Code (CLI e app desktop). Acrescenta ao `~/.claude/settings.json` as regras de segurança do AiDW, só os itens dele. Se o Codex já foi instalado, atualiza ele junto. |
-| `install --provider codex` | O mesmo para o Codex: skills `aidw-*`, agentes `aidw-*`, regras, hooks e o perfil `aidw`. Depois rode `codex --profile aidw` num terminal uma vez e escolha **Trust all and continue** para aprovar os hooks (de novo sempre que o `doctor` disser que eles mudaram). |
+| `install` | Gera os plugins **`aidw`** (agentes, skills, comandos e hooks) e **`aidw-mods`** (os [mods](docs/mods.md)) e os instala no Claude Code (CLI e app desktop). Acrescenta ao `~/.claude/settings.json` as regras de segurança do AiDW, só os itens dele. Se o Codex já foi instalado, atualiza ele junto. |
+| `install --provider codex` | Opcional. **Só** os agentes `aidw-*` (`~/.codex/agents`) e as skills `aidw-*` (`~/.agents/skills`): sem regras, hooks, perfil nem mods. O orquestrador precisa de `multi_agent_v2` (o `aidw open --provider codex` já liga). |
 | `doctor` | Verifica núcleo, CLIs, login, contexto, variáveis de ambiente, MCPs, pastas e instalação. Não altera nada. |
 
 Depois do `install`, **abra um chat novo**. O comando `/aidw:orquestrar` aparece em qualquer pasta.
@@ -127,6 +134,19 @@ Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na ret
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base de conhecimento que ela tocou; build e ambiente no `context.toml`) e faz commit e push do contexto |
 | `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
 | `/aidw:contexto-listar` · `contexto-usar <nome>` · `contexto-criar` | `$aidw-contexto-*` | Administram os contextos (seção 6) |
+| `/aidw-faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
+
+### Mods (só Claude Code)
+
+No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
+
+- **Métricas sozinhas:** cada delegação vira uma linha no `metricas.md` quando o agente termina, com os números medidos.
+  O orquestrador não precisa mais rodar o `record`.
+- **Faixa da demanda acima do prompt:** `AiDW us-131190 · CODER_FIX · revisão r4/3 ⚠ · padrao · 12 delegações ·
+  1,2M tokens · ▶ codificador (rota)`, com aviso quando a rodada passa do `max_retries`.
+
+Eles ligam com `/aidw:orquestrar` ou `/aidw:levantamento` e desligam com `/aidw:sair` ou `/aidw:done`. Detalhes e como
+escrever um mod: [docs/mods.md](docs/mods.md).
 
 ### Conversar com o orquestrador
 
@@ -221,7 +241,7 @@ repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).
 | `seguranca` | **Sob demanda:** vulnerabilidades com caminho de ataque | Sonnet → Opus high |
 | `qa` | Plano de testes com o planejador e teste da entrega: web/API sozinho, desktop por roteiro passo a passo com você | Sonnet |
 
-Nenhum agente passa de effort `high`. No Codex vale a mesma tabela pelo equivalente de cada modelo (Opus → top,
+Nenhum agente passa de effort `high`. No Codex (só agentes e skills) vale a mesma tabela pelo equivalente de cada modelo (Opus → top,
 Sonnet → intermediário, Haiku → leve). Nomes, modelos e efforts são configuráveis, e qualquer agente pode ser
 desligado.
 
@@ -320,7 +340,8 @@ perfis (plano menor, só Codex, front-end, quem não quer passadas extras): [doc
 
 ## 8. Segurança
 
-O princípio: **o modelo nunca é a última barreira.**
+O princípio: **o modelo nunca é a última barreira.** As camadas abaixo são do Claude Code; no Codex, o AiDW não
+instala regras nem hooks, e valem só as aprovações do próprio Codex.
 
 - **Permissões do CLI:** force push, `reset --hard`, `clean -f` e leitura de `.env` são bloqueados sempre; commit,
   push, merge, checkout e SQL de escrita sempre pedem o seu OK, em qualquer sessão.
@@ -344,6 +365,7 @@ Detalhes: [docs/seguranca.md](docs/seguranca.md).
 | [docs/configuracao.md](docs/configuracao.md) | `aidw.config.toml` campo a campo, perfis de exemplo, modelos, roteamento e MCPs |
 | [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md) | Pasta da demanda, worktrees, vários repositórios, `/aidw:diff`, retomar e limpar |
 | [docs/comandos.md](docs/comandos.md) | Todos os comandos do chat e do `aidw.py` |
-| [docs/claude-e-codex.md](docs/claude-e-codex.md) | Diferenças entre os provedores, modo native × headless, arquivos gerados |
+| [docs/claude-e-codex.md](docs/claude-e-codex.md) | Claude Code primeiro: no Codex só agentes e skills, o que é exclusivo do Claude, modo native × headless, arquivos gerados |
+| [docs/mods.md](docs/mods.md) | Os mods do Claude Code (`aidw-mods`): métricas sozinhas, faixa da demanda, como escrever um mod |
 | [docs/seguranca.md](docs/seguranca.md) | As camadas de proteção |
 | [docs/solucao-de-problemas.md](docs/solucao-de-problemas.md) | Sintomas comuns e como resolver |

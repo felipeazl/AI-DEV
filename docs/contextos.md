@@ -88,7 +88,8 @@ deny = []                                    # bloqueados sempre
 
 - Precedência: **deny > ask > allow**.
 - `git_ask` gera as regras para `git <sub>` e `git -C <pasta> <sub>`, no Bash e no PowerShell.
-- A sintaxe é a do Claude Code; no Codex, as regras de comando viram `.codex/rules/aidw.rules`.
+- A sintaxe é a do Claude Code e as regras valem no Claude Code. No Codex, só o modo projeto (`apply` com
+  `provider = "codex"`) as converte em `.codex/rules/aidw.rules`; a instalação global no Codex não leva regras.
 
 ### Sistemas
 
