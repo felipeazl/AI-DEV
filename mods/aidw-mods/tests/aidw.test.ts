@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   compact,
+  demandIds,
   demandSetId,
   labelFor,
   parseDelegation,
@@ -83,5 +84,13 @@ describe('estado da demanda', () => {
     expect(compact(1_234_567)).toBe('1,2M')
     expect(compact(117_050)).toBe('117k')
     expect(compact(950)).toBe('950')
+  })
+})
+
+describe('demanda pelo argumento do /aidw:orquestrar', () => {
+  test('id com prefixo, número solto e link de work item', async () => {
+    expect(demandIds('us-116332')).toEqual({ named: ['us-116332'], numbers: ['116332'] })
+    expect(demandIds('retome a IT 101662 e veja https://dev.azure.com/x/_workitems/edit/101662/').numbers).toEqual(['101662'])
+    expect(demandIds('feature/pipeline-liveness-front').named).toEqual([])
   })
 })

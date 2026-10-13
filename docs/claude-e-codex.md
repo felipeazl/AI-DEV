@@ -23,7 +23,7 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 | Guard: agente fora do worktree, commit com `AIDW-TESTE` | ✅ hooks do plugin | — |
 | MCP e ferramentas limitados por agente | ✅ `tools`/`disallowedTools` do subagente | — o agente vê os MCPs do seu `~/.codex/config.toml` |
 | Lembrete depois de compactação, registro do modo orquestrador | ✅ hooks do plugin | — |
-| Métricas gravadas sozinhas e faixa da demanda (mods) | ✅ `aidw-mods` | — o orquestrador roda `record` à mão |
+| Mods: faixa e painel da demanda, métricas sozinhas, travas da delegação, avisos, filtro de segredos | ✅ `aidw-mods` | — o orquestrador roda `record` à mão |
 | Levar o chat ao worktree, painel de diff (`/aidw:diff`), *Session folders* | ✅ | — (`aidw open --provider codex --demand <id>` abre já no worktree) |
 | Navegador | Claude in Chrome, navegador do app, Playwright | `@Chrome` e `@Browser` (app), Playwright (se estiver no seu Codex) |
 | Modo projeto (chat na raiz do AiDW) | ✅ `CLAUDE.md` | ✅ `AGENTS.md` (gerado pelo `apply`) |
@@ -34,7 +34,7 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 |---|---|
 | Plugin `aidw` (marketplace, comandos `/aidw:*`, instalação em qualquer pasta) | o formato de plugin é do Claude Code |
 | Regras de permissão e hooks do AiDW (guard, `AIDW-TESTE`, registro do modo orquestrador) | instalados só no Claude Code |
-| **Mods** (`aidw-mods`): métricas gravadas sozinhas, faixa da demanda acima do prompt | plugins de *function hooks* do Claude Code ([mods.md](mods.md)) |
+| **Mods** (`aidw-mods`): faixa e painel da demanda (com abas por uso), métricas sozinhas, travas da delegação, avisos, filtro de segredos | plugins de *function hooks* do Claude Code ([mods.md](mods.md)) |
 | Painel de diff por repositório (`/aidw:diff`) e levar o chat ao worktree no meio da conversa | `change_directory` / `EnterWorktree` |
 | *Session folders* (pasta do contexto aberta no app) | `request_directory` |
 | Effort fixado por variante de agente e ferramentas/MCPs limitados no próprio subagente | subagentes do Claude Code |
