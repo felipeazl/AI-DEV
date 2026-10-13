@@ -84,7 +84,9 @@ with `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id>
 (skill `preparar-worktree`; it tells you if the main working copy has local changes — ask the user once),
 then work inside it. All worktrees of a demand live in its folder `<worktree root>/<tipo-id>/<repo>`. In the Claude
 desktop app, move the session with `mcp__ccd_directory__change_directory` (the diff pane follows it; `EnterWorktree`
-moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more. Then
+moves only the CLI): to the worktree when the demand has one repository, to the demand folder when it has more, and
+to the demand's state folder (`<State dir>/<tipo-id>`, which every demand has) when it has no worktree — read-only
+work, or repositories used in place, as in a demand imported from elsewhere. Then
 (also when the session already starts there) add each of the Runtime *Session folders* with
 `mcp__ccd_directory__request_directory`, once per session: the plans, reports and references of the demand live there,
 and the app opens only files inside the session's folders. In the

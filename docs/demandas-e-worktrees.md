@@ -57,6 +57,7 @@ Worktrees criados antes da pasta por demanda, em `<root>/<repo>/<demanda>`, cont
 |---|---|
 | Demanda com um repositório, app desktop do Claude | o worktree (`change_directory` do app; o painel de diff segue) |
 | Demanda com vários repositórios, app desktop | a pasta da demanda |
+| Demanda sem worktree (só leitura, ou repositórios usados no lugar, como numa demanda importada), app desktop | a pasta de estado da demanda (`<state_dir>/<id>`, ex.: `contexts/safeweb/demandas/us-116332`), que toda demanda tem |
 | Terminal do Claude | `EnterWorktree` com o nome `<demanda>` |
 | Codex | não muda de pasta: todo comando e toda tarefa usam o caminho absoluto do worktree |
 | Chat já aberto na pasta da demanda ou num worktree dela | fica onde está |
@@ -88,6 +89,9 @@ outra coisa, tudo na mesma sessão. O orquestrador também troca quando você pe
 - **Terminal:** `ExitWorktree` e `EnterWorktree` com `<demanda>/<pasta>`; `sair` volta para a pasta onde a sessão abriu.
 - **Codex:** não disponível (não há como mudar a pasta da sessão).
 
+Sem worktree (os repositórios da demanda são usados no lugar, como numa demanda importada), o `/aidw:diff` percorre
+os `repos` do `demand.json` e o `sair` volta para a pasta de estado da demanda.
+
 As pastas extras do app (o botão de pasta com +) liberam acesso a outra pasta, mas o painel de diff não as mostra:
 para o diff, use o `/aidw:diff`.
 
@@ -96,7 +100,7 @@ para o diff, use o `/aidw:diff`.
 ```powershell
 python aidw.py open --demand 1234                    # abre o Claude na demanda já chamando /aidw:orquestrar
 python aidw.py open --demand 1234 --repo Front       # num repositório específico; os outros entram por --add-dir
-python aidw.py open --provider codex --demand 1234   # o Codex no worktree, com o perfil aidw
+python aidw.py open --provider codex --demand 1234   # o Codex no worktree, com multi_agent_v2 e a pasta do AiDW
 python aidw.py open --demand 1234 --no-orchestrate   # só abre, sem chamar o orquestrador
 ```
 

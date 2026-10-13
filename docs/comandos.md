@@ -13,6 +13,9 @@
 | `/aidw:contexto-listar` | `$aidw-contexto-listar` | Contextos, qual está ativo, repositório, sistemas, situação do plugin |
 | `/aidw:contexto-usar <nome>` | `$aidw-contexto-usar` | Valida e ativa um contexto e regenera o ambiente |
 | `/aidw:contexto-criar` | `$aidw-contexto-criar` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
+| `/aidw-faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
+| `/aidw-painel [aba]` | — | Abre o painel do AiDW (mod do Claude Code): Geral (situação e próximo passo), as abas de cada uso (critérios, revisão, diffs, teste manual…) e Métricas |
+| `/aidw-rodada` | — | Libera mais uma rodada no laço de revisão que a trava do `max_retries` parou |
 
 ## Linha de comando (`python aidw.py …`)
 
@@ -23,7 +26,7 @@
 | `setup [--reconfigure] [--skip-tools]` | Pré-requisitos, wizard, pastas, `apply`, MCPs e `doctor` (é o que o `setup.ps1` chama) |
 | `configure [--defaults --provider codex]` | Só o wizard; reescreve o `aidw.config.toml` |
 | `apply [--dry-run]` | Gera o modo projeto a partir da config (idempotente) |
-| `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugin `aidw` e regras globais; `--mcp` registra os MCPs do catálogo. Codex: skills `aidw-*` em `~/.agents/skills`, agentes `aidw-*` em `~/.codex/agents`, `aidw.rules`, hooks (merge) e o perfil `aidw` |
+| `install [--provider claude\|codex\|all] [--dry-run] [--force] [--mcp]` | Claude (padrão): plugins `aidw` e `aidw-mods` e as regras globais; `--mcp` registra os MCPs do catálogo. Codex: **só** as skills `aidw-*` em `~/.agents/skills` e os agentes `aidw-*` em `~/.codex/agents` (sem regras, hooks nem perfil; remove os de instalações antigas) |
 | `uninstall [--provider claude\|codex\|all] [--dry-run]` | Remove só o que o `install` acrescentou |
 | `doctor` | Núcleo, CLIs e login, contexto, variáveis, MCPs, pastas, instalação e ambiente gerado; termina com **PRONTO** ou **NÃO PRONTO** |
 | `status [--json]` | Visão rápida, sem chamar os CLIs: contexto, instalação, demandas ativas com etapa e worktree, e o que pede atenção (inclusive demanda concluída com aprendizados que não foram para a base de conhecimento) |

@@ -6,10 +6,13 @@ controla.
 
 ## Camadas
 
+Todas as camadas abaixo são do **Claude Code**. No Codex, o AiDW instala só agentes e skills: sem regras, sem guard,
+e valem apenas as aprovações e o sandbox do próprio Codex ([claude-e-codex.md](claude-e-codex.md)).
+
 | Camada | Como funciona |
 |---|---|
-| **Regras globais do CLI** | O `install` grava no `~/.claude/settings.json` (ou nas `aidw.rules` do Codex): `deny` sempre para force push, `reset --hard`, `clean -f` e leitura de `.env`; `ask` para commit, push, merge, rebase, checkout e o que o contexto marcar. Valem em **toda** sessão, com ou sem orquestrador. `allow` só para a rotina (git de leitura, build, comandos do `aidw.py`) |
-| **Guard (hook)** | Um agente do AiDW não edita o working copy principal de um repositório que tem worktree ativo. A conversa principal fica livre. Comandos de shell não são verificados (as tarefas apontam só para o worktree), com uma exceção: `git commit` num worktree de demanda que ainda tem ajuste de teste (`AIDW-TESTE`) é recusado, para qualquer sessão. No Codex, que não limita MCP por agente, o guard também recusa a ferramenta MCP fora do papel do agente ou bloqueada pelo contexto (ex.: comentar no card) |
+| **Regras globais do CLI** | O `install` grava no `~/.claude/settings.json`: `deny` sempre para force push, `reset --hard`, `clean -f` e leitura de `.env`; `ask` para commit, push, merge, rebase, checkout e o que o contexto marcar. Valem em **toda** sessão, com ou sem orquestrador. `allow` só para a rotina (git de leitura, build, comandos do `aidw.py`) |
+| **Guard (hook)** | Um agente do AiDW não edita o working copy principal de um repositório que tem worktree ativo. A conversa principal fica livre. Comandos de shell não são verificados (as tarefas apontam só para o worktree), com uma exceção: `git commit` num worktree de demanda que ainda tem ajuste de teste (`AIDW-TESTE`) é recusado, para qualquer sessão. Só no Claude Code: no Codex o AiDW não instala hooks |
 | **Worktree** | O código da demanda fica fora do seu working copy; o `remove` recusa worktree com alteração local ou commit não publicado |
 | **Escopo por agente** | Cada papel tem só as ferramentas, MCPs e pastas graváveis que precisa. O contexto pode bloquear ferramentas por papel (ex.: só o orquestrador comenta no card, depois do seu OK) |
 | **Validadores do contexto** | Operações de risco passam por scripts que recusam o que não é permitido (ex.: SQL só leitura, executado dentro de `ROLLBACK`) |

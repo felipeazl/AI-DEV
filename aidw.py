@@ -8,7 +8,7 @@ Uso:
     python aidw.py doctor                  # verifica tudo e diz se o ambiente está pronto
     python aidw.py install [--dry-run]     # AiDW em qualquer pasta no Claude (plugin aidw)
     python aidw.py uninstall [--dry-run]   # remove só o que o install acrescentou
-    python aidw.py install --provider codex|all   # também no Codex (skills, agentes, hooks, rules, perfil aidw)
+    python aidw.py install --provider codex|all   # também no Codex (só agentes e skills)
     python aidw.py open [--provider codex] [--demand <id>]   # abre o chat no worktree da demanda
     python aidw.py worktree create --repo <pasta> --demand <id> [--slug s] [--base b] [--pr n]   # e list/inspect/remove/cleanup
     python aidw.py project detect [--path <pasta>] [--json]
@@ -19,6 +19,7 @@ Uso:
     python aidw.py delegate --agent <papel|nome> --effort <e> --task <arq> --demand <pasta>
 
 Um provedor por instalação ([provider].name): tudo roda no Claude Code ou tudo roda no Codex.
+O Claude Code é a plataforma principal; no Codex, só os agentes e as skills (docs/claude-e-codex.md).
 O chat aberto na raiz do AiDW é o orquestrador; cada agente roda headless, um processo por
 tarefa, com o modelo do agente e o effort que o orquestrador escolher para aquela tarefa.
 """
@@ -81,16 +82,19 @@ CLAUDE_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude
 USER_SETTINGS = CLAUDE_HOME / "settings.json"
 MARKETPLACE_DIR = GEN_DIR / "marketplace"
 MARKETPLACE_NAME = "aidw-local"
+# Mods do Claude Code (plugins de function hooks): só Claude, instalados junto com o plugin `aidw`.
+MODS_DIR = ROOT / "mods"
+MODS_PLUGIN = "aidw-mods"
 INSTALL_MANIFEST = GEN_DIR / "install-manifest.json"
 PLUGIN_VERSION_BASE = "3.0.0"
 # Instalação global no Codex (aidw.py install --provider codex): arquivos próprios do AiDW, nomes `aidw-*`.
 CODEX_NS = "aidw-"
 CODEX_SKILLS_HOME = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
 CODEX_AGENTS_HOME = CODEX_HOME / "agents"
+# Só para limpar instalações antigas (regras, hooks e perfil); a instalação de hoje é agentes e skills.
 CODEX_GLOBAL_RULES = CODEX_HOME / "rules" / "aidw.rules"
 CODEX_HOOKS_FILE = CODEX_HOME / "hooks.json"
-CODEX_PROFILE_NAME = "aidw"
-CODEX_PROFILE = CODEX_HOME / f"{CODEX_PROFILE_NAME}.config.toml"
+CODEX_PROFILE = CODEX_HOME / "aidw.config.toml"
 # Descrições do plugin entram em toda sessão: o aviso evita que o Claude use o AiDW fora de uma demanda.
 PLUGIN_GUARD = "[AiDW] Só dentro de uma demanda conduzida pelo orquestrador AiDW."
 ADMIN_GUARD = "[AiDW] Administração do AiDW."  # skills com `aidw: admin` (contextos): valem fora de uma demanda
@@ -827,7 +831,8 @@ def wizard(cfg: dict, catalog: dict) -> dict:
     print("Enter mantém o valor atual. Tudo pode ser alterado depois em aidw.config.toml.\n")
 
     installed = installed_providers()
-    options = [(p, f"{PROVIDER_LABEL[p]}{'' if p in installed else '  (CLI não instalado)'}")
+    options = [(p, f"{PROVIDER_LABEL[p]}{'  — limitado a agentes e skills' if p == 'codex' else '  — recomendado'}"
+                   f"{'' if p in installed else '  (CLI não instalado)'}")
                for p in PROVIDERS]
     previous = cfg["provider"]["name"]
     provider = choose("1/6 Qual provedor roda o orquestrador e todos os agentes?", options, previous)
@@ -1290,6 +1295,20 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     return "\n".join(lines)
 
 
+def level_cells(resolved: dict, routing: dict) -> dict[str, dict[str, str | None]]:
+    """{nível: {nome do agente: variante (o subagent_type sem namespace) ou None quando não roda}}: a mesma tabela
+    *Effort per task* do Claude, para quem precisa dela em dado (o mod de travas da delegação)."""
+    out: dict[str, dict[str, str | None]] = {}
+    for lvl in routing.get("effort", {}).get("levels", {}):
+        out[lvl] = {}
+        for r, a in resolved.items():
+            if r == ORCHESTRATOR or not a["enabled"]:
+                continue
+            model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
+            out[lvl][a["name"]] = None if lvl in a.get("skip_levels", []) else variant_name(a, model, effort)
+    return out
+
+
 def aidw_command(global_mode: bool) -> str:
     """Como chamar o aidw.py: relativo no modo projeto (o chat está na raiz), absoluto no plugin."""
     return f'python "{ROOT.as_posix()}/aidw.py"' if global_mode else "python aidw.py"
@@ -1336,6 +1355,19 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "", "```", record_hint(codex=False, global_mode=global_mode), "```", "",
             "  `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the "
             "ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.",
+            "- With the `aidw-mods` plugin loaded (Claude Code only, on in orchestrator mode; docs/mods.md):",
+            "  - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) "
+            "carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run "
+            "`record` for it; run it yourself only when that line is missing or says the mod could not record.",
+            "  - An Agent call that breaks the delegation rules (wrong cell of the table, `model` the user did not "
+            "ask for, missing `Nível`/folder, a pasted input, a loop past `max_retries`) comes back denied with "
+            "`AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the "
+            "limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or "
+            "`/aidw-rodada`).",
+            "  - The user may answer through the AiDW panel (`/aidw-painel`): a manual-test step arrives as "
+            "`Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and "
+            "the PR decision or the card comment as a message they sent. They are the user's own words: record "
+            "and act on them as if typed.",
             explore_line(resolved),
         ]
         return "\n".join(lines)
@@ -2003,6 +2035,10 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
                    for role, a in resolved.items()},
         "mcp": list(servers),
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),
+        # para os mods do Claude (travas da delegação): o subagent_type de cada célula da tabela Effort per task
+        "levels": level_cells(resolved, b["routing"]),
+        "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
+        "max_retries": b["routing"].get("max_retries", 3),
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
@@ -2058,15 +2094,16 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
     request = "o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"
     workspace = ("7. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
-                 "do Codex deixa só leitura: peça aprovação (escalada) para esse comando. Se a raiz dos worktrees não for "
-                 "gravável (sessão aberta sem o "
-                 f"perfil `{CODEX_PROFILE_NAME}`), peça ao usuário para reabrir com `{aidw} open --provider codex "
-                 "--demand <id>`." if codex else
+                 "do Codex deixa só leitura: peça aprovação (escalada) para esse comando e para qualquer escrita fora da "
+                 "pasta da sessão (no Codex o AiDW não instala perfil nem regras). Depois de criar o worktree, peça ao "
+                 f"usuário para reabrir com `{aidw} open --provider codex --demand <id>`." if codex else
                  "7. **Código:** worktree da demanda (seção *Workspace*); todos ficam na pasta da demanda "
                  "(`<raiz dos worktrees>/<id>/<repositório>`). Se a sessão abriu nessa pasta ou num worktree dela "
                  "(`demand` no `project detect`, ex.: `aidw open --demand`), fique onde está. Senão, no app desktop, "
                  "`mcp__ccd_directory__change_directory` para o worktree (um repositório) ou a pasta da demanda (mais "
-                 "de um); no terminal, `EnterWorktree` com o id da demanda. No app, depois de mudar (ou ao ficar), "
+                 "de um); sem worktree (só leitura, ou repositórios usados no lugar, como numa demanda importada), "
+                 "para a pasta de estado da demanda (`<State dir>/<id>`, que toda demanda tem); no terminal, "
+                 "`EnterWorktree` com o id da demanda. No app, depois de mudar (ou ao ficar), "
                  "adicione as *Session folders* do Runtime com `mcp__ccd_directory__request_directory`, uma vez por "
                  "sessão, para os planos e relatórios abrirem no app. O painel de diff mostra um repositório "
                  "por vez: `/"
@@ -2162,11 +2199,14 @@ def diff_skill(plugin: str) -> str:
         "ou na pasta da demanda); senão, a demanda desta sessão; senão `demand list --active --json`, e pergunte "
         "se houver mais de uma.",
         f"2. **Worktrees:** `{aidw} worktree list --json`, os `active` dessa demanda, na ordem da lista (a de "
-        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`.",
+        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`. "
+        f"Sem nenhum (repositórios usados no lugar, como numa demanda importada): os `repos` de `{aidw} demand show "
+        "<id>`, na ordem; `folder` é a última parte do `path`.",
         "3. **Destino:**",
-        "   - vazio: o worktree **seguinte** àquele em que o chat está, voltando ao primeiro depois do último; fora "
+        "   - vazio: o repositório **seguinte** àquele em que o chat está, voltando ao primeiro depois do último; fora "
         "de todos (na pasta da demanda, por exemplo), o primeiro;",
-        "   - `sair`: a pasta da demanda (a pasta-mãe dos worktrees dela);",
+        "   - `sair`: a pasta da demanda (a pasta-mãe dos worktrees dela; sem worktree, a pasta de estado, o "
+        "`folder` do `demand show`);",
         "   - um nome: o `folder` que casa com ele, sem diferenciar maiúsculas; um pedaço vale (`front`). Nenhum ou "
         "mais de um: liste os `folder` e pergunte.",
         "   Com um worktree só, vazio e o nome dele levam a ele; se o chat já está lá, diga e pare.",
@@ -2254,12 +2294,41 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     put(f"{base}/.claude-plugin/plugin.json", json.dumps(
         {"name": plugin, "version": version, "description": description, "author": {"name": "AiDW"}},
         indent=2, ensure_ascii=False) + "\n")
+    entries = [{"name": plugin, "source": f"./{base}", "description": description}]
+    mods = build_mods(files)
+    if mods:
+        entries.insert(0, {"name": MODS_PLUGIN, "source": f"./plugins/{MODS_PLUGIN}", "description": mods["description"]})
     put(".claude-plugin/marketplace.json", json.dumps(
         {"name": MARKETPLACE_NAME, "owner": {"name": "AiDW"},
          "description": "Plugins gerados pelo AiDW nesta máquina (python aidw.py install).",
-         "plugins": [{"name": plugin, "source": f"./{base}", "description": description}]},
+         "plugins": entries},
         indent=2, ensure_ascii=False) + "\n")
-    return {"plugin": plugin, "version": version, "files": files, "ctx": ctx, "build": b}
+    return {"plugin": plugin, "version": version, "files": files, "ctx": ctx, "build": b, "mods": mods}
+
+
+def build_mods(files: dict[str, bytes]) -> dict | None:
+    """Copia o plugin de mods (`mods/aidw-mods`, só Claude Code) para o marketplace: o código como está, sem os
+    testes, e o plugin.json com a versão pelo conteúdo e a raiz do AiDW desta máquina. None quando não há mods."""
+    src = MODS_DIR / MODS_PLUGIN
+    manifest_file = src / ".claude-plugin" / "plugin.json"
+    if not manifest_file.is_file():
+        return None
+    base = f"plugins/{MODS_PLUGIN}"
+    own: dict[str, bytes] = {}
+    for f in sorted(src.rglob("*")):
+        rel_path = f.relative_to(src).as_posix()
+        if (not f.is_file() or rel_path.startswith(("tests/", ".claude-plugin/")) or "node_modules" in f.parts
+                or f.name == "tsconfig.json"):
+            continue
+        own[f"{base}/{rel_path}"] = f.read_bytes()
+    meta = json.loads(manifest_file.read_text(encoding="utf-8"))
+    meta.setdefault("userConfig", {}).setdefault("aidwRoot", {"type": "string", "title": "Raiz do AiDW"})
+    meta["userConfig"]["aidwRoot"]["default"] = ROOT.as_posix()
+    content = b"".join(k.encode() + v for k, v in sorted(own.items())) + json.dumps(meta, sort_keys=True).encode()
+    meta["version"] = f"{meta.get('version', '0.1.0')}-{sha(content)[:10]}"
+    own[f"{base}/.claude-plugin/plugin.json"] = (json.dumps(meta, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    files.update(own)
+    return {"plugin": MODS_PLUGIN, "version": meta["version"], "description": meta.get("description", "")}
 
 
 def global_managed_settings(cfg: dict, ctx: dict | None, servers: dict) -> dict:
@@ -2394,9 +2463,14 @@ def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, wi
     if not manifest and MARKETPLACE_DIR.is_dir():
         rep.warn(f"{rel(MARKETPLACE_DIR)} existe, mas o manifest sumiu: não há como saber o que foi alterado à mão "
                  "nem quais regras das settings eram do AiDW; confira o ~/.claude/settings.json")
-    plugin, version, files = plug["plugin"], plug["version"], plug["files"]
+    plugin, version, files, mods = plug["plugin"], plug["version"], plug["files"], plug["mods"]
     rep.ok(f"plugin {plugin} {version}: {sum(1 for k in files if '/agents/' in k)} agentes, "
            f"{len({k.split('/')[3] for k in files if '/skills/' in k})} skills")
+    if mods:
+        rep.ok(f"plugin {mods['plugin']} {mods['version']}: mods do Claude Code (ligados no modo orquestrador)")
+    # o `aidw` fica por último: o status e o doctor leem a versão dele em plugins[-1]
+    wanted = {**({f"{mods['plugin']}@{MARKETPLACE_NAME}": mods["version"]} if mods else {}),
+              f"{plugin}@{MARKETPLACE_NAME}": version}
 
     heading("Marketplace local (.aidw/marketplace)")
     old_hashes = manifest.get("files", {})
@@ -2439,11 +2513,12 @@ def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, wi
     def save_manifest(cli_done: bool) -> None:
         if dry:
             return
-        plugins = list(dict.fromkeys([*manifest.get("plugins", []), f"{plugin}@{MARKETPLACE_NAME}"]))
+        plugins = [*[k for k in manifest.get("plugins", []) if k not in wanted], *wanted]
         if cli_done:  # os plugins de contextos anteriores já foram desinstalados
-            plugins = [f"{plugin}@{MARKETPLACE_NAME}"]
+            plugins = list(wanted)
         write_if_changed(INSTALL_MANIFEST, json.dumps({
             "generated_by": "aidw.py install", "plugin": plugin, "version": version, "plugins": plugins,
+            **({"mods_version": mods["version"]} if mods else {}),
             "marketplace": MARKETPLACE_NAME, "context": plug["ctx"]["name"] if plug["ctx"] else None,
             "files": {k: sha(v) for k, v in files.items()}, "settings": owned,
             "mcp_added": sorted(set(mcp_added)), "cli": not skip_cli, "cli_done": cli_done,
@@ -2453,21 +2528,21 @@ def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, wi
     save_manifest(cli_done=skip_cli)
     if not skip_cli:
         heading("Claude Code (plugin e MCPs)")
-        key = f"{plugin}@{MARKETPLACE_NAME}"
         installed = installed_plugins()
         for old in manifest.get("plugins", []):
-            if old != key and old in installed:
+            if old not in wanted and old in installed:
                 claude_cli(["plugin", "uninstall", old], rep, dry)
         if MARKETPLACE_NAME not in known_marketplaces():
             claude_cli(["plugin", "marketplace", "add", str(MARKETPLACE_DIR)], rep, dry)
-        elif installed.get(key) != version:
+        elif any(installed.get(k) != v for k, v in wanted.items()):
             claude_cli(["plugin", "marketplace", "update", MARKETPLACE_NAME], rep, dry)
-        if key not in installed:
-            claude_cli(["plugin", "install", key], rep, dry)
-        elif installed[key] != version:
-            claude_cli(["plugin", "update", key], rep, dry)
-        else:
-            rep.ok(f"plugin {key} já está na versão {version}")
+        for key, ver in wanted.items():
+            if key not in installed:
+                claude_cli(["plugin", "install", key], rep, dry)
+            elif installed[key] != ver:
+                claude_cli(["plugin", "update", key], rep, dry)
+            else:
+                rep.ok(f"plugin {key} já está na versão {ver}")
         present = user_mcp_servers()
         if present is None:
             rep.warn("não foi possível rodar `claude mcp list`; MCPs do usuário não conferidos")
@@ -2585,6 +2660,15 @@ def check_global_install(cfg: dict, catalog: dict, rep: Report) -> None:
                      "cache) — rode `python aidw.py install`")
         else:
             rep.ok(f"plugin {key} {installed}, em dia com as fontes")
+        mods = plug.get("mods")
+        if mods:
+            mods_key = f"{mods['plugin']}@{MARKETPLACE_NAME}"
+            got = installed_plugins().get(mods_key)
+            if got == mods["version"]:
+                rep.ok(f"plugin {mods_key} {got} (mods do Claude Code), em dia")
+            else:
+                rep.warn(f"plugin {mods_key} {got or 'ausente'}, e o gerado é {mods['version']} — "
+                         "rode `python aidw.py install`")
     try:
         data = json.loads(USER_SETTINGS.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -3222,78 +3306,65 @@ def codex_skill_copy(text: str, name: str) -> str:
     return re.sub(r"(?m)^name:\s*.*$", f"name: {CODEX_NS}{name}", text, count=1)
 
 
-def codex_node_path() -> tuple[str | None, str]:
-    """(pasta do Node para pôr na frente do PATH do Codex, aviso). O sandbox do Codex não lê o perfil do usuário:
-    um `node` que resolve para lá (ex.: nvm em %LOCALAPPDATA%) nem inicia. Usa um Node fora do perfil, se houver."""
-    home = norm_path(Path.home())
-    found = [Path(d) / "node.exe" if IS_WINDOWS else Path(d) / "node" for d in os.environ.get("PATH", "").split(os.pathsep) if d]
-    nodes = [n for n in dict.fromkeys(found) if n.is_file()]
-    if not nodes or not path_inside(os.path.realpath(nodes[0]), home):
-        return None, ""
-    outside = next((n for n in nodes if not path_inside(os.path.realpath(n), home)), None)
-    if outside is None:
-        return None, ("o `node` do PATH fica dentro do perfil do usuário e o sandbox do Codex não o executa; instale um Node "
-                      "fora do perfil (ex.: em Program Files) para os builds no Codex")
-    version = run([str(outside), "--version"]) or "?"
-    return str(outside.parent), (f"o `node` do PATH fica dentro do perfil do usuário (o sandbox do Codex não o executa); o perfil "
-                                 f"`{CODEX_PROFILE_NAME}` usa {outside.parent} ({version}) na frente do PATH")
-
-
-def codex_profile(cfg: dict, ctx: dict | None, resolved: dict, servers: dict) -> str:
-    """~/.codex/aidw.config.toml (perfil `aidw`): arquivo do AiDW. Aberto com `--profile aidw`, o Codex grava nele a
-    confiança dos hooks (`[hooks.state]`), que o install mantém (`with_hooks_state`)."""
-    orch = resolved[ORCHESTRATOR]
-    writable = list(dict.fromkeys([ROOT.as_posix(), *code_dirs(cfg, ctx)]))
-    env = {**({k: str(v) for k, v in ctx.get("env", {}).items()} if ctx else {}), **codex_git_env(cfg, ctx)}
-    node_dir, _ = codex_node_path()
-    if node_dir:
-        env["PATH"] = node_dir + os.pathsep + os.environ.get("PATH", "")
-    lines = [
-        f"# {GENERATED_MARK} install — perfil `{CODEX_PROFILE_NAME}` do Codex (`codex --profile {CODEX_PROFILE_NAME}` ou "
-        "`python aidw.py open --provider codex`). Não edite: altere as fontes e rode o install.",
-        f"model = {toml_value(orch['model']['model_id'])}",
-        *([f"model_reasoning_effort = {toml_value(orch['effort'])}"] if orch["effort"] else []),
-        'approval_policy = "on-request"', 'sandbox_mode = "workspace-write"', "",
-        "[sandbox_workspace_write]", "network_access = true",
-        f"writable_roots = {toml_value([win(d) for d in writable])}", "",
-        "[shell_environment_policy.set]", *[f"{k} = {toml_value(v)}" for k, v in env.items()], "",
-        "[features]", "multi_agent_v2 = true", "",
-        "[agents]", "max_concurrent_threads_per_session = 4",
-    ]
-    for key, srv in servers.items():
-        lines += ["", f"[mcp_servers.{key}]", *[f"{k} = {toml_value(v)}" for k, v in codex_mcp_table(srv).items()]]
-    return "\n".join(lines) + "\n"
-
-
-def codex_hook_groups() -> dict[str, list]:
-    cmd = f'python "{GUARD_SCRIPT.as_posix()}"'
-    group = lambda matcher=None: {**({"matcher": matcher} if matcher else {}),  # noqa: E731
-                                  "hooks": [{"type": "command", "command": cmd}]}
-    return {"PreToolUse": [group("apply_patch|Bash|mcp__.*")], "UserPromptSubmit": [group()],
-            "SessionStart": [group("compact|resume")]}
-
-
 def is_aidw_hook_group(g: dict) -> bool:
     return any(GUARD_SCRIPT.name in str(h.get("command", "")) for h in g.get("hooks", []))
 
 
-def merge_codex_hooks(data: dict, add: bool) -> dict:
-    """Tira os grupos do AiDW do hooks.json e, com add, põe os atuais no fim (os do usuário ficam)."""
+def remove_codex_hooks(data: dict) -> dict:
+    """Tira do hooks.json os grupos que instalações antigas do AiDW puseram (os do usuário ficam)."""
     hooks = data.setdefault("hooks", {})
     for event in list(hooks):
         hooks[event] = [g for g in hooks[event] if not is_aidw_hook_group(g)]
         if not hooks[event]:
             hooks.pop(event)
-    if add:
-        for event, groups in codex_hook_groups().items():
-            hooks.setdefault(event, []).extend(groups)
     if not hooks:
         data.pop("hooks")
     return data
 
 
+def remove_legacy_codex(dry: bool, rep: Report) -> None:
+    """Instalações antigas punham no Codex o perfil `aidw`, as regras e os hooks do AiDW; a instalação de hoje é só
+    agentes e skills. Remove o perfil (arquivo do AiDW) e os grupos do AiDW no hooks.json; as regras saem pelo
+    manifesto, como qualquer arquivo que deixou de ser gerado."""
+    if CODEX_PROFILE.is_file() and GENERATED_MARK in CODEX_PROFILE.read_text(encoding="utf-8", errors="replace"):
+        rep.info(f"perfil antigo {CODEX_PROFILE.name} removido (a instalação no Codex é só agentes e skills)")
+        if not dry:
+            CODEX_PROFILE.unlink()
+    if not CODEX_HOOKS_FILE.is_file():
+        return
+    try:
+        data = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        rep.warn(f"{CODEX_HOOKS_FILE} não é JSON válido; tire os hooks do AiDW à mão, se houver")
+        return
+    if not any(is_aidw_hook_group(g) for gs in data.get("hooks", {}).values() for g in gs):
+        return
+    rep.info(f"hooks antigos do AiDW removidos de {CODEX_HOOKS_FILE.name}")
+    if dry:
+        return
+    data = remove_codex_hooks(data)
+    if data:
+        CODEX_HOOKS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    else:
+        CODEX_HOOKS_FILE.unlink()
+
+
+def codex_multi_agent_enabled() -> bool:
+    """`[features] multi_agent_v2 = true` no ~/.codex/config.toml: sem ela, o orquestrador não chama `spawn_agent`."""
+    try:
+        return load_toml(CODEX_HOME / "config.toml").get("features", {}).get("multi_agent_v2") is True
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+
+
+CODEX_MULTI_AGENT_HINT = ("o orquestrador do AiDW no Codex usa `spawn_agent`: ligue `multi_agent_v2` no seu "
+                          "~/.codex/config.toml (`[features]` → `multi_agent_v2 = true`) ou abra com "
+                          "`python aidw.py open --provider codex`, que já passa `--enable multi_agent_v2`")
+
+
 def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
-    """{arquivo: bytes} dos arquivos que são só do AiDW + o perfil (texto) — tudo com nomes `aidw-*`."""
+    """{arquivo: bytes} dos agentes e das skills do AiDW, com nomes `aidw-*`: a instalação no Codex é só isso
+    (sem regras, hooks nem perfil; ver docs/claude-e-codex.md)."""
     ccfg = json.loads(json.dumps(cfg))
     ccfg["provider"]["name"], ccfg["delegation"]["mode"] = "codex", "native"
     ref_dir = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar" / "reference"
@@ -3334,61 +3405,13 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     sair = CODEX_SKILLS_HOME / f"{CODEX_NS}sair"
     files[sair / "SKILL.md"] = exit_skill(plugin_name(), provider="codex").encode("utf-8")
     files[sair / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
-    perms = ctx.get("permissions", {}) if ctx else {}
-    git_ask = [["git", *sub.split()] for sub in perms.get("git_ask", [])]
-    rules = codex_rules([*cfg["policies"]["deny"], *perms.get("deny", [])],
-                        [*cfg["policies"]["ask"], *perms.get("ask", []), *[f"Bash({' '.join(x)} *)" for x in git_ask]])
-    files[CODEX_GLOBAL_RULES] = rules.replace("apply a partir de", "install a partir de").encode("utf-8")
     return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
 
 
-def hook_groups_signature(groups: dict) -> str:
-    """O que vence a aprovação no Codex: o grupo inteiro (o matcher entra no hash: conferido no 0.157)."""
-    return sha(json.dumps(groups, sort_keys=True).encode("utf-8"))
-
-
-def codex_hook_signature() -> str:
-    return hook_groups_signature(codex_hook_groups())
-
-
-def toml_hooks_state(path: Path) -> dict:
-    try:
-        return load_toml(path).get("hooks", {}).get("state", {}) if path.is_file() else {}
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-
-
-def codex_trust_state() -> dict:
-    """`[hooks.state]` onde o TUI grava a confiança (`trusted_hash`) de cada hook: o config.toml do usuário e, aberto
-    com `--profile aidw`, o próprio perfil (conferido no 0.157), que vale por cima."""
-    return {**toml_hooks_state(CODEX_HOME / "config.toml"), **toml_hooks_state(CODEX_PROFILE)}
-
-
-def with_hooks_state(profile: str) -> str:
-    """O perfil regenerado mantém a confiança que o Codex gravou nele; sem isso, todo install apagava a aprovação."""
-    state = toml_hooks_state(CODEX_PROFILE)
-    if not state:
-        return profile
-    lines = ["", "# Gravado pelo Codex ao aprovar os hooks (o install mantém)", "[hooks.state]"]
-    for key, entry in state.items():
-        lines += ["", f"[hooks.state.{toml_value(key)}]",
-                  *[f"{k} = {toml_value(v)}" for k, v in entry.items() if isinstance(v, (str, bool, int))]]
-    return profile.rstrip("\n") + "\n" + "\n".join(lines) + "\n"
-
-
-def aidw_hook_keys() -> list[str]:
-    """As chaves de confiança dos grupos do AiDW no hooks.json (`<arquivo>:<evento_snake>:<grupo>:<handler>`)."""
-    try:
-        data = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    snake = lambda ev: re.sub(r"(?<!^)(?=[A-Z])", "_", ev).lower()  # noqa: E731 — PreToolUse → pre_tool_use
-    return [f"{CODEX_HOOKS_FILE}:{snake(ev)}:{i}:0" for ev, groups in data.get("hooks", {}).items()
-            for i, g in enumerate(groups) if is_aidw_hook_group(g)]
-
-
 def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
-    heading("Instalação global no Codex" + (" (dry-run)" if dry else ""))
+    """Instalação global no Codex: só os agentes (`~/.codex/agents/aidw-*.toml`) e as skills (`~/.agents/skills/aidw-*`).
+    Regras, hooks, perfil e MCPs ficam com o Codex do usuário; o resto do AiDW é do Claude Code."""
+    heading("Instalação global no Codex — agentes e skills" + (" (dry-run)" if dry else ""))
     rep = Report()
     built = build_codex_install(cfg, catalog, rep)
     if built is None:
@@ -3415,43 +3438,20 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
             changed += 1
             if not dry:
                 Path(k).unlink()
+    remove_legacy_codex(dry, rep)
     agents = sum(1 for k in files if k.parent == CODEX_AGENTS_HOME)
     skills = len({k.relative_to(CODEX_SKILLS_HOME).parts[0] for k in files if CODEX_SKILLS_HOME in k.parents})
-    rep.ok(f"{agents} agentes em {CODEX_AGENTS_HOME}, {skills} skills em {CODEX_SKILLS_HOME}, rules em "
-           f"{CODEX_GLOBAL_RULES.name} ({changed} arquivo(s) {'a mudar' if dry else 'mudaram'})")
-    profile = codex_profile(cfg, built["ctx"], built["resolved"], built["servers"])
-    write_if_changed(CODEX_PROFILE, with_hooks_state(profile), dry, rep)
-    try:
-        hooks = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")) if CODEX_HOOKS_FILE.exists() else {}
-    except json.JSONDecodeError:
-        rep.error(f"{CODEX_HOOKS_FILE} não é JSON válido; corrija antes de instalar")
-        return False
-    current = {ev: [g for g in gs if is_aidw_hook_group(g)] for ev, gs in hooks.get("hooks", {}).items()}
-    current = {ev: gs for ev, gs in current.items() if gs}
-    write_if_changed(CODEX_HOOKS_FILE, json.dumps(merge_codex_hooks(hooks, add=True), indent=2,
-                                                  ensure_ascii=False) + "\n", dry, rep)
-    signature = codex_hook_signature()
-    # sem o registro anterior no manifesto (o install do Claude o apagava), vale o próprio hooks.json
-    before = old.get("hooks_signature") or (hook_groups_signature(current) if current else None)
-    stale = dict(old.get("stale_trust", {}))
-    if before and before != signature:
-        # o comando dos hooks mudou: o Codex marca como "Modified" e não roda até nova aprovação
-        ours = {norm_path(k) for k in aidw_hook_keys()}
-        stale.update({norm_path(k): v.get("trusted_hash") for k, v in codex_trust_state().items() if norm_path(k) in ours})
+    rep.ok(f"{agents} agentes em {CODEX_AGENTS_HOME}, {skills} skills em {CODEX_SKILLS_HOME} "
+           f"({changed} arquivo(s) {'a mudar' if dry else 'mudaram'})")
     if not dry:
-        manifest["codex"] = {"files": {str(k): sha(v) for k, v in files.items()},
-                             "profile": str(CODEX_PROFILE), "hooks": str(CODEX_HOOKS_FILE),
-                             "hooks_signature": signature, "stale_trust": stale}
+        manifest["codex"] = {"files": {str(k): sha(v) for k, v in files.items()}}
         write_if_changed(INSTALL_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", dry, Report(quiet=True))
-    node_dir, node_note = codex_node_path()
-    if node_note:
-        (rep.info if node_dir else rep.warn)(node_note)
-    trusted = codex_hooks_trusted()
-    if trusted is False:
-        rep.warn("os hooks do AiDW no Codex só rodam depois de aprovados uma vez: abra `codex --profile "
-                 f"{CODEX_PROFILE_NAME}` num terminal e escolha \"Trust all and continue\"")
+    if not codex_multi_agent_enabled():
+        rep.warn(CODEX_MULTI_AGENT_HINT)
+    rep.info("no Codex o AiDW é só agentes e skills: sem regras, hooks, guard, perfil nem MCP por agente "
+             "(docs/claude-e-codex.md)")
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}. No Codex: `python aidw.py open --provider codex` "
-          "(ou `codex --profile aidw`) e chame $aidw-orquestrar <demanda>.")
+          "e chame $aidw-orquestrar <demanda>.")
     return not rep.errors
 
 
@@ -3471,23 +3471,13 @@ def uninstall_codex(dry: bool) -> bool:
             rep.warn(f"{k} foi alterado fora do AiDW; mantido")
         elif not dry:
             path.unlink()
+    remove_legacy_codex(dry, rep)
     if not dry:
         for d in sorted({Path(k).parent for k in old.get("files", {})}, key=lambda x: -len(x.parts)):
             while d not in (CODEX_SKILLS_HOME, CODEX_AGENTS_HOME, CODEX_HOME, CODEX_GLOBAL_RULES.parent) and d.is_dir() \
                     and not any(d.iterdir()):
                 d.rmdir()
                 d = d.parent
-        if CODEX_PROFILE.exists():
-            CODEX_PROFILE.unlink()
-        if CODEX_HOOKS_FILE.exists():
-            try:
-                data = merge_codex_hooks(json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8")), add=False)
-                if data:
-                    write_if_changed(CODEX_HOOKS_FILE, json.dumps(data, indent=2, ensure_ascii=False) + "\n", dry, rep)
-                else:
-                    CODEX_HOOKS_FILE.unlink()
-            except json.JSONDecodeError:
-                rep.warn(f"{CODEX_HOOKS_FILE} não é JSON válido; tire os hooks do AiDW à mão")
         manifest.pop("codex")
         if manifest.get("plugins") or manifest.get("files"):
             write_if_changed(INSTALL_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", dry, rep)
@@ -3497,23 +3487,8 @@ def uninstall_codex(dry: bool) -> bool:
     return not rep.errors
 
 
-def codex_hooks_trusted() -> bool | None:
-    """True quando cada hook do AiDW tem confiança gravada que não ficou vencida (o Codex só roda o hook se o
-    `trusted_hash` bate com o hook atual; depois de uma mudança, o hash antigo não vale mais). None = sem hooks."""
-    keys = aidw_hook_keys()
-    if not keys:
-        return None
-    state = codex_trust_state()
-    stale = {norm_path(k): v for k, v in load_manifest().get("codex", {}).get("stale_trust", {}).items()}
-    for key in keys:
-        entry = next((v for k, v in state.items() if norm_path(k) == norm_path(key)), None)
-        if not entry or not entry.get("trusted_hash") or stale.get(norm_path(key)) == entry.get("trusted_hash"):
-            return False
-    return True
-
-
 def check_codex_install(rep: Report, cfg: dict, catalog: dict) -> None:
-    heading("Instalação global (Codex)")
+    heading("Instalação global (Codex — agentes e skills)")
     old = load_manifest().get("codex")
     if not old:
         rep.info("não instalada (opcional): `python aidw.py install --provider codex`")
@@ -3527,16 +3502,13 @@ def check_codex_install(rep: Report, cfg: dict, catalog: dict) -> None:
         rep.warn(f"o Codex está desatualizado ({len(stale)} arquivo(s), ex.: {stale[0].name}): rode "
                  "`python aidw.py install` (atualiza o Claude e o Codex)")
     else:
-        rep.ok(f"{len(old.get('files', {}))} arquivos do AiDW no Codex, em dia; perfil {CODEX_PROFILE.name}")
-    node_dir, node_note = codex_node_path()
-    if node_note and not node_dir:
-        rep.warn(node_note)
-    trusted = codex_hooks_trusted()
-    if trusted:
-        rep.ok("hooks do AiDW aprovados no Codex")
-    elif trusted is False:
-        rep.warn(f"hooks do AiDW ainda não aprovados no Codex: abra `codex --profile {CODEX_PROFILE_NAME}` e escolha "
-                 "\"Trust all and continue\"")
+        rep.ok(f"{len(old.get('files', {}))} arquivos do AiDW no Codex (agentes e skills), em dia")
+    if CODEX_PROFILE.is_file() or CODEX_GLOBAL_RULES.is_file():
+        rep.warn("sobras de uma instalação antiga no Codex (perfil, regras ou hooks do AiDW): rode o install para removê-las")
+    if codex_multi_agent_enabled():
+        rep.ok("multi_agent_v2 ligado no ~/.codex/config.toml")
+    else:
+        rep.info(CODEX_MULTI_AGENT_HINT)
 
 
 def demand_worktrees(demand: str) -> list[dict]:
@@ -3548,7 +3520,7 @@ def demand_worktrees(demand: str) -> list[dict]:
 
 def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: bool, orchestrate: bool = True,
                  repo: str = "", app: bool = False) -> int:
-    """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com o perfil `aidw` — e, com
+    """Abre o Claude ou o Codex já na pasta da demanda (o worktree dela) — o Codex com `multi_agent_v2` — e, com
     `--demand`, já chama o orquestrador para retomar a demanda (a primeira mensagem da sessão). Demanda com mais de
     um repositório: a sessão abre na pasta da demanda, que tem os worktrees dentro (`/aidw:diff` troca o painel
     de diff entre eles); com `--repo`, ou nos worktrees do formato antigo, no worktree dele (padrão: o primeiro
@@ -3595,13 +3567,13 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
     if not exe:
         print(f"[erro]  CLI `{provider}` não encontrado")
         return 1
-    if app:  # app desktop do Codex: abre a pasta como workspace, com o perfil do AiDW; a conversa começa vazia
-        cmd = [exe, "app", str(target), "-c", f"profile={toml_value(CODEX_PROFILE_NAME)}"]
+    if app:  # app desktop do Codex: abre a pasta como workspace; a conversa começa vazia
+        cmd = [exe, "app", str(target)]
         print(f"[ok]    no app, comece a conversa com `{prompt or '$aidw-orquestrar <demanda>'}`")
         print(f"Abrindo o app do Codex em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
         return 0 if print_only else subprocess.run(cmd, cwd=target).returncode
-    if provider == "codex":
-        cmd = [exe, "--profile", CODEX_PROFILE_NAME, "-C", str(target)]
+    if provider == "codex":  # sem perfil do AiDW: só o subagente e a pasta do AiDW (artefatos da demanda) liberados
+        cmd = [exe, "-C", str(target), "--enable", "multi_agent_v2", "--add-dir", str(ROOT)]
     else:
         cmd = [exe]
     for d in [*extra, *shared, *([folder] if folder else [])]:
@@ -3637,8 +3609,7 @@ def status_data(cfg: dict, catalog: dict) -> dict:
     codex = {"installed": bool(manifest.get("codex"))}
     if codex["installed"]:
         files = manifest["codex"].get("files", {})
-        codex.update(files=len(files), missing=sum(not Path(k).is_file() for k in files),
-                     hooks_trusted=codex_hooks_trusted())
+        codex.update(files=len(files), missing=sum(not Path(k).is_file() for k in files))
     reg = load_registry()["worktrees"]
     demands = demand_list(cfg, active_only=True)
     known = {d["id"] for d in demand_list(cfg)}
@@ -3701,12 +3672,8 @@ def status_command(cfg: dict, catalog: dict, as_json: bool) -> int:
         rep.info("Codex: não instalado (`aidw.py install --provider codex`)")
     elif x["missing"]:
         rep.warn(f"Codex: {x['missing']} de {x['files']} arquivos do AiDW sumiram: `aidw.py install --provider codex`")
-    elif x["hooks_trusted"] is None:
-        rep.warn(f"Codex: os hooks do AiDW sumiram de {CODEX_HOOKS_FILE}: `aidw.py install --provider codex`")
-    elif x["hooks_trusted"] is False:
-        rep.warn(f"Codex: instalado, hooks ainda não aprovados (abra `codex --profile {CODEX_PROFILE_NAME}` no terminal)")
     else:
-        rep.ok(f"Codex: {x['files']} arquivos, hooks aprovados")
+        rep.ok(f"Codex: {x['files']} arquivos (agentes e skills)")
     heading(f"Demandas ativas ({len(data['demands'])})")
     if not data["demands"]:
         print(f"  nenhuma em {data['state_dir']}")
