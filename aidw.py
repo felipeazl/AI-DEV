@@ -1295,6 +1295,20 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     return "\n".join(lines)
 
 
+def level_cells(resolved: dict, routing: dict) -> dict[str, dict[str, str | None]]:
+    """{nível: {nome do agente: variante (o subagent_type sem namespace) ou None quando não roda}}: a mesma tabela
+    *Effort per task* do Claude, para quem precisa dela em dado (o mod de travas da delegação)."""
+    out: dict[str, dict[str, str | None]] = {}
+    for lvl in routing.get("effort", {}).get("levels", {}):
+        out[lvl] = {}
+        for r, a in resolved.items():
+            if r == ORCHESTRATOR or not a["enabled"]:
+                continue
+            model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
+            out[lvl][a["name"]] = None if lvl in a.get("skip_levels", []) else variant_name(a, model, effort)
+    return out
+
+
 def aidw_command(global_mode: bool) -> str:
     """Como chamar o aidw.py: relativo no modo projeto (o chat está na raiz), absoluto no plugin."""
     return f'python "{ROOT.as_posix()}/aidw.py"' if global_mode else "python aidw.py"
@@ -1341,10 +1355,19 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "", "```", record_hint(codex=False, global_mode=global_mode), "```", "",
             "  `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the "
             "ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.",
-            "- With the `aidw-demanda` mod loaded, the record is automatic: the Agent result (or, for a "
-            "background agent, a note when it finishes) carries `AiDW: delegação registrada…` with the `header` "
-            "and `resumo` to show. Then do **not** run `record` for it; run it yourself only when that line is "
-            "missing or says the mod could not record.",
+            "- With the `aidw-mods` plugin loaded (Claude Code only, on in orchestrator mode; docs/mods.md):",
+            "  - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) "
+            "carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run "
+            "`record` for it; run it yourself only when that line is missing or says the mod could not record.",
+            "  - An Agent call that breaks the delegation rules (wrong cell of the table, `model` the user did not "
+            "ask for, missing `Nível`/folder, a pasted input, a loop past `max_retries`) comes back denied with "
+            "`AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the "
+            "limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or "
+            "`/aidw-rodada`).",
+            "  - The user may answer through the AiDW panel (`/aidw-painel`): a manual-test step arrives as "
+            "`Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and "
+            "the PR decision or the card comment as a message they sent. They are the user's own words: record "
+            "and act on them as if typed.",
             explore_line(resolved),
         ]
         return "\n".join(lines)
@@ -2012,6 +2035,10 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
                    for role, a in resolved.items()},
         "mcp": list(servers),
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),
+        # para os mods do Claude (travas da delegação): o subagent_type de cada célula da tabela Effort per task
+        "levels": level_cells(resolved, b["routing"]),
+        "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
+        "max_retries": b["routing"].get("max_retries", 3),
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
@@ -2074,7 +2101,9 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                  "(`<raiz dos worktrees>/<id>/<repositório>`). Se a sessão abriu nessa pasta ou num worktree dela "
                  "(`demand` no `project detect`, ex.: `aidw open --demand`), fique onde está. Senão, no app desktop, "
                  "`mcp__ccd_directory__change_directory` para o worktree (um repositório) ou a pasta da demanda (mais "
-                 "de um); no terminal, `EnterWorktree` com o id da demanda. No app, depois de mudar (ou ao ficar), "
+                 "de um); sem worktree (só leitura, ou repositórios usados no lugar, como numa demanda importada), "
+                 "para a pasta de estado da demanda (`<State dir>/<id>`, que toda demanda tem); no terminal, "
+                 "`EnterWorktree` com o id da demanda. No app, depois de mudar (ou ao ficar), "
                  "adicione as *Session folders* do Runtime com `mcp__ccd_directory__request_directory`, uma vez por "
                  "sessão, para os planos e relatórios abrirem no app. O painel de diff mostra um repositório "
                  "por vez: `/"
@@ -2170,11 +2199,14 @@ def diff_skill(plugin: str) -> str:
         "ou na pasta da demanda); senão, a demanda desta sessão; senão `demand list --active --json`, e pergunte "
         "se houver mais de uma.",
         f"2. **Worktrees:** `{aidw} worktree list --json`, os `active` dessa demanda, na ordem da lista (a de "
-        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`.",
+        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`. "
+        f"Sem nenhum (repositórios usados no lugar, como numa demanda importada): os `repos` de `{aidw} demand show "
+        "<id>`, na ordem; `folder` é a última parte do `path`.",
         "3. **Destino:**",
-        "   - vazio: o worktree **seguinte** àquele em que o chat está, voltando ao primeiro depois do último; fora "
+        "   - vazio: o repositório **seguinte** àquele em que o chat está, voltando ao primeiro depois do último; fora "
         "de todos (na pasta da demanda, por exemplo), o primeiro;",
-        "   - `sair`: a pasta da demanda (a pasta-mãe dos worktrees dela);",
+        "   - `sair`: a pasta da demanda (a pasta-mãe dos worktrees dela; sem worktree, a pasta de estado, o "
+        "`folder` do `demand show`);",
         "   - um nome: o `folder` que casa com ele, sem diferenciar maiúsculas; um pedaço vale (`front`). Nenhum ou "
         "mais de um: liste os `folder` e pergunte.",
         "   Com um worktree só, vazio e o nome dele levam a ele; se o chat já está lá, diga e pare.",
