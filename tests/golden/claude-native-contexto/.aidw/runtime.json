@@ -339,5 +339,64 @@
     "env": {
       "MCP_TIMEOUT": "60000"
     }
-  }
+  },
+  "levels": {
+    "trivial": {
+      "planejador": null,
+      "explorador": "explorador",
+      "codificador": "codificador-sonnet-high",
+      "revisor": "revisor-sonnet-high",
+      "api": "api-haiku",
+      "qa": "qa-low",
+      "documentador": "documentador",
+      "bugs": "bugs-low",
+      "seguranca": "seguranca-low"
+    },
+    "simples": {
+      "planejador": "planejador-sonnet-high",
+      "explorador": "explorador",
+      "codificador": "codificador-sonnet-high",
+      "revisor": "revisor-sonnet-high",
+      "api": "api-low",
+      "qa": "qa-low",
+      "documentador": "documentador",
+      "bugs": "bugs-medium",
+      "seguranca": "seguranca-medium"
+    },
+    "padrao": {
+      "planejador": "planejador",
+      "explorador": "explorador",
+      "codificador": "codificador",
+      "revisor": "revisor",
+      "api": "api",
+      "qa": "qa",
+      "documentador": "documentador",
+      "bugs": "bugs",
+      "seguranca": "seguranca"
+    },
+    "complexa": {
+      "planejador": "planejador-high",
+      "explorador": "explorador-sonnet-medium",
+      "codificador": "codificador-high",
+      "revisor": "revisor-high",
+      "api": "api-high",
+      "qa": "qa-high",
+      "documentador": "documentador-sonnet-medium",
+      "bugs": "bugs-opus-high",
+      "seguranca": "seguranca-opus-high"
+    },
+    "critica": {
+      "planejador": "planejador-high",
+      "explorador": "explorador-sonnet-high",
+      "codificador": "codificador-high",
+      "revisor": "revisor-high",
+      "api": "api-high",
+      "qa": "qa-high",
+      "documentador": "documentador-sonnet-medium",
+      "bugs": "bugs-opus-high",
+      "seguranca": "seguranca-opus-high"
+    }
+  },
+  "default_level": "padrao",
+  "max_retries": 3
 }

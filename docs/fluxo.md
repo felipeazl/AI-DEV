@@ -248,8 +248,9 @@ Tudo da demanda fica na pasta `<pasta de estado>/<tipo>-<id>/` (a pasta de estad
 
 ### Métricas
 
-Depois de cada subagente, o orquestrador roda `aidw.py record` com os números reais do resultado (tokens, chamadas de
-ferramenta, duração). Isso grava a linha no `metricas.md` e imprime o cabeçalho e o resumo que aparecem no chat. Os
+Depois de cada subagente, a linha vai para o `metricas.md` pelo `aidw.py record`, com os números reais do resultado
+(tokens, chamadas de ferramenta, duração), e o cabeçalho e o resumo aparecem no chat. No Claude Code, o mod `aidw-mods`
+roda o `record` sozinho quando o agente termina ([mods.md](mods.md)); sem ele, e no Codex, o orquestrador roda à mão. Os
 números **nunca são estimados**: são a base para ajustar a tabela de níveis com dados.
 
 ### Retomar

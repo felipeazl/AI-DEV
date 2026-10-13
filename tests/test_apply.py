@@ -32,7 +32,7 @@ REPO = Path(__file__).resolve().parent.parent
 TESTS = REPO / "tests"
 GOLDEN = TESTS / "golden"
 FIXTURE_CONTEXT = TESTS / "fixtures" / "contexts" / "exemplo"
-SOURCES = ["aidw.py", "aidw_guard.py", "config", "agents", "skills", "orchestrator", "workflows"]
+SOURCES = ["aidw.py", "aidw_guard.py", "config", "agents", "skills", "orchestrator", "workflows", "mods"]
 # Tudo o que o apply gera, relativo à raiz.
 GENERATED = ["CLAUDE.md", "AGENTS.md", ".mcp.json", ".aidw", ".claude", ".codex", ".agents"]
 UPDATE = os.environ.get("AIDW_UPDATE_GOLDEN") == "1"
@@ -759,7 +759,8 @@ class WorktreeTest(unittest.TestCase):
             self.assertIn('"/aidw:orquestrar us-1"', out)
             self.assertIn("--add-dir", out)
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--provider", "codex", "--print")
-            self.assertIn("--profile aidw -C", out)
+            self.assertIn("--enable multi_agent_v2", out)
+            self.assertNotIn("--profile", out, "no Codex o AiDW não instala perfil")
             self.assertIn('"$aidw-orquestrar us-1"', out)
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--no-orchestrate", "--print")
             self.assertNotIn("orquestrar", out)
@@ -977,6 +978,15 @@ class SessionModeTest(unittest.TestCase):
                                           "WorktreeRemove"})
             self.assertEqual(hooks["SessionStart"][0]["matcher"], "compact|resume")
             self.assertIn("aidw_guard.py", hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
+            # mods do Claude Code: plugin próprio no marketplace, sem os testes, com a raiz do AiDW desta máquina
+            self.assertEqual(plug["mods"]["plugin"], "aidw-mods")
+            self.assertIn("plugins/aidw-mods/hooks/register.tsx", files)
+            self.assertFalse([k for k in files if k.startswith("plugins/aidw-mods/tests/")], "os testes não vão")
+            mods_meta = json.loads(files["plugins/aidw-mods/.claude-plugin/plugin.json"])
+            self.assertEqual(mods_meta["userConfig"]["aidwRoot"]["default"], root.as_posix())
+            self.assertEqual(mods_meta["version"], plug["mods"]["version"])
+            market = json.loads(files[".claude-plugin/marketplace.json"])
+            self.assertEqual([p["name"] for p in market["plugins"]], ["aidw-mods", "aidw"])
             orq = files["plugins/aidw/skills/orquestrar/SKILL.md"].decode("utf-8")
             for step in ("project detect --json", "demand list --active --json", "não recomece",
                          "demand set <id> --step <AÇÃO>", "EnterWorktree", "--mode <auto|interativo>",
@@ -1209,12 +1219,14 @@ class PluginMigrationTest(unittest.TestCase):
             self.assertTrue(ok)
             self.assertIn(["plugin", "uninstall", "aidw-exemplo@aidw-local"], calls)
             self.assertIn(["plugin", "install", "aidw@aidw-local"], calls)
+            self.assertIn(["plugin", "install", "aidw-mods@aidw-local"], calls, "os mods vão junto")
             manifest = json.loads((root / ".aidw" / "install-manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual((manifest["plugins"], manifest["context"]), (["aidw@aidw-local"], "exemplo"))
+            self.assertEqual((manifest["plugins"], manifest["context"]),
+                             (["aidw-mods@aidw-local", "aidw@aidw-local"], "exemplo"), "o aidw fica por último")
 
 
 class CodexInstallTest(unittest.TestCase):
-    """install/uninstall --provider codex: arquivos aidw-*, perfil aidw, hooks.json por merge, confiança preservada."""
+    """install/uninstall --provider codex: só agentes e skills aidw-*; limpa perfil, regras e hooks de installs antigos."""
 
     def test_install_uninstall_codex(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
@@ -1223,7 +1235,13 @@ class CodexInstallTest(unittest.TestCase):
             home, skills = tmp / "codex-home", tmp / "agents-skills"
             home.mkdir()
             user_hook = {"hooks": [{"type": "command", "command": "echo meu-hook"}]}
-            (home / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [user_hook]}}), encoding="utf-8")
+            guard = {"matcher": "apply_patch|Bash|mcp__.*",
+                     "hooks": [{"type": "command", "command": f'python "{root.as_posix()}/aidw_guard.py"'}]}
+            # sobras de uma instalação antiga: perfil, regras e o grupo do AiDW no hooks.json
+            (home / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [user_hook], "PreToolUse": [guard]}}),
+                                             encoding="utf-8")
+            (home / "aidw.config.toml").write_text("# Gerado por aidw.py install — perfil antigo\n",
+                                                   encoding="utf-8")
 
             proc = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -1233,6 +1251,7 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("$aidw-sair", orq)
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
             self.assertNotIn("AskUserQuestion", orq, "no Codex o modo é perguntado em texto")
+            self.assertNotIn("perfil `aidw`", orq, "no Codex o AiDW não instala perfil")
             self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
             self.assertIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
@@ -1247,105 +1266,40 @@ class CodexInstallTest(unittest.TestCase):
             self.assertNotIn("disable-model-invocation", done, "chave do Claude; no Codex vale o openai.yaml")
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-done" / "agents" / "openai.yaml").read_text())
             self.assertFalse((skills / "aidw-to-spec" / "agents" / "openai.yaml").exists())
-            self.assertIn("forbidden", (home / "rules" / "aidw.rules").read_text(encoding="utf-8"))
-            profile = (home / "aidw.config.toml").read_text(encoding="utf-8")
-            self.assertIn("multi_agent_v2 = true", profile)
-            self.assertIn(str(tmp / "wt").replace("\\", "\\\\"), profile, "raiz dos worktrees gravável no perfil")
-            hooks = json.loads((home / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-            self.assertEqual(hooks["Stop"], [user_hook], "o hook do usuário fica")
-            self.assertEqual(hooks["PreToolUse"][0]["matcher"], "apply_patch|Bash|mcp__.*")
 
-            before = (home / "hooks.json").read_text(encoding="utf-8")
+            # só agentes e skills: sem regras, sem perfil, e o hooks.json fica só com o que é do usuário
+            self.assertFalse((home / "rules" / "aidw.rules").exists(), "o install do Codex não grava regras")
+            self.assertFalse((home / "aidw.config.toml").exists(), "o perfil antigo do AiDW sai")
+            self.assertEqual(json.loads((home / "hooks.json").read_text(encoding="utf-8")),
+                             {"hooks": {"Stop": [user_hook]}}, "sai só o grupo do AiDW; o hook do usuário fica")
+            manifest_path = root / ".aidw" / "install-manifest.json"
+            written = json.loads(manifest_path.read_text(encoding="utf-8"))["codex"]["files"]
+            self.assertTrue(all(Path(k).is_relative_to(home / "agents") or Path(k).is_relative_to(skills) for k in written),
+                            "o manifesto do Codex só tem agentes e skills")
+            self.assertIn("multi_agent_v2", proc.stdout, "avisa que o spawn_agent precisa de multi_agent_v2")
+
             again = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
-            self.assertEqual((home / "hooks.json").read_text(encoding="utf-8"), before, "hooks.json idempotente")
+            self.assertIn("0 arquivo(s) mudaram", again.stdout, "idempotente")
 
-            manifest_path = root / ".aidw" / "install-manifest.json"
+            (home / "config.toml").write_text("[features]\nmulti_agent_v2 = true\n", encoding="utf-8")
+            quiet = run_aidw(root, "install", "--provider", "codex")
+            self.assertNotIn("ligue `multi_agent_v2`", quiet.stdout, "com a feature ligada, sem aviso")
+
             both = run_aidw(root, "install", "--skip-cli")  # sem --provider: o Codex já instalado é atualizado junto
             self.assertEqual(both.returncode, 0, both.stdout + both.stderr)
             self.assertIn("Instalação global no Codex", both.stdout)
             self.assertIn("codex", json.loads(manifest_path.read_text(encoding="utf-8")),
                           "o install do Claude não apaga o registro do Codex")
 
-            # confiança: o Codex grava no config.toml do usuário ou, com --profile aidw, no perfil; o AiDW não apaga
-            os.environ["CODEX_HOME"], os.environ["AIDW_CODEX_SKILLS_DIR"] = str(home), str(skills)
-            try:
-                aidw = load_aidw(root)
-            finally:
-                os.environ.pop("CODEX_HOME"), os.environ.pop("AIDW_CODEX_SKILLS_DIR")
-            keys = aidw.aidw_hook_keys()
-            self.assertEqual(len(keys), 3)
-            self.assertIsNotNone(aidw.codex_hooks_trusted())
-            self.assertFalse(aidw.codex_hooks_trusted(), "sem confiança gravada")
-            trust = lambda h: "\n".join(f"[hooks.state.{json.dumps(k)}]\ntrusted_hash = {json.dumps(h)}\n"  # noqa: E731
-                                        for k in keys)
-            (home / "config.toml").write_text(trust("sha256:abc"), encoding="utf-8")
-            self.assertTrue(aidw.codex_hooks_trusted())
-            manifest_path = root / ".aidw" / "install-manifest.json"
-            m = json.loads(manifest_path.read_text(encoding="utf-8"))
-            m["codex"]["hooks_signature"] = "assinatura-antiga"  # como se os hooks tivessem mudado neste install
-            manifest_path.write_text(json.dumps(m), encoding="utf-8")
-            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
-            self.assertFalse(aidw.codex_hooks_trusted(), "hash de antes da mudança não vale mais")
-            (home / "config.toml").write_text(trust("sha256:novo"), encoding="utf-8")  # o usuário reaprovou
-            self.assertTrue(aidw.codex_hooks_trusted())
-            self.assertIn("sha256:novo", (home / "config.toml").read_text(encoding="utf-8"), "config.toml intocado")
-
-            # aprovação gravada no perfil (codex --profile aidw): vale, e o install não a apaga
-            (home / "config.toml").write_text("", encoding="utf-8")
-            with open(home / "aidw.config.toml", "a", encoding="utf-8") as f:
-                f.write("\n[hooks.state]\n" + trust("sha256:perfil"))
-            self.assertTrue(aidw.codex_hooks_trusted(), "confiança gravada no perfil")
-            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
-            self.assertTrue(aidw.codex_hooks_trusted(), "o install mantém a confiança gravada no perfil")
-            self.assertIn("sha256:perfil", (home / "aidw.config.toml").read_text(encoding="utf-8"))
-
-            # sem o registro no manifesto (o install do Claude o apagava), a mudança aparece no próprio hooks.json
-            m = json.loads(manifest_path.read_text(encoding="utf-8"))
-            m["codex"].pop("hooks_signature")
-            m["codex"]["stale_trust"] = {}
-            manifest_path.write_text(json.dumps(m), encoding="utf-8")
-            old = json.loads((home / "hooks.json").read_text(encoding="utf-8"))
-            old["hooks"]["PreToolUse"][-1]["matcher"] = "apply_patch"  # hooks de uma versão anterior, aprovados
-            (home / "hooks.json").write_text(json.dumps(old), encoding="utf-8")
-            self.assertEqual(run_aidw(root, "install", "--provider", "codex").returncode, 0)
-            self.assertFalse(aidw.codex_hooks_trusted(), "o matcher mudou: a aprovação antiga não vale")
-
             gone = run_aidw(root, "uninstall", "--provider", "codex")
             self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)
             self.assertEqual(json.loads((home / "hooks.json").read_text(encoding="utf-8")), {"hooks": {"Stop": [user_hook]}})
-            self.assertFalse((home / "aidw.config.toml").exists())
             self.assertFalse((home / "agents" / "aidw-codificador.toml").exists())
             self.assertFalse((skills / "aidw-orquestrar").exists())
             code = run_aidw(root, "open", "--provider", "codex", "--path", str(tmp), "--print")
-            self.assertIn("--profile aidw", code.stdout)
-
-
-class CodexNodeTest(unittest.TestCase):
-    """O sandbox do Codex não lê o perfil do usuário: um node do PATH que mora lá (nvm) é trocado por um de fora."""
-
-    def test_node_fora_do_perfil(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
-            tmp = Path(tmp).resolve()
-            root = make_sandbox(tmp, "claude", "native", "")
-            aidw = load_aidw(root)
-            home, pf = tmp / "home", tmp / "pf"
-            for d in (home / "nvm", pf):
-                d.mkdir(parents=True)
-                (d / "node.exe").write_bytes(b"")
-            aidw.Path.home = staticmethod(lambda: home)
-            old_path = os.environ["PATH"]
-            try:
-                os.environ["PATH"] = os.pathsep.join([str(home / "nvm"), str(pf)])
-                self.assertEqual(aidw.codex_node_path()[0], str(pf))
-                os.environ["PATH"] = str(home / "nvm")
-                node_dir, note = aidw.codex_node_path()
-                self.assertIsNone(node_dir)
-                self.assertIn("instale um Node", note)
-                os.environ["PATH"] = str(pf)
-                self.assertEqual(aidw.codex_node_path(), (None, ""), "node fora do perfil: nada a fazer")
-            finally:
-                os.environ["PATH"] = old_path
+            self.assertIn("--enable multi_agent_v2", code.stdout)
+            self.assertNotIn("--profile", code.stdout)
 
 
 class SetupDoctorTest(unittest.TestCase):

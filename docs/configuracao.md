@@ -1,6 +1,6 @@
 # Configuração e perfis de usuário
 
-Cada pessoa usa o AiDW de um jeito: um provedor ou outro, um plano de assinatura maior ou menor, back-end ou front-end,
+Cada pessoa usa o AiDW de um jeito: Claude Code (a plataforma principal) ou Codex (limitado a agentes e skills), um plano de assinatura maior ou menor, back-end ou front-end,
 mais ou menos controle. Este documento mostra onde cada coisa se configura e traz perfis prontos.
 
 ## As três camadas
@@ -34,6 +34,10 @@ O modelo é o `aidw.config.example.toml`. O `setup` cria o seu pelo wizard.
 [provider]
 name = "claude"           # "claude" = tudo no Claude Code · "codex" = tudo no Codex CLI
 ```
+
+O padrão e o recomendado é `claude`. **Com `codex`, o AiDW é só agentes e skills:** o `install --provider codex` não
+instala regras, hooks, perfil nem mods, e o que é exclusivo do Claude Code fica de fora
+([claude-e-codex.md](claude-e-codex.md#o-que-é-exclusivo-do-claude-code)).
 
 Um provedor por instalação no modo projeto. O plugin do Claude e a instalação do Codex podem coexistir
 (`install --provider all`); depois disso, o `install` sem `--provider` atualiza os dois, e o `doctor` avisa se o Codex
@@ -141,14 +145,17 @@ E no dia a dia: "esse ticket é simples, use effort low". O `metricas.md` mostra
 
 ### Só Codex
 
+Só agentes e skills: sem regras de permissão, hooks (guard), perfil, MCP por agente, painel de diff, pastas da sessão
+nem mods ([claude-e-codex.md](claude-e-codex.md#usar-o-aidw-no-codex)). As proteções ficam com as aprovações do seu Codex.
+
 ```toml
 [provider]
 name = "codex"
 ```
 
 ```powershell
-python aidw.py install --provider codex
-codex --profile aidw      # uma vez: "Trust all and continue" para aprovar os hooks
+python aidw.py install --provider codex              # agentes e skills aidw-*
+python aidw.py open --provider codex --demand 1234   # já liga multi_agent_v2 (o spawn_agent precisa dele)
 ```
 
 A tabela de níveis vale pelo tier equivalente de cada modelo, entre os liberados para a conta
