@@ -1,23 +1,31 @@
 // O retrato da demanda que os painéis e a faixa mostram, montado a partir dos arquivos da pasta. Puro: `wanted` diz
 // quais arquivos ler, o register.tsx lê e entrega os textos, `buildSnapshot` monta.
 
-import type { Finding, Repo, Snapshot } from '../types'
+import type { CoverageItem, Finding, Repo, Snapshot } from '../types'
 import { budgetFor, parseDelegations, roundFor } from './aidw'
 import {
+  decisionOf,
   groupArtifacts,
   kindOf,
   latest,
+  parseCardAsk,
+  parseCardPoints,
+  parseCoverage,
   parseCriteria,
   parseDoubts,
+  parseEffort,
   parseEstimate,
   parseFindings,
+  parseItems,
   parsePlanMeta,
   parsePoints,
   parseRoteiro,
+  parseSplit,
   parseTestMatrix,
   parseTriage,
   parseVerdicts,
   parseVote,
+  progress,
   timeline,
   waitingFor,
 } from './artifacts'
@@ -56,6 +64,7 @@ export function wanted(files: string[]): string[] {
   add(first(files, /^roteiro-testes.*\.md$/))
   add(first(files, /^levantamento-.*\.md$/))
   add(first(files, /^pontos-.*\.md$/))
+  add(first(files, /^cobertura-.*\.md$/))
   add(latest(files, REPORT)?.file)
   for (const f of files) if (/^resultado-e2e.*\.md$/.test(f)) add(f)
   for (const re of [REVIEW, PLAN_REVIEW, BUGS, SECURITY, TRIAGE, PLAN_TRIAGE]) for (const f of files) if (re.test(f)) add(f)
@@ -82,22 +91,43 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
 
   // achados: todas as rodadas, com a triagem de cada uma
   const findings: Finding[] = []
+  // a triagem de cada rodada vale para os achados daquela rodada (o mesmo id volta nas rodadas seguintes)
   const decisions: Record<string, string> = {}
   const published = new Set<string>()
   for (const f of files) {
     for (const [re, source] of [[REVIEW, 'revisão'], [PLAN_REVIEW, 'plano'], [BUGS, 'bugs'], [SECURITY, 'segurança']] as const) {
       const m = re.exec(f)
-      if (m) findings.push(...parseFindings(text(f), Number(m[1]), source))
+      if (m) findings.push(...parseFindings(text(f), Number(m[1]), source, f))
     }
-    if (TRIAGE.test(f) || PLAN_TRIAGE.test(f)) {
-      const t = parseTriage(text(f))
-      Object.assign(decisions, t.decisions)
-      for (const id of t.published) published.add(id)
+    const t = TRIAGE.exec(f) ?? PLAN_TRIAGE.exec(f)
+    if (t) {
+      const parsed = parseTriage(text(f))
+      const plan = PLAN_TRIAGE.test(f) ? 'p' : 'c'
+      for (const [id, d] of Object.entries(parsed.decisions)) {
+        decisions[`${plan}${t[1]}:${id}`] = d
+        decisions[id] ??= d
+      }
+      for (const id of parsed.published) published.add(id)
     }
   }
   for (const f of findings) {
-    f.triage = decisions[f.id] ?? ''
+    f.triage = decisions[`${f.source === 'plano' ? 'p' : 'c'}${f.round}:${f.id}`] ?? decisions[f.id] ?? ''
     f.published = published.has(f.id)
+    f.decision = decisionOf(f.triage)
+    f.recommendation = f.triage || f.recommendation
+  }
+  // um achado que a rodada seguinte da mesma revisão dá como corrigido: "corrigido na rN"
+  const family = (f: Finding) => f.file.replace(/-r\d+\.md$/, '')
+  for (const f of findings) {
+    if (f.title) continue
+    const earlier = findings.find(g => family(g) === family(f) && g.id === f.id && g.round < f.round && g.title)
+    f.title = earlier?.title ?? (f.status ? `reapresentado (${f.status})` : 'sem descrição')
+    if (!f.where) f.where = earlier?.where ?? ''
+  }
+  for (const f of findings) {
+    if (/corrig|fixed|resolv/.test(f.status)) continue
+    const later = findings.find(g => family(g) === family(f) && g.id === f.id && g.round > f.round && /corrig|fixed|resolv/.test(g.status))
+    if (later) f.status = `corrigido na r${later.round}`
   }
   findings.sort((a, b) => a.round - b.round || a.id.localeCompare(b.id))
 
@@ -114,6 +144,17 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     c.how = how[c.id] ?? []
     c.result = verdicts[c.id]?.result ?? ''
     c.evidence = verdicts[c.id]?.evidence ?? ''
+  }
+
+  // critérios, regras e cenários (CA/RN/CN) com a cobertura pelo nosso código e testes
+  const planText = text(planFile(files))
+  const coverageFile = first(files, /^cobertura-.*\.md$/)
+  const status = parseCoverage(text(coverageFile))
+  const coverage: CoverageItem[] = []
+  for (const kind of ['CA', 'RN', 'CN'] as const) {
+    const items = parseItems(`${planText}\n${text(testPlanFile(files))}`, kind)
+    const list = items.length || kind !== 'CA' ? items : criteria.map(c => ({ id: c.id, text: c.text }))
+    for (const it of list) coverage.push({ id: it.id, kind, text: it.text, status: status[it.id] ?? 'falta' })
   }
 
   const roteiro = first(files, /^roteiro-testes.*\.md$/) ?? ''
@@ -138,8 +179,10 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     status: demand.status ?? 'active',
     mode: demand.mode ?? 'auto',
     note: (demand.note ?? '').trim(),
+    summary: (demand.summary ?? '').trim(),
     waiting: waitingFor(step),
     timeline: timeline(kind, demand),
+    progress: progress(kind, demand),
     repos,
     artifacts: groupArtifacts(files),
     patches: files.filter(f => f.endsWith('.patch')).sort(),
@@ -155,9 +198,15 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     findings,
     vote: parseVote(text(reviews.at(-1))),
     criteria,
+    coverage,
+    coverageRecorded: !!coverageFile,
     manual: parseRoteiro(text(roteiro)),
     roteiro,
     points: parsePoints(lev, text(first(files, /^pontos-.*\.md$/))),
+    cardAsk: parseCardAsk(lev),
+    cardPoints: parseCardPoints(lev),
+    effort: parseEffort(lev),
+    split: parseSplit(lev),
     estimate: lev ? parseEstimate(lev) : null,
     doubts: parseDoubts(lev),
     levantamento,

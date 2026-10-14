@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register } from 'claude-code'
 
-import type { DiffView, Snapshot } from '../types'
+import type { DiffView, ReviewFilter, Snapshot } from '../types'
 import { demandIds, demandSetId, labelFor, parseDelegation, parseMaxRetries, parseState } from './aidw'
 import { voteValue } from './artifacts'
 import type { DemandFile } from './artifacts'
@@ -11,7 +11,7 @@ import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
 import { redactBlocks } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
-import { Band, Panel, levantamentoText, prDecisionText, tabFor } from './views'
+import { Band, Panel, levantamentoText, prDecisionText, reviewDecisionText, tabFor } from './views'
 import type { Actions, UI } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
@@ -32,6 +32,12 @@ const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
 const warned = atom({ plugin: 'aidw-mods', key: 'warned' } as const, {})
+const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
+const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
+const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], open: false }
+const reviewFilter = atom({ plugin: 'aidw-mods', key: 'reviewFilter' } as const, NO_FILTER)
+const decisions = atom({ plugin: 'aidw-mods', key: 'decisions' } as const, {})
+const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
 const PANE = 'aidw'
 // Etapas em que um ajuste de teste pode estar aplicado (ou já devia ter saído).
@@ -113,6 +119,9 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
     await update($, publish, () => ({}))
     await update($, diff, () => null)
     await update($, reviewRound, () => next.round)
+    await update($, reviewFile, () => '')
+    await update($, decisionTab, () => '')
+    await update($, decisions, () => ({}))
   }
 }
 
@@ -177,7 +186,10 @@ async function checkActive($: EngineInterface): Promise<boolean> {
     const dir = (await fromCwd($, await $.session.cwd())) ?? (await fromArgument($, argument))
     if (dir) await refresh($, dir)
   }
-  if (on && !was) await openPanel($, false)
+  if (on && !was) {
+    await measure($)
+    await openPanel($, false)
+  }
   if (!on && was) await $.ui.close({ id: PANE }).catch(() => undefined)
   return on
 }
@@ -237,27 +249,33 @@ async function warnOnce($: EngineInterface, key: string, text: string): Promise<
   $.ui.toast(text, { timeoutMs: 10_000 })
 }
 
-/** Avisos do fim de um turno do orquestrador: espera o Felipe, orçamento, contexto. */
-async function endOfTurn($: EngineInterface): Promise<void> {
-  await refresh($)
-  const s = await read($, snap)
+/** O contexto e as janelas de uso do plano (5h, 7d) para a faixa. */
+async function measure($: EngineInterface): Promise<number | null> {
   try {
     const u = await $.session.usage()
     const percent = Math.round(u.context.percent ?? 0)
-    await update($, usage, () => ({ percent, tokens: u.context.tokens ?? 0 }))
-    if (percent >= 80) {
+    const limits = (u.rateLimits ?? [])
+      .filter(l => l.kind === 'five_hour' || l.kind === 'seven_day')
+      .map(l => ({ kind: l.kind === 'five_hour' ? ('5h' as const) : ('7d' as const), percent: l.percentUsed, resetsAt: l.resetsAt ?? '' }))
+    await update($, usage, () => ({ percent, tokens: u.context.tokens ?? 0, limits }))
+    return percent
+  } catch {
+    return null // sem uso medido nesta superfície
+  }
+}
+
+/** Avisos do fim de um turno do orquestrador: espera o Felipe, contexto. */
+async function endOfTurn($: EngineInterface): Promise<void> {
+  await refresh($)
+  const s = await read($, snap)
+  const percent = await measure($)
+  {
+    if (percent !== null && percent >= 80) {
       await warnOnce($, `ctx:${s?.id}:80`, `AiDW: o contexto do orquestrador está em ${percent}% — delegue mais e leia menos no chat`)
     }
-  } catch {
-    // sem uso medido nesta superfície
   }
   if (!s) return
   if (s.waiting) await warnOnce($, `wait:${s.id}:${s.step}:${s.delegations.length}`, `AiDW: ${s.id} espera você — ${s.waiting}`)
-  for (const t of [80, 100]) {
-    if (s.tokens >= (s.budget * t) / 100) {
-      await warnOnce($, `budget:${s.id}:${t}`, `AiDW: ${s.id} usou ${t}% do orçamento de tokens do nível ${s.level ?? 'padrao'}`)
-    }
-  }
 }
 
 /** Calcula (ou pega do cache) o diff de uma fonte: o worktree contra a base, ou um .patch da pasta. */
@@ -526,8 +544,8 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const ui = $.ui.resolve(e) as unknown as UI
-    const extra = (await read($, extraRounds))[s.id] ?? 0
-    return Band(ui, s, await read($, running), await read($, usage), await read($, codeReads), extra)
+    await read($, tick)
+    return Band(ui, s, await read($, running), await read($, usage), await $.clock.now())
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -538,46 +556,64 @@ export const register: Register = (on, options) => {
       return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:orquestrar ou /aidw:levantamento.</Text>
     }
     await read($, tick)
+    const fill = async (text: string, toast: string) => {
+      await $.prompt.fill({ text })
+      $.ui.toast(toast)
+    }
+    const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])
     const act: Actions = {
       tab: t => void update($, tab, () => t),
       refresh: () => void refresh($),
       extraRound: () => void update($, extraRounds, x => ({ ...x, [s.id]: (x[s.id] ?? 0) + 1 })),
-      reviewRound: n => void update($, reviewRound, () => n),
-      togglePublish: id =>
+      reviewFile: f => void update($, reviewFile, () => f),
+      decisionTab: t => void update($, decisionTab, () => t),
+      decide: (key, value) =>
+        void update($, decisions, x => {
+          const out = { ...x }
+          if (out[key] === value) delete out[key]
+          else out[key] = value
+          return out
+        }),
+      toggleFilter: (kind, value) => void update($, reviewFilter, f => ({ ...f, [kind]: toggle(f[kind], value) })),
+      toggleFilters: () => void update($, reviewFilter, f => ({ ...f, open: !f.open })),
+      sendReviewDecisions: () =>
+        void (async () => {
+          await fill(reviewDecisionText(s, await read($, decisions)), 'AiDW: as decisões estão no prompt; revise e envie')
+          await update($, decisions, () => ({}))
+        })(),
+      togglePublish: (id, value) =>
         void update($, publish, x => {
-          const f = s.findings.find(y => y.id === id)
-          const was = x[id] ?? (!!f && !f.published && f.severity !== 'DUVIDA' && f.severity !== 'SUGESTAO')
-          return { ...x, [id]: !was }
+          const out = { ...x }
+          if (out[id] === value) delete out[id]
+          else out[id] = value
+          return out
         }),
       vote: value => void update($, vote, () => value),
       sendPrDecision: () =>
         void (async () => {
-          const text = prDecisionText(s, await read($, publish), await read($, vote))
-          await $.prompt.fill({ text })
-          $.ui.toast('AiDW: a decisão está no prompt; revise e envie')
+          const text = prDecisionText(s, await read($, publish), await read($, vote), await read($, drafts))
+          await fill(text, 'AiDW: a decisão está no prompt; revise e envie')
         })(),
+      adjustInChat: text => void fill(text, 'AiDW: o texto está no prompt; diga o que ajustar e envie'),
       draft: (key, value) => void update($, drafts, x => ({ ...x, [key]: value })),
-      manualResult: (step, ok) =>
+      manualResult: (step, result) =>
         void (async () => {
           const evidence = (await read($, drafts))[`evidencia-${step}`] ?? ''
+          const what = result === 'ok' ? '✅ passou' : result === 'fail' ? '❌ falhou' : '⏭ pulado'
           await $.prompt.submit({
-            text: `Roteiro ${s.roteiro}, passo ${step}: ${ok ? '✅ passou' : '❌ falhou'}${evidence ? ` — evidência: ${evidence}` : ''}`,
+            text: `Roteiro ${s.roteiro}, passo ${step}: ${what}${evidence ? ` — evidência: ${evidence}` : ''}`,
             asUser: true,
           })
           await update($, drafts, x => ({ ...x, [`evidencia-${step}`]: '' }))
         })(),
-      answerDoubt: n =>
+      answerDoubt: id =>
         void (async () => {
-          const answer = (await read($, drafts))[`duvida-${n}`] ?? ''
+          const answer = (await read($, drafts))[`duvida-${id}`] ?? ''
           if (!answer.trim()) return
-          await $.prompt.submit({ text: `Resposta à dúvida ${n} do levantamento ${s.id}: ${answer}`, asUser: true })
-          await update($, drafts, x => ({ ...x, [`duvida-${n}`]: '' }))
+          await $.prompt.submit({ text: `Resposta à dúvida ${id} do levantamento ${s.id}: ${answer}`, asUser: true })
+          await update($, drafts, x => ({ ...x, [`duvida-${id}`]: '' }))
         })(),
-      postLevantamento: () =>
-        void (async () => {
-          await $.prompt.fill({ text: levantamentoText(s) })
-          $.ui.toast('AiDW: o pedido está no prompt; revise e envie')
-        })(),
+      postLevantamento: () => void fill(levantamentoText(s), 'AiDW: o pedido está no prompt; revise e envie'),
       diffSource: source => void showDiff($, source),
       diffFile: path =>
         void (async () => {
@@ -585,6 +621,7 @@ export const register: Register = (on, options) => {
           if (d) await showDiff($, d.source, path)
         })(),
       appDiff: repo => void $.prompt.submit({ text: `/aidw:diff ${repo}`, asUser: true }),
+      expand: key => void update($, expanded, x => ({ ...x, [key]: !x[key] })),
     }
     return Panel(
       ui,
@@ -597,12 +634,15 @@ export const register: Register = (on, options) => {
         vote: await read($, vote),
         drafts: await read($, drafts),
         diff: await read($, diff),
-        reviewRound: await read($, reviewRound),
         usage: await read($, usage),
-        codeReads: await read($, codeReads),
         extraRounds: (await read($, extraRounds))[s.id] ?? 0,
         columns: e.props.bodyColumns,
         canAppDiff: e.surface === 'desktop',
+        reviewFile: await read($, reviewFile),
+        decisionTab: await read($, decisionTab),
+        filter: await read($, reviewFilter),
+        decisions: await read($, decisions),
+        expanded: await read($, expanded),
       },
       act,
     )

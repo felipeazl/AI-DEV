@@ -84,6 +84,16 @@ function fake(on: On, opts: { orchestrating: boolean; demand: string; argument?:
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.id', () => ({ value: SESSION }))
   on('session.cwd', () => ({ value: opts.cwd ?? `C:/wt/${opts.demand}/repo` }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { percent: 41, tokens: 82_000 },
+      rateLimits: [
+        { kind: 'seven_day', percentUsed: 58 },
+        { kind: 'five_hour', percentUsed: 91, resetsAt: '2026-10-14T16:40:00Z' },
+      ],
+    } as never,
+  }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('fs.read', ($, e) => {
@@ -125,6 +135,11 @@ function fake(on: On, opts: { orchestrating: boolean; demand: string; argument?:
   return out
 }
 
+/** Acha um Text pelo padrão ou falha dizendo qual (o find devolve undefined sem dizer o quê). */
+async function has(view: { find: (q: { type: 'Text'; text: RegExp }) => Promise<unknown> }, text: RegExp): Promise<void> {
+  if ((await view.find({ type: 'Text', text })) === undefined) throw new Error(`não desenhou ${text}`)
+}
+
 /** O motivo de uma recusa: `deny` para o `$.tool.call` do próprio teste, ou o texto do erro. */
 const why = (r: { deny?: string; text?: string; isError?: boolean }) => r.deny ?? (r.isError ? (r.text ?? '') : '')
 
@@ -158,30 +173,41 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
   expect((ran.context ?? []).join('\n')).toContain('## Codificador - claude-opus Medium')
 
   for (const surface of ['terminal', 'desktop'] as const) {
+    // faixa V2: demanda, contexto, 7d e 5h (amarelo a partir de 80%, com a hora de renovar)
     const band = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'AbovePrompt', props: PROPS_BAND })
-    expect(await band.find({ type: 'Text', text: /us-1 · Revisar/ })).toBeDefined()
-    expect(await band.find({ type: 'Text', text: /revisão r4\/5/ })).toBeDefined()
-    expect(await band.find({ type: 'Text', text: /orçamento 6%/ })).toBeDefined()
+    await has(band, /^us-1$/)
+    await has(band, /contexto/)
+    await has(band, /^58%$/)
+    await has(band, /91% \(renova 16:40\)/)
+    expect(await band.find({ type: 'Text', text: /orçamento/ })).toBeUndefined()
     await band.unmount()
 
     const pane = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
     for (const key of ['tab-geral', 'tab-criterios', 'tab-revisao', 'tab-diffs', 'tab-manual', 'tab-metricas']) {
       expect(await pane.find({ key })).toBeDefined()
     }
-    expect(await pane.find({ type: 'Text', text: /● Revisar/ })).toBeDefined()
-    expect(await pane.find({ type: 'Text', text: /● Em andamento: Revisar/ })).toBeDefined()
-    expect(await pane.find({ type: 'Markdown', text: /Próximo passo:.*corrigindo os achados/ })).toBeDefined()
-    expect(await pane.find({ type: 'Markdown', text: /Critérios de aceite:\*\* 1 de 2 atendidos/ })).toBeDefined()
-    expect(await pane.find({ type: 'Text', text: /Último: codificador · rota · concluído/ })).toBeDefined()
+    // Geral: título, mapa (critérios, tokens, tempo, etapa) e o último agente
+    await has(pane, /^Rota fast$/)
+    await has(pane, /etapa 5 de 9/)
+    await has(pane, /^117k$/)
+    await has(pane, /último: codificador \(rota\), concluído/)
     await pane.press({ key: 'tab-metricas' })
-    expect(await pane.find({ type: 'Markdown', text: /\| codificador \| 1 \| 117k \| 100% \|/ })).toBeDefined()
-    expect(await pane.find({ type: 'Markdown', text: /\| opus · medium \| 1 \|/ })).toBeDefined()
-    expect(await pane.find({ type: 'Markdown', text: /Artefatos\*\* \(\d+ arquivos\)/ })).toBeDefined()
-    await pane.press({ key: 'tab-geral' })
+    await has(pane, /^opus · medium$/)
+    await has(pane, /arquivos na pasta da demanda/)
     await pane.press({ key: 'tab-criterios' })
-    expect(await pane.find({ type: 'Text', text: /1 de 2 critérios atendidos/ })).toBeDefined()
+    await has(pane, /^abre a rota$/)
+    await has(pane, /A cobertura ainda não foi registrada/)
+    // Revisão: rodada como seletor, abas de decisão; decidir leva ao prompt
     await pane.press({ key: 'tab-revisao' })
-    expect(await pane.find({ type: 'Markdown', text: /R4-01/ })).toBeDefined()
+    await pane.select({ key: 'review-round', value: 'review-us-1-r4.md' })
+    await pane.press({ key: 'dt-mantido' })
+    await has(pane, /quebra o login/)
+    await pane.select({ key: 'review-round', value: 'review-us-1-r1.md' })
+    await pane.press({ key: 'dt-voce' })
+    await has(pane, /nome ruim/)
+    await pane.press({ key: 'dec-R1-01-0' })
+    await pane.press({ key: 'review-send' })
+    expect(f.fills.at(-1)).toContain('R1-01 (Código r1): mantido')
     await pane.press({ key: 'tab-manual' })
     await pane.input({ key: 'evidencia-T2', text: 'mensagem apareceu', kind: 'change' })
     await pane.press({ key: 'manual-ok' })
@@ -195,7 +221,7 @@ test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:o
   fake(on, { orchestrating: true, demand: 'us-1', argument: 'us-1', cwd: 'C:/AiDW/contexts/x' })
   await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW/contexts/x' })
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  expect(await pane.find({ type: 'Text', text: /us-1 · Desenvolvimento/ })).toBeDefined()
+  await has(pane, /^Rota fast$/)
   await pane.unmount()
 })
 
@@ -216,15 +242,20 @@ test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, o
   expect(await pane.find({ key: 'tab-achados' })).toBeDefined()
   expect(await pane.find({ key: 'tab-criterios' })).toBeUndefined()
   await pane.press({ key: 'tab-achados' })
-  expect(await pane.find({ type: 'Text', text: /2 achado\(s\) · 1 marcado/ })).toBeDefined()
-  await pane.press({ key: 'pub-R1-02' })
-  await pane.select({ key: 'vote', value: 'approve_with_suggestions' })
+  await has(pane, /^Isto quebra o contrato\.$/)
+  await has(pane, /Comentário na PR 7/)
+  await pane.press({ key: 'pa-R1-01' })
+  expect(f.fills.at(-1)).toContain('Ajuste o comentário do achado R1-01')
+  await pane.press({ key: 'pp-R1-01' })
+  await pane.press({ key: 'pp-R1-02' })
+  expect(await pane.find({ key: 'pt-publicar' })).toBeDefined()
+  await pane.press({ key: 'vote-approve_with_suggestions' })
   await pane.press({ key: 'pr-decision' })
   expect(f.fills.at(-1)).toContain('Publicar: R1-01, R1-02')
   expect(f.fills.at(-1)).toContain('Voto: Aprovar com sugestões (5)')
   await pane.press({ key: 'tab-diffs' })
   await pane.select({ key: 'diff-source', value: 'patch:diff-pr7-Hope.patch' })
-  expect(await pane.find({ type: 'Text', text: /1 arquivo · \+1 −1/ })).toBeDefined()
+  await has(pane, /1 arquivo · \+1 −1/)
   await pane.unmount()
 })
 
@@ -232,13 +263,13 @@ test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'lv-9' })
   await $.session.start(START('lv-9'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  await pane.press({ key: 'tab-pontos' })
-  expect(await pane.find({ type: 'Text', text: /2 pontos · 1 confirmados · 1 divergem/ })).toBeDefined()
+  await pane.press({ key: 'tab-codigo' })
+  await has(pane, /^aceitar CPF$/)
   await pane.press({ key: 'tab-estimativa' })
-  expect(await pane.find({ type: 'Markdown', text: /Story points:\*\* 5/ })).toBeDefined()
-  await pane.input({ key: 'duvida-1', text: 'Só PF', kind: 'change' })
-  await pane.input({ key: 'duvida-1', text: 'Só PF' })
-  expect(f.submits.at(-1)).toContain('Resposta à dúvida 1 do levantamento lv-9: Só PF')
+  await has(pane, /^5$/)
+  await pane.input({ key: 'duvida-D1', text: 'Só PF', kind: 'change' })
+  await pane.input({ key: 'duvida-D1', text: 'Só PF' })
+  expect(f.submits.at(-1)).toContain('Resposta à dúvida D1 do levantamento lv-9: Só PF')
   await pane.press({ key: 'post-levantamento' })
   expect(f.fills.at(-1)).toContain('publique no card lv-9')
   await pane.unmount()

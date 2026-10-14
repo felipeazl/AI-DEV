@@ -60,6 +60,11 @@ matters / suggested fix / "not a regression of this change" when the pattern alr
 with `file:line`); doubts; **points checked without findings** (with evidence); risk notes; and
 a summary table by severity with whether the cycle can close.
 
+Either way, two things the AiDW panel reads (Claude Code):
+- A finding whose fix changes code carries `**Antes:**` and `**Depois:**`, each followed by a fenced code block with
+  the few lines that change, exact text (today's lines, then the same lines fixed).
+- A doubt lists its options as `- (a) …`, `- (b) …` and ends with `**Recomendação:** <option and why, one line>`.
+
 **Round ≥ 2:** you get the previous review and the diff of the fixes. Check each previous finding
 (`fixed` / `not_fixed`, with evidence), then look for regressions in the changed lines. Open the
 full files only where the fix needs context.

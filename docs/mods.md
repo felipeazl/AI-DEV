@@ -19,12 +19,12 @@ Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostra
 
 | Mod | Para quê | Onde aparece |
 |---|---|---|
-| [Faixa da demanda](#faixa-da-demanda) | Onde a demanda está, sem perguntar | acima do prompt |
-| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: a visão geral e o próximo passo, critérios, revisão, diffs, o que é de cada uso e as métricas completas | painel lateral (`/aidw-painel`) |
+| [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
+| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)) | painel lateral (`/aidw-painel`) |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md` | resultado do agente |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
-| [Avisos](#avisos) | Quando a demanda precisa de você, passou do orçamento ou o contexto encheu | toasts |
-| [Economia do orquestrador](#economia-do-orquestrador) | Contexto do orquestrador e código lido no chat | faixa e aviso ao modelo |
+| [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto encheu | toasts |
+| [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
 | [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
 | [Notas no prompt](#notas-da-base-de-conhecimento) | `[[nota]]` numa mensagem leva a nota junto | contexto da mensagem |
 | [Estado depois da compactação](#estado-depois-da-compactação) | O orquestrador não perde o fio | linha na conversa |
@@ -32,81 +32,29 @@ Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostra
 ## Faixa da demanda
 
 ```text
-AiDW us-131190 · Revisar · revisão r4/3 ⚠ travado · orçamento 60% · contexto 41% · ▶ codificador (rota)
+AiDW it-101662 · contexto ▬▬▬▭▭ 41% · 7d ▬▬▬▬▭ 58% · 5h ▬▬▬▬▬ 91% (renova 16:40) · ▶ codificador (otimizacao-r2) 2m10s
 ```
 
-| Parte | De onde vem |
-|---|---|
-| fase | a fase da linha do tempo pela etapa do `demand.json`; o uso aparece só quando não é desenvolvimento |
-| ⏸ espera você | etapa `HUMAN_APPROVAL`, `MANUAL_TEST` ou `FINAL_REVIEW` |
-| rodada | só nas etapas do laço: o maior `review-*-r<N>.md` (ou `revisao-plano-*-r<N>.md`) contra o `max_retries` mais as rodadas liberadas |
-| orçamento | soma do `metricas.md` contra o orçamento do nível (amarelo a partir de 80%) |
-| contexto | uso do contexto do próprio orquestrador |
-| AIDW-TESTE | ajustes de teste ainda aplicados, a partir da revisão |
-| ▶ | os agentes do AiDW rodando agora |
-
-A faixa some em `DONE`. **`/aidw-faixa`** esconde e mostra.
+O id da demanda, o contexto deste chat e as janelas de uso do plano (7d e 5h), cada um com barra fina e %, e os
+agentes rodando. A partir de 80% fica amarelo; no 7d e no 5h entra a hora em que a janela renova. As janelas só
+aparecem em conta de assinatura. A faixa some em `DONE`. **`/aidw-faixa`** esconde e mostra.
 
 ## Painel do AiDW
 
-Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/aidw-painel [aba]`**. As abas
-mudam com o uso da demanda; as teclas `1`…`6` trocam de aba e `r` atualiza. A primeira é sempre **Geral** e a última,
-**Métricas**: a Geral responde "onde estamos e o que eu faço agora" em poucas linhas; a Métricas guarda os números
-completos para análise.
+Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/aidw-painel [aba]`**; as teclas
+`1`…`6` trocam de aba e `r` atualiza. O que cada aba mostra, de onde vem cada dado e o que os agentes gravam para
+isso está em **[painel.md](painel.md)**:
 
-### Abas comuns aos três usos
+| Uso | Abas |
+|---|---|
+| Desenvolvimento | Geral · Critérios e Regras · Revisão · Diffs · Teste manual · Métricas |
+| Revisão de PR | Geral · Achados e voto · Diffs · Métricas |
+| Levantamento | Geral · Card × código · Estimativa e dúvidas · Métricas |
 
-- **Geral:**
-  - a situação em uma linha (⏸ espera você, ▶ trabalhando, ● em andamento, ✓ concluída, ⏸ pausada);
-  - o **próximo passo**: o que você faz (aprovar, testar, revisar, liberar rodada) ou o que o AiDW está fazendo, e a
-    nota que o orquestrador gravou no `demand.json`;
-  - o progresso pelas fases (✓ feito, ● atual, ○ pendente);
-  - um número por linha: critérios atendidos, achados abertos, passos do teste manual (ou achados e voto, ou pontos,
-    estimativa e dúvidas), consumo do orçamento e contexto do orquestrador;
-  - **Atenção**, só quando há: AIDW-TESTE aplicado, orçamento perto do fim ou estourado, contexto acima de 80%, código
-    lido no chat, laço travado (com o botão **Liberar +1 rodada**);
-  - os agentes rodando agora, com o tempo correndo, e os três últimos, com o resultado em palavras;
-  - os worktrees com a branch e a pasta da demanda, com link.
-- **Métricas:**
-  - os totais: delegações, tokens contra o orçamento, tempo de agente e custo em US$ quando o `metricas.md` traz (o
-    subagente nativo do Claude só mede tokens; o Codex e o headless trazem custo);
-  - consumo por agente (com a média por chamada), por modelo e effort, por nível e por dia;
-  - o resultado das chamadas (concluído, pediu mudanças, bloqueado…);
-  - retrabalho: as fases que voltaram e quantas vezes, as rodadas de revisão do plano e do código, o contexto do
-    orquestrador e o código lido no chat;
-  - todas as delegações, a mais recente primeiro;
-  - todos os artefatos da pasta, agrupados por etapa, com link para abrir cada um.
-
-`/aidw-painel fluxo` e `/aidw-painel agentes` (os nomes antigos) abrem a Geral e a Métricas.
-
-### Desenvolver uma demanda (feature, bugfix, refactor, hotfix)
-
-| Aba | O que mostra | O que você faz nela |
-|---|---|---|
-| **Critérios** | cada critério de aceite do plano, como vai ser provado (do plano de testes) e o resultado dos relatórios de teste | — |
-| **Revisão** | achados por rodada (severidade, `arquivo:linha`, status, triagem), o resumo de todas as rodadas e a revisão do plano | **Liberar +1 rodada** quando o laço trava |
-| **Diffs** | o diff de cada worktree contra a base, ou de qualquer `.patch` da pasta, arquivo por arquivo | escolher a fonte e o arquivo; no app desktop, **Abrir no painel de diff do app** |
-| **Teste manual** | o `roteiro-testes` com ✅/❌ por passo e o próximo passo em destaque | escrever a evidência e apertar **✅ Passou** ou **❌ Falhou**: vai ao orquestrador como mensagem sua |
-
-### Revisar a PR de outra pessoa (pr-review)
-
-| Aba | O que mostra | O que você faz nela |
-|---|---|---|
-| **Achados e voto** | os achados da última rodada, com a triagem e o rascunho do comentário; o que já foi publicado; o voto sugerido pelo revisor | marcar o que publicar, escolher o voto e **Levar a decisão ao prompt** |
-| **Diffs** | o diff da PR (o `.patch` ou o worktree da PR, da base ao head) | escolher a fonte e o arquivo |
-
-A decisão vai para o **prompt**, não é enviada: publicar comentário e votar são ações travadas, e só valem quando você
-manda a mensagem.
-
-### Analisar uma demanda (levantamento)
-
-| Aba | O que mostra | O que você faz nela |
-|---|---|---|
-| **Pontos do card** | cada ponto do card validado no código (confirmado, diverge, não encontrado, outro sistema) com a evidência | — |
-| **Estimativa e dúvidas** | story points, horas, complexidade e confiança; as dúvidas com por que importam e para quem | responder uma dúvida (vai como mensagem sua) e **Levar ao prompt: publicar o comentário no card** |
-
-Os parsers aceitam os dois formatos de levantamento que existem: o da referência *levantamento* e o antigo (seções
-numeradas, story points em tópicos, dúvidas `D1.`).
+Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e votar numa PR, comentar
+no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta
+a uma dúvida vão como mensagem sua. `/aidw-painel fluxo`, `agentes` e `pontos` (nomes antigos) abrem Geral,
+Métricas e Card × código.
 
 ## Métricas sozinhas
 
@@ -143,8 +91,6 @@ esse laço.
 Toasts, cada um uma vez:
 - **A demanda espera você:** aprovação, teste manual ou revisão final.
 - **Agente terminou:** um agente em segundo plano terminou, com o `state` dele.
-- **Orçamento:** a demanda passou de 80% e de 100% do orçamento de tokens do nível (trivial 300 mil, simples 800 mil,
-  padrao 2 milhões, complexa 4 milhões, critica 6 milhões). O aviso não trava nada.
 - **Contexto:** o contexto do orquestrador passou de 80%.
 
 ## Economia do orquestrador
@@ -154,7 +100,7 @@ fim da demanda.
 - **Aviso:** quando o orquestrador lê um arquivo de código fora da pasta do AiDW, o mod conta a leitura e acrescenta ao
   resultado um aviso para delegar ao explorador. Uma verificação pontual de premissa (skill `verificar-premissa`)
   continua valendo.
-- **Na faixa:** a contagem de leituras e o uso do contexto do orquestrador.
+- **Onde aparece:** só no aviso ao modelo; o painel não mostra a contagem.
 
 ## Filtro de segredos
 
@@ -203,7 +149,7 @@ Claude Code (`pluginConfigs`): `aidwRoot` (a pasta do `aidw.py`) e `python` (o c
 | `hooks/guards.ts` | as travas da delegação |
 | `hooks/secrets.ts` | o filtro de segredos |
 | `hooks/diffs.ts` | o diff dividido por arquivo |
-| `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `routing.toml`, orçamento |
+| `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `routing.toml` |
 | `types/index.d.ts` | o contrato do estado (`PluginState['aidw-mods']`) e os tipos do retrato |
 
 - **Um mod novo:** entra como mais hooks no `register.tsx`. A lógica pura vai num arquivo próprio, com teste. O mod
