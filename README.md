@@ -135,23 +135,24 @@ Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na ret
 | `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
 | `/aidw:contexto-listar` · `contexto-usar <nome>` · `contexto-criar` | `$aidw-contexto-*` | Administram os contextos (seção 6) |
 | `/aidw-faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
-| `/aidw-painel [aba]` | — | Abre o painel do AiDW: Geral (situação e próximo passo), as abas de cada uso e Métricas ([mods](docs/mods.md)) |
+| `/aidw-painel [aba]` | — | Abre o painel do AiDW: Geral (mapa da demanda), as abas de cada uso e Métricas ([painel](docs/painel.md)) |
 | `/aidw-rodada` | — | Libera mais uma rodada no laço de revisão travado pelo `max_retries` |
 
 ### Mods (só Claude Code)
 
 No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
 
-- **Faixa acima do prompt:** demanda, uso, etapa, rodada do laço, tokens contra o orçamento, contexto do orquestrador e
-  os agentes rodando.
-- **Painel do AiDW** (`/aidw-painel`): a aba Geral (situação, próximo passo, o que pede atenção, agentes), as abas de cada uso e a aba Métricas (consumo detalhado, delegações e artefatos).
-  - **Desenvolver:** critérios de aceite, revisão por rodada, teste manual com ✅/❌.
-  - **Revisar PR:** achados, o que publicar e o voto.
-  - **Levantamento:** pontos do card, estimativa e dúvidas.
+- **Faixa acima do prompt:** a demanda, o contexto e as janelas de 7d e 5h do plano, com barras, e os agentes rodando.
+- **Painel do AiDW** (`/aidw-painel`, [painel.md](docs/painel.md)): Geral (título, mapa da demanda com resumo, números e
+  progresso, inclusive Code review e QA, agentes rodando e links), as abas de cada uso e Métricas.
+  - **Desenvolver:** critérios, regras e cenários com a cobertura; revisão em cartões (antes e depois do código,
+    recomendação do AiDW, decisão); diffs por arquivo com os achados; teste manual passo a passo.
+  - **Revisar PR:** achados com o comentário de cada um, o que publicar e o voto.
+  - **Levantamento:** card × código, estimativa e dúvidas.
 - **Métricas sozinhas:** cada delegação vira linha do `metricas.md` quando o agente termina.
 - **Travas da delegação:** a célula da tabela, o `model` sem pedido e o insumo colado são recusados; o laço de revisão
   para no `max_retries` até você liberar mais uma rodada.
-- **Avisos e proteções:** toasts quando a demanda espera você ou passa do orçamento, aviso quando o orquestrador lê
+- **Avisos e proteções:** toasts quando a demanda espera você ou um agente termina, aviso quando o orquestrador lê
   código no chat, filtro de segredos na conversa e o estado da demanda de volta depois de uma compactação.
 
 Eles ligam com `/aidw:orquestrar` ou `/aidw:levantamento` e desligam com `/aidw:sair` ou `/aidw:done`. Detalhes e como

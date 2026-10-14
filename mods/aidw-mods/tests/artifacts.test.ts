@@ -151,7 +151,8 @@ describe('levantamento', () => {
       '2. **Qual ambiente?** *Para:* Tech Lead.',
       '## Fontes',
     ].join('\n')
-    expect(parseEstimate(text)).toEqual({ sp: '8', hours: '11–16 h', complexity: 'Alta', confidence: 'baixa' })
+    const e = parseEstimate(text)
+    expect([e.sp, e.hours, e.complexity, e.confidence]).toEqual(['8', '11–16 h', 'Alta', 'baixa'])
     expect(parsePoints(text, '').map(p => [p.id, p.verdict])).toEqual([['P01', '🔗 outro sistema']])
     expect(parseDoubts(text).map(d => [d.n, d.question, d.to])).toEqual([[1, 'O PJ entra?', 'PO'], [2, 'Qual ambiente?', 'Tech Lead']])
   })

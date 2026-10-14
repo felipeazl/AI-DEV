@@ -911,6 +911,24 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual((code, d["mode"], d["step"]), (0, "interativo", "IMPLEMENT"), d)
             code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
             self.assertEqual(lst["demands"][0]["mode"], "interativo")
+            # painel V2: resumo, etapas de fora do AiDW e PR por repositório
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "Linha 1\nLinha 2", "--step",
+                                   "CODE_REVIEW", "--json")
+            self.assertEqual((code, d["summary"], d["step"]), (0, "Linha 1\nLinha 2", "CODE_REVIEW"), d)
+            code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "1\n2\n3\n4\n5", "--json")
+            self.assertEqual(code, 1, "resumo passa de 4 linhas")
+            code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "Front=7789", "--json")
+            self.assertEqual(code, 1, "repositório que a demanda não tem")
+            code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "Front", "--json")
+            self.assertEqual(code, 1, "--pr sem número")
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--step", "QA_TEST", "--json")
+            self.assertEqual(d["history"][-1]["step"], "QA_TEST")
+            demand_file = Path(d["folder"]) / "demand.json"
+            data = json.loads(demand_file.read_text(encoding="utf-8"))
+            data["repos"] = [{"repo": "C:/p/Assistente.Front", "path": "C:/wt/us-5/Assistente.Front", "branch": "b"}]
+            demand_file.write_text(json.dumps(data), encoding="utf-8")
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "assistente.front=7789", "--json")
+            self.assertEqual((code, d["repos"][0]["pr"]), (0, "7789"), d)
 
             hook = lambda payload: subprocess.run([sys.executable, str(root / "aidw_guard.py")],  # noqa: E731
                                                   input=json.dumps(payload), capture_output=True, text=True,

@@ -14,7 +14,7 @@
 | `/aidw:contexto-usar <nome>` | `$aidw-contexto-usar` | Valida e ativa um contexto e regenera o ambiente |
 | `/aidw:contexto-criar` | `$aidw-contexto-criar` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
 | `/aidw-faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
-| `/aidw-painel [aba]` | — | Abre o painel do AiDW (mod do Claude Code): Geral (situação e próximo passo), as abas de cada uso (critérios, revisão, diffs, teste manual…) e Métricas |
+| `/aidw-painel [aba]` | — | Abre o painel do AiDW (mod do Claude Code): Geral (mapa da demanda), as abas de cada uso e Métricas ([painel.md](painel.md)) |
 | `/aidw-rodada` | — | Libera mais uma rodada no laço de revisão que a trava do `max_retries` parou |
 
 ## Linha de comando (`python aidw.py …`)
@@ -39,7 +39,7 @@
 | `open [--provider claude\|codex] [--demand <id> [--repo <repo>] \| --path <pasta>] [--no-orchestrate] [--print]` | Abre o CLI na demanda (ou na pasta), já chamando o orquestrador. `--print` só mostra o comando |
 | `chat` | Abre o orquestrador do modo projeto (chat na raiz do AiDW) |
 | `project detect [--path p] [--json]` | Repositório principal, sistema do contexto e demanda de uma pasta |
-| `demand set <id> [--step S] [--status active\|paused\|done] [--mode auto\|interativo] [--title t] [--note n]` | Grava o estado da demanda |
+| `demand set <id> [--step S] [--status active\|paused\|done] [--mode auto\|interativo] [--title t] [--note n] [--summary s] [--pr REPO=N]` | Grava o estado da demanda: etapa (inclusive `CODE_REVIEW` e `QA_TEST`, as de fora do AiDW), resumo de até 4 linhas e PR de um repositório, que o painel mostra |
 | `demand show <id>` · `demand list [--active]` | Consulta |
 | `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch, junctions (idempotente) |
 | `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação, remoção segura e limpeza do registro |
