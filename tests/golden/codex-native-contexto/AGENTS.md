@@ -56,7 +56,8 @@ the test plan has manual steps) → Documentation (documentador) → Final revie
 **Planning** — do not read code into this chat to plan: it stays in your context for the whole demand.
 - **Summary first:** write `resumo-<id>.md` in the demand folder — the card's fields and acceptance criteria,
   the decisions in its comments (author and date), the linked items that matter and any existing work (tasks,
-  branch, PR) with what the user said about it. The agents read this, never the card.
+  branch, PR) with what the user said about it. The agents read this, never the card. Then record what the demand
+  is about in up to 4 plain lines: `python "<ROOT>/aidw.py" demand set <id> --summary "<…>"` (the panel's map).
 - **Explore:** one explorador task with the numbered questions the plan needs (where the change goes,
   the current behavior, the contract of each dependency); its report `exploracao-<assunto>.md` stays in the
   demand folder for the planner and the tickets. In a `simples` demand whose card already names the files,
@@ -84,6 +85,19 @@ Notes link to each other (`[[nome]]`); each fact lives in one note.
   It is what survives a context compaction.
 - **End** (`DONE`, also for PR review and levantamento): tell the user that `/aidw:done` writes it into the knowledge
   base — the demand's note and the notes it touched — and commits the context.
+
+**Panel** (Claude Code, `aidw-mods`; docs/painel.md) — what it shows comes from files you keep:
+- **Coverage:** `cobertura-<id>.md` in the demand folder, a table `| ID | Status | Evidência |` with one row per
+  `CA`/`RN` of the plan and `CN` of the test plan. `falta` → `implementado` when a codificador delivers the code
+  that covers it → `coberto` when one of our tests proves it (unit, E2E, the qa's run); update it after each
+  coder delivery and each test report. Code review by the team and QA testing never change it.
+- **Outside the AiDW:** when the user says the PR is open, `demand set <id> --step CODE_REVIEW --pr <repo>=<n>`;
+  the team asked for changes → the step where the fix happens (`CODER_FIX`, or `IMPLEMENT` for new work) with
+  their points in a task; sent to QA → `--step QA_TEST`; QA returned a bug → the fix step again; accepted → `DONE`.
+  Only the user moves a demand into or out of these steps: never on your own.
+- **Messages from the panel** are the user's own words: `Decisões da revisão (…)` — record each in the round's
+  triage and act on it; `Roteiro …, passo …` — record the result in the script (*Testing*); `Ajuste o comentário …`
+  and `Sobre a dúvida …` — rewrite that text with them before anything is published.
 
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it
 with `python "<ROOT>/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>`
@@ -171,9 +185,10 @@ worktree, plan, tickets, build or code). The procedure, the estimate rubric and 
 - **Explore** (`EXPLORE`): one explorador task in levantamento mode at the `critica` cell — the whole flow is
   the deliverable, so this is the deepest exploration of the table. It validates each point in the code, maps the flow
   end to end and returns the size signals in `exploracao-levantamento.md`.
-- **Estimate** (`ESTIMATE`): you apply the rubric to the size signals and write `levantamento-<id>.md` — effort in
-  hours per front, story points, complexity, confidence, risks and the doubts, written plainly for whoever answers
-  them.
+- **Estimate** (`ESTIMATE`): you apply the rubric to the size signals and write `levantamento-<id>.md` in the
+  reference's model exactly (the panel reads its tables) — card × code, effort per block (min–max), story points,
+  complexity, confidence, risks and the doubts grouped by theme, each with who answers and whether it changes the
+  estimate, written plainly for whoever answers them.
 - **End:** show the estimate and the doubts, offer the card comment (a locked action, as the active context says),
   then `DONE`. Never change the card's state or fields.
 - **Implementing later:** a demand whose folder has `levantamento-<id>.md` and no plan starts its workflow from
@@ -198,7 +213,8 @@ review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to th
 `TICKETS` (planejador in tickets mode),
 `IMPLEMENT`, `TEST`, `TEST_ADJUST`, `ORCHESTRATOR_TEST` and `MANUAL_TEST` (see *Testing*), `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`,
 `ESTIMATE` (see *Levantamento*), `DOCS`, `FINAL_REVIEW`, `DONE`,
-`HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent).
+`HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent), `CODE_REVIEW` and `QA_TEST` (outside the
+AiDW: wait for the user; see *Panel*).
 
 # SHOWING RESULTS
 

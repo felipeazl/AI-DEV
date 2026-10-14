@@ -124,7 +124,9 @@ DELEGATION_MODES = ("native", "headless")
 
 ACTIONS = {"EXPLORE", "TEST_PLAN", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "TEST_ADJUST", "ORCHESTRATOR_TEST",
            "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "ESTIMATE", "DOCS", "FINAL_REVIEW", "DONE",
-           "HUMAN_APPROVAL", "RETURN"}
+           "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST"}
+# Etapas de fora do AiDW (o time revisa a PR, a QA testa): gravadas quando o usuário avisa; o painel as mostra à parte.
+EXTERNAL_STEPS = ("CODE_REVIEW", "QA_TEST")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
 
@@ -3224,7 +3226,7 @@ DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK ante
 
 
 def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
-               mode: str = "") -> dict:
+               mode: str = "", summary: str = "", prs: list[str] | None = None) -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
@@ -3235,6 +3237,14 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
     if mode and mode not in DEMAND_MODES:
         return {"ok": False, "error": f"modo inválido {mode!r} (use {', '.join(DEMAND_MODES)})"}
+    if summary and len(summary.splitlines()) > 4:
+        return {"ok": False, "error": "o resumo tem no máximo 4 linhas"}
+    pr_map: dict[str, str] = {}
+    for item in prs or []:
+        repo, sep, number = item.partition("=")
+        if not sep or not repo.strip() or not number.strip().isdigit():
+            return {"ok": False, "error": f"--pr inválido {item!r} (use <repositório>=<número>)"}
+        pr_map[repo.strip().lower()] = number.strip()
     data, warning, kind = load_demand(ctx, demand)
     if kind == "context":
         return {"ok": False, "error": warning}
@@ -3243,9 +3253,15 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     if step and step != data.get("step"):
         data.setdefault("history", []).append({"step": step, "at": now})
         data["step"] = step
-    for key, value in (("status", status), ("title", title), ("note", note), ("mode", mode)):
+    for key, value in (("status", status), ("title", title), ("note", note), ("mode", mode), ("summary", summary.strip())):
         if value:
             data[key] = value
+    for name, number in pr_map.items():
+        repo = next((r for r in data.get("repos", []) if name in (
+            Path(r.get("repo") or "").name.lower(), Path(r.get("path") or "").name.lower())), None)
+        if repo is None:
+            return {"ok": False, "error": f"--pr: a demanda não tem o repositório {name!r}"}
+        repo["pr"] = number
     data["updated"] = now
     path = demand_path(ctx, demand)
     write_json_atomic(path, data)
@@ -3275,7 +3291,7 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
         result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
-                            args.mode or "")
+                            args.mode or "", args.summary or "", args.pr)
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -5170,6 +5186,9 @@ def main() -> int:
     d_set.add_argument("--title")
     d_set.add_argument("--note", help="onde parou / próximo passo")
     d_set.add_argument("--mode", choices=DEMAND_MODES, help="modo da sessão: auto (padrão) ou interativo")
+    d_set.add_argument("--summary", help="o que a demanda trata, em até 4 linhas (o painel mostra no Mapa da demanda)")
+    d_set.add_argument("--pr", action="append", metavar="REPO=N",
+                       help="PR aberta de um repositório da demanda (repetível): AssistenteCertificado=7788")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")
