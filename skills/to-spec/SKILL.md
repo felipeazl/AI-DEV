@@ -64,7 +64,10 @@ Nível: <level> — <why> (orchestrator's model table; decides model/effort of e
 ## Constraints
 
 ## Acceptance criteria
-- [ ] ...
+- [ ] CA1: ...
+
+## Business rules
+- RN1: ... (a rule of the business the change must keep or introduce; from the card, the decisions or the code)
 
 ## Checklists
 (enum/state values · limits · UI thread · errors)
@@ -88,7 +91,7 @@ Finish with:
 
 ## Tickets (after the plan is approved)
 
-1. Every ticket traces back to at least one acceptance criterion.
+1. Every ticket traces back to at least one acceptance criterion (by its id, `CA1`) and names the rules (`RN1`) it touches.
 2. Split by independent units of work; a ticket touches a small, known set of files.
 3. A ticket must be executable by an agent that never saw the conversation: goal, files in scope
    with `file:line`, acceptance criteria, out of scope, build/test command from *Systems*.

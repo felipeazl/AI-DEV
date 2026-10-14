@@ -80,18 +80,21 @@ Para quem vai responder (PO, Tech Lead, outro time), não para quem leu o códig
 
 - **Uma pergunta por item**, em uma ou duas frases, terminando em `?`.
 - **Linguagem do negócio:** o que a pessoa vê ou decide (tela, mensagem, regra, status), não nome de classe,
-  método, enum ou tabela. O detalhe técnico, se ajudar, vai numa linha `Base:` abaixo, curta.
+  método, enum ou tabela. O detalhe técnico, se ajudar, vai no contexto, curto.
 - **Com opções** quando houver caminhos claros ("A ou B?"), e a sua recomendação quando tiver uma.
-- **Por que importa:** meia linha sobre o que muda na entrega ou na estimativa.
-- **Para quem:** PO, Tech Lead, outro time ou QA.
-- Ordem: as que bloqueiam o início primeiro; depois as que mudam a estimativa; por último as de detalhe.
+- **Contexto:** logo depois da pergunta, o que levou a ela e o que muda na entrega.
+- **Para:** quem responde, em cada dúvida (PO, Tech Lead, outro time ou QA).
+- **Muda a estimativa:** só nas que mudam o tamanho, com quanto (`+3 SP se migrar`, `+8 h`).
+- **Agrupadas por tema** (`**Escopo e produto**`, `**Contrato com <sistema>**`, `**Experiência**`, `**Regras**`…),
+  numeradas `D1`, `D2`… na ordem do documento.
+- Ordem dentro do tema: as que bloqueiam o início primeiro; depois as que mudam a estimativa; por último as de detalhe.
 - Não pergunte o que o código já respondeu; isso vai como fato no levantamento.
 
 Exemplo de tom:
 
 > ❌ "Como tratar o valor 0 do enum de status no fluxo de reemissão?"
-> ✅ "Quando o pedido ainda não tem status, o sistema deve deixar reemitir ou bloquear? *Por que importa:* bloquear
-> exige mensagem nova na tela (+4 h). *Para:* PO."
+> ✅ "- **D4. Quando o pedido ainda não tem status, o sistema deve deixar reemitir ou bloquear?** Bloquear exige
+> mensagem nova na tela. *Para:* PO *Muda a estimativa:* +4 h se bloquear"
 
 ## 6. `levantamento-<id>.md`
 
@@ -103,12 +106,13 @@ Na pasta da demanda:
 **Estimativa:** <SP> SP · <min>–<max> h · complexidade <nível> · confiança <alta|média|baixa>
 
 ## O que o card pede
-<3 a 6 linhas, em linguagem do negócio>
 
-## Pontos do card
-| # | Ponto | No código | Evidência |
-|---|---|---|---|
-| P01 | ... | ✅ confirmado / ⚠️ diverge / ❓ não encontrado / 🔗 outro sistema | `arquivo:linha` |
+**Card:** <3 a 6 linhas, em linguagem do negócio; diga se o card não tem critérios de aceite>
+
+## Card × código
+| Hoje no código | Para a demanda | Situação |
+|---|---|---|
+| <o que existe, com `arquivo:linha`> | <o que isso significa para a demanda> | precisa mudar / é a dor / não muda / nada a reaproveitar |
 
 ## Fluxo atual (ponta a ponta)
 <os passos, do início ao fim, com sistema e `arquivo:linha`>
@@ -117,27 +121,36 @@ Na pasta da demanda:
 <sistemas, repositórios e pontos de contato; contratos entre sistemas; banco; telas>
 
 ## Estimativa
-| Frente | Horas |
+| Bloco | Dev (h) |
 |---|---|
-| Análise e plano | ... |
-| <sistema> — desenvolvimento | ... |
-| Testes (<automáticos/manuais, ambiente>) | ... |
-| Revisão e correções | ... |
-| **Total** | **<min>–<max> h** |
+| <bloco de trabalho> | <min>–<max> |
+| **Total dev** | **<min>–<max> h** |
+| QA integrado | <min>–<max> h |
 
 - **Story points:** <SP> — <por quê, pela régua>
 - **Complexidade:** <nível> — <os sinais que pesaram>
 - **Confiança:** <nível> — <o que a mudaria>
+- **Nível AiDW:** <trivial|simples|padrao|complexa|critica> · **Passadas extras:** <segurança, bugs, ou nenhuma>
 - **Riscos:** <...>
-- **Quebra sugerida:** <só acima de 13 SP>
+
+<só acima de 13 SP: a quebra>
+| # | Item | SP |
+|---|---|---|
+| 1 | <item> | <SP> |
+
+Total **≈ <soma> SP**.
 
 ## Dúvidas
-1. **<pergunta>?** *Por que importa:* <...>. *Para:* <PO | Tech Lead | outro time | QA>.
-   Base: <opcional, curto>
+
+**<Tema>**
+- **D1. <pergunta>?** <contexto> *Para:* <PO | Tech Lead | outro time | QA> *Muda a estimativa:* <só quando muda>
 
 ## Fontes
 resumo-<id>.md · pontos-<id>.md · exploracao-levantamento.md
 ```
+
+O painel do AiDW (aba *Card × código* e *Estimativa e dúvidas*) lê exatamente essas tabelas e marcações: mantenha os
+cabeçalhos, as colunas e os rótulos `*Para:*` e `*Muda a estimativa:*` como estão.
 
 ## 7. Fechar
 
