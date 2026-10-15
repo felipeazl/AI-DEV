@@ -115,7 +115,7 @@ reviewer = "sonnet"
 
 [effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
-# O caso comum: os modelos base, Opus medium no planejador, codificador e revisor.
+# O caso comum: Sonnet medium no planejador, codificador e revisor (Opus só na crítica — Felipe, 2026-10-15).
 planner = "medium"
 explorer = "low"
 coder = "medium"
@@ -126,9 +126,14 @@ qa = "medium"
 bug-hunter = "high"
 security = "high"
 
+[effort.levels.padrao.models]
+planner = "sonnet"
+coder = "sonnet"
+reviewer = "sonnet"
+
 [effort.levels.complexa]
 when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
-# Explorador e documentador sobem para Sonnet; bugs e segurança para Opus. Nada acima de high (preserva a sessão).
+# Tudo em Sonnet, effort high nos papéis de decisão; explorador e documentador sobem para Sonnet. Nada acima de high.
 planner = "high"
 explorer = "medium"
 coder = "high"
@@ -140,14 +145,17 @@ bug-hunter = "high"
 security = "high"
 
 [effort.levels.complexa.models]
+planner = "sonnet"
+coder = "sonnet"
+reviewer = "sonnet"
 explorer = "sonnet"
 documenter = "sonnet"
-bug-hunter = "opus"
-security = "opus"
+bug-hunter = "sonnet"
+security = "sonnet"
 
 [effort.levels.critica]
 when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
-# Igual à complexa, com o explorador em Sonnet high. Nada acima de high.
+# O único nível com Opus: planejador, codificador, revisor, bugs e segurança; explorador em Sonnet high. Nada acima de high.
 planner = "high"
 explorer = "high"
 coder = "high"
@@ -159,6 +167,9 @@ bug-hunter = "high"
 security = "high"
 
 [effort.levels.critica.models]
+planner = "opus"
+coder = "opus"
+reviewer = "opus"
 explorer = "sonnet"
 documenter = "sonnet"
 bug-hunter = "opus"

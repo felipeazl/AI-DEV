@@ -244,10 +244,10 @@
       "seguranca": "seguranca-medium"
     },
     "padrao": {
-      "planejador": "planejador",
+      "planejador": "planejador-gpt-5-6-terra-medium",
       "explorador": "explorador",
-      "codificador": "codificador",
-      "revisor": "revisor",
+      "codificador": "codificador-gpt-5-6-terra-medium",
+      "revisor": "revisor-gpt-5-6-terra-medium",
       "api": "api",
       "qa": "qa",
       "documentador": "documentador",
@@ -255,15 +255,15 @@
       "seguranca": "seguranca"
     },
     "complexa": {
-      "planejador": "planejador-high",
+      "planejador": "planejador-gpt-5-6-terra-high",
       "explorador": "explorador-gpt-5-6-terra-medium",
-      "codificador": "codificador-high",
-      "revisor": "revisor-high",
+      "codificador": "codificador-gpt-5-6-terra-high",
+      "revisor": "revisor-gpt-5-6-terra-high",
       "api": "api-high",
       "qa": "qa-high",
       "documentador": "documentador-gpt-5-6-terra-medium",
-      "bugs": "bugs-gpt-6-sol-high",
-      "seguranca": "seguranca-gpt-6-sol-high"
+      "bugs": "bugs",
+      "seguranca": "seguranca"
     },
     "critica": {
       "planejador": "planejador-high",

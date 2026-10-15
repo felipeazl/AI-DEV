@@ -225,15 +225,15 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
 
     def test_tabela_de_modelos_por_nivel(self) -> None:
-        """A tabela modelo/effort por nível (Felipe, 2026-09-30): nada acima de high; planejador fora do trivial;
-        no Codex, o equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
+        """A tabela modelo/effort por nível (Felipe, 2026-09-30; Opus só na crítica, 2026-10-15): nada acima de high;
+        planejador fora do trivial; no Codex, o equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
         esperado = {  # papel: (trivial, simples, padrao, complexa, critica); None = não roda
-            "planner": (None, "sonnet/high", "opus/medium", "opus/high", "opus/high"),
+            "planner": (None, "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
             "explorer": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/high"),
-            "coder": ("sonnet/high", "sonnet/high", "opus/medium", "opus/high", "opus/high"),
-            "reviewer": ("sonnet/high", "sonnet/high", "opus/medium", "opus/high", "opus/high"),
-            "bug-hunter": ("sonnet/low", "sonnet/medium", "sonnet/high", "opus/high", "opus/high"),
-            "security": ("sonnet/low", "sonnet/medium", "sonnet/high", "opus/high", "opus/high"),
+            "coder": ("sonnet/high", "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
+            "reviewer": ("sonnet/high", "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
+            "bug-hunter": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
+            "security": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
             "api-db": ("haiku/", "sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high"),
             "documenter": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/medium"),
         }

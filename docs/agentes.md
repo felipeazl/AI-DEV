@@ -55,7 +55,7 @@ Três modos, sempre num agente novo:
   o comando de build e as regras do projeto.
 
 Se precisa de código que não conhece, devolve `plan_needs_exploration` com as perguntas; o orquestrador manda ao
-explorador e chama um planejador novo. Opus: o plano decide o custo de todas as etapas seguintes.
+explorador e chama um planejador novo. Sonnet (Opus só na crítica): o plano decide o custo de todas as etapas seguintes.
 
 ### Codificador
 Implementa **um ticket por vez** no worktree: entende, planeja dentro do escopo, implementa seguindo as convenções do
@@ -134,11 +134,11 @@ A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude;
 
 | Agente | trivial | simples | padrao | complexa | critica |
 |---|---|---|---|---|---|
-| planejador | não roda | Sonnet high | Opus medium | Opus high | Opus high |
+| planejador | não roda | Sonnet high | Sonnet medium | Sonnet high | Opus high |
 | explorador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet high |
-| codificador | Sonnet high | Sonnet high | Opus medium | Opus high | Opus high |
-| revisor | Sonnet high | Sonnet high | Opus medium | Opus high | Opus high |
-| bugs · seguranca | Sonnet low | Sonnet medium | Sonnet high | Opus high | Opus high |
+| codificador | Sonnet high | Sonnet high | Sonnet medium | Sonnet high | Opus high |
+| revisor | Sonnet high | Sonnet high | Sonnet medium | Sonnet high | Opus high |
+| bugs · seguranca | Sonnet low | Sonnet medium | Sonnet high | Sonnet high | Opus high |
 | api | Haiku | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
 | documentador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet medium |
 | qa | Sonnet low | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
@@ -146,8 +146,9 @@ A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude;
 Por que assim:
 - **Ler é barato, decidir é caro.** Explorador e documentador ficam no Haiku; o raciocínio vai para quem planeja,
   codifica e revisa.
-- **Sonnet high nas demandas pequenas** custa menos que Opus e acerta mudanças pontuais.
-- **Opus medium no padrão** é o ponto de equilíbrio: qualidade de Opus sem o custo do effort alto.
+- **Sonnet em quase tudo:** high nas demandas pequenas e na complexa, medium no padrão.
+- **Opus só na crítica** (planejador, codificador, revisor, bugs e segurança): o caso excepcional, em que errar custa
+  mais que o modelo.
 - **Nada acima de `high`:** acima disso o ganho é pequeno e a sessão do plano se esgota rápido.
 - **Modelos sem effort** (Haiku) ignoram o valor; ele continua valendo para o equivalente do Codex.
 
