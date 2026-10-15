@@ -319,10 +319,10 @@
       "seguranca": "seguranca-medium"
     },
     "padrao": {
-      "planejador": "planejador",
+      "planejador": "planejador-sonnet-medium",
       "explorador": "explorador",
-      "codificador": "codificador",
-      "revisor": "revisor",
+      "codificador": "codificador-sonnet-medium",
+      "revisor": "revisor-sonnet-medium",
       "api": "api",
       "qa": "qa",
       "documentador": "documentador",
@@ -330,15 +330,15 @@
       "seguranca": "seguranca"
     },
     "complexa": {
-      "planejador": "planejador-high",
+      "planejador": "planejador-sonnet-high",
       "explorador": "explorador-sonnet-medium",
-      "codificador": "codificador-high",
-      "revisor": "revisor-high",
+      "codificador": "codificador-sonnet-high",
+      "revisor": "revisor-sonnet-high",
       "api": "api-high",
       "qa": "qa-high",
       "documentador": "documentador-sonnet-medium",
-      "bugs": "bugs-opus-high",
-      "seguranca": "seguranca-opus-high"
+      "bugs": "bugs",
+      "seguranca": "seguranca"
     },
     "critica": {
       "planejador": "planejador-high",

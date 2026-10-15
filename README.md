@@ -31,7 +31,7 @@ com tudo junto.
 | Sem AiDW | Com AiDW |
 |---|---|
 | Um chat faz tudo: lê centenas de linhas, planeja, codifica e se revisa. O contexto enche e a qualidade cai no fim da sessão. | Cada etapa roda num **agente novo**, com só o que precisa. O chat do orquestrador fica pequeno a demanda inteira. |
-| O mesmo modelo caro para ler arquivo e para decidir arquitetura. | **Modelo e effort por etapa e por nível da demanda**: Haiku para ler código, Opus para planejar e codificar o que é difícil, nada acima de `high`. |
+| O mesmo modelo caro para ler arquivo e para decidir arquitetura. | **Modelo e effort por etapa e por nível da demanda**: Haiku para ler código, Sonnet para planejar, codificar e revisar, Opus só no nível crítico, nada acima de `high`. |
 | Você revisa o que o modelo escreveu, sozinho. | Um **revisor** independente acha os problemas antes de você, com IDs, severidade e triagem por regra; você vê o pacote final. |
 | Regras do time repetidas a cada prompt. | Um **contexto** guarda sistemas, comandos de build, convenções e políticas; todo agente já recebe. |
 | O modelo decide o que é seguro. | **O modelo nunca é a última barreira**: permissões do CLI, hooks e validadores bloqueiam o que é de risco. |
@@ -238,17 +238,17 @@ repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).
 
 ## 4. Agentes
 
-| Agente | Faz | Modelo (padrão → complexa/crítica) |
+| Agente | Faz | Modelo (padrão → complexa; crítica) |
 |---|---|---|
 | `orquestrador` | O chat principal: conduz, escolhe o effort, delega, tria e monta a revisão final. Não lê código para planejar nem implementa | o modelo do chat (Opus · high recomendado) |
 | `explorador` | Lê código e responde perguntas numeradas com `arquivo:linha`. Não altera nada | Haiku → Sonnet |
-| `planejador` | Escreve o plano, corrige depois da revisão e corta os tickets | Opus medium → Opus high (Sonnet em simples; não roda em trivial) |
-| `codificador` | Implementa um ticket por vez: código, testes, build | Opus medium → Opus high (Sonnet em trivial/simples) |
-| `revisor` | Revisa plano e diff contra spec, ticket e card; achados com severidade | Opus medium → Opus high (Sonnet em trivial/simples) |
+| `planejador` | Escreve o plano, corrige depois da revisão e corta os tickets | Sonnet medium → Sonnet high; Opus high só na crítica (não roda em trivial) |
+| `codificador` | Implementa um ticket por vez: código, testes, build | Sonnet medium → Sonnet high; Opus high só na crítica |
+| `revisor` | Revisa plano e diff contra spec, ticket e card; achados com severidade | Sonnet medium → Sonnet high; Opus high só na crítica |
 | `api` | Consulta APIs, banco (só leitura pelo validador) e logs; propõe escritas | Sonnet |
 | `documentador` | Docs do diff aprovado, redação de work items | Haiku → Sonnet |
-| `bugs` | **Sob demanda:** defeitos com cenário de falha concreto, causa-raiz | Sonnet → Opus high |
-| `seguranca` | **Sob demanda:** vulnerabilidades com caminho de ataque | Sonnet → Opus high |
+| `bugs` | **Sob demanda:** defeitos com cenário de falha concreto, causa-raiz | Sonnet; Opus high só na crítica |
+| `seguranca` | **Sob demanda:** vulnerabilidades com caminho de ataque | Sonnet; Opus high só na crítica |
 | `qa` | Plano de testes com o planejador e teste da entrega: web/API sozinho, desktop por roteiro passo a passo com você | Sonnet |
 
 Nenhum agente passa de effort `high`. No Codex (só agentes e skills) vale a mesma tabela pelo equivalente de cada modelo (Opus → top,

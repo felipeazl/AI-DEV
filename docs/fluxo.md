@@ -14,8 +14,8 @@ carrega centenas de linhas lidas no começo, fica caro a cada mensagem e erra ma
   autocontido, faz o trabalho, grava o resultado na pasta da demanda e devolve um JSON com um `state`.
 - Os agentes não veem a conversa nem falam com você. Tudo que eles precisam está na tarefa; tudo que eles
   produzem está num arquivo que o próximo agente recebe **por caminho**, sem colar conteúdo.
-- Cada agente roda no **modelo e effort que a etapa merece**: ler código é Haiku, planejar e codificar o difícil é
-  Opus. Isso é o que mantém a qualidade alta e o custo baixo.
+- Cada agente roda no **modelo e effort que a etapa merece**: ler código é Haiku, planejar, codificar e revisar é
+  Sonnet, e o Opus fica só para o nível crítico. Isso é o que mantém a qualidade alta e o custo baixo.
 
 ## Etapas
 
