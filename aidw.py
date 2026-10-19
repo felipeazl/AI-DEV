@@ -619,8 +619,28 @@ def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Repor
     return resolved
 
 
-def load_routing(rep: Report) -> dict:
+def deep_merge(base: dict, over: dict) -> dict:
+    """`over` por cima de `base`: tabelas se fundem, o resto (valores e listas) substitui."""
+    out = dict(base)
+    for key, value in over.items():
+        out[key] = deep_merge(out[key], value) if isinstance(value, dict) and isinstance(out.get(key), dict) else value
+    return out
+
+
+def context_routing_file(ctx: dict | None) -> Path | None:
+    path = ctx["dir"] / "routing.toml" if ctx else None
+    return path if path and path.is_file() else None
+
+
+def load_routing(rep: Report, ctx: dict | None = None) -> dict:
+    """routing.toml do núcleo com o do contexto ativo por cima (só o que ele redefine: níveis, efforts, modelos,
+    max_retries, regras)."""
     routing = load_toml(ROUTING_FILE) if ROUTING_FILE.exists() else {}
+    if over := context_routing_file(ctx):
+        routing = deep_merge(routing, load_toml(over))
+    for key in ("max_retries", "max_retries_plan"):
+        if key in routing and (not isinstance(routing[key], int) or routing[key] < 1):
+            rep.error(f"routing.toml: {key} deve ser um inteiro ≥ 1 (atual: {routing[key]!r})")
     for st, action in routing.get("rules", {}).items():
         if action not in ACTIONS:
             rep.error(f"routing.toml: ação desconhecida {action!r} em {st!r} "
@@ -1085,6 +1105,22 @@ def runtime_lines(cfg: dict, ctx: dict | None, orchestrator: bool = False) -> li
     ]
 
 
+def workflows_section(ctx: dict | None) -> str:
+    rows = ["## Workflows", "",
+            "Each file lists the steps of one kind of demand (`agent:` is the role; map it with the Team table).", "",
+            "| Workflow | File | Use for |", "|---|---|---|"]
+    for name, f in workflow_files(ctx).items():
+        desc = re.search(r"^description:\s*(.+)$", f.read_text(encoding="utf-8"), re.M)
+        rows.append(f"| `{name}` | `{f.as_posix()}` | {desc.group(1).strip() if desc else ''} |")
+    wf = ctx.get("workflows", {}) if ctx else {}
+    if wf.get("by_type"):
+        rows += ["", "Card type → workflow (active context):", "",
+                 *[f"- {kind} → `{name}`" for kind, name in wf["by_type"].items()]]
+    if wf.get("notes"):
+        rows += ["", *[f"- {n}" for n in wf["notes"]]]
+    return "\n".join(rows)
+
+
 def systems_section(ctx: dict | None, detailed: bool) -> str:
     systems = ctx.get("systems", {}) if ctx else {}
     if not systems:
@@ -1547,6 +1583,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         "\n".join(["## Team", "", *team]),
         delegation_section(cfg, resolved, global_mode=bool(ns)),
         effort_table(resolved, routing, cfg, ns),
+        workflows_section(ctx),
         skills_section(orch["skills"], skills, provider, ns=ns),
         mcp_orchestrator_section(servers, resolved),
         systems_section(ctx, detailed=False),
@@ -1875,8 +1912,20 @@ def previous_runtime() -> dict:
         return {}
 
 
-def check_workflows(resolved: dict, skills: dict, rep: Report) -> None:
-    for wf in sorted(WORKFLOWS_DIR.glob("*.yaml")):
+def workflow_files(ctx: dict | None) -> dict[str, Path]:
+    """Workflows disponíveis: os do núcleo e os de contexts/<nome>/workflows/, que substituem os de mesmo nome."""
+    files = {f.stem: f for f in sorted(WORKFLOWS_DIR.glob("*.yaml"))}
+    if ctx and (ctx["dir"] / "workflows").is_dir():
+        files.update({f.stem: f for f in sorted((ctx["dir"] / "workflows").glob("*.yaml"))})
+    return dict(sorted(files.items()))
+
+
+def check_workflows(resolved: dict, skills: dict, ctx: dict | None, rep: Report) -> None:
+    files = workflow_files(ctx)
+    for kind, name in (ctx.get("workflows", {}).get("by_type", {}) if ctx else {}).items():
+        if name not in files:
+            rep.error(f"contexto {ctx['name']}: [workflows.by_type] {kind!r} aponta para o workflow inexistente {name!r}")
+    for wf in files.values():
         text = wf.read_text(encoding="utf-8")
         for agent in sorted(set(re.findall(r"^\s*agent:\s*([\w-]+)", text, re.M))):
             if agent not in resolved:
@@ -1891,11 +1940,11 @@ def build(cfg: dict, catalog: dict, rep: Report, ns: str = "", ref_dir: Path = G
     ctx = load_context(cfg, rep)
     skills = available_skills(ctx, rep)
     resolved = resolve(cfg, catalog, ctx, skills, rep)
-    routing = load_routing(rep)
+    routing = load_routing(rep, ctx)
     if not resolved:
         return None
     attach_variants(resolved, routing, catalog, rep)
-    check_workflows(resolved, skills, rep)
+    check_workflows(resolved, skills, ctx, rep)
     servers = resolve_mcp(cfg, rep)
     if rep.errors:
         return None
@@ -2041,6 +2090,7 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "levels": level_cells(resolved, b["routing"]),
         "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
         "max_retries": b["routing"].get("max_retries", 3),
+        "max_retries_plan": b["routing"].get("max_retries_plan", b["routing"].get("max_retries", 3)),
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
@@ -3226,7 +3276,8 @@ DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK ante
 
 
 def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
-               mode: str = "", summary: str = "", prs: list[str] | None = None) -> dict:
+               mode: str = "", summary: str = "", prs: list[str] | None = None,
+               tasks: list[str] | None = None, loop: str | None = None) -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
@@ -3245,6 +3296,12 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         if not sep or not repo.strip() or not number.strip().isdigit():
             return {"ok": False, "error": f"--pr inválido {item!r} (use <repositório>=<número>)"}
         pr_map[repo.strip().lower()] = number.strip()
+    task_map: dict[str, str] = {}
+    for item in tasks or []:
+        ticket, sep, number = item.partition("=")
+        if not sep or not ticket.strip() or not number.strip().lstrip("#").isdigit():
+            return {"ok": False, "error": f"--task inválido {item!r} (use <ticket>=<id do work item>)"}
+        task_map[ticket.strip()] = number.strip().lstrip("#")
     data, warning, kind = load_demand(ctx, demand)
     if kind == "context":
         return {"ok": False, "error": warning}
@@ -3262,6 +3319,14 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         if repo is None:
             return {"ok": False, "error": f"--pr: a demanda não tem o repositório {name!r}"}
         repo["pr"] = number
+    if task_map:
+        data["tasks"] = {**data.get("tasks", {}), **task_map}
+    if loop == "-":
+        data.pop("loop", None)
+    elif loop:
+        if not DEMAND_RE.match(loop.strip().lower()):
+            return {"ok": False, "error": f"--loop inválido {loop!r} (use letras minúsculas, números e -, ex.: bug-145145)"}
+        data["loop"] = loop.strip().lower()
     data["updated"] = now
     path = demand_path(ctx, demand)
     write_json_atomic(path, data)
@@ -3291,7 +3356,7 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
         result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
-                            args.mode or "", args.summary or "", args.pr)
+                            args.mode or "", args.summary or "", args.pr, args.task, args.loop)
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -4387,7 +4452,7 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     rep = Report(quiet=True)
     ctx = load_context(cfg, rep)
     resolved = resolve(cfg, catalog, ctx, available_skills(ctx, rep), rep)
-    routing = load_routing(rep)
+    routing = load_routing(rep, ctx)
     provider = cfg["provider"]["name"]
     attach_variants(resolved, routing, catalog, rep)
     wanted = slugify(args.agent.rsplit(":", 1)[-1])
@@ -4602,7 +4667,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     ctx = load_context(cfg, rep)
     skills = available_skills(ctx, rep)
     resolved = resolve(cfg, catalog, ctx, skills, rep)
-    routing = load_routing(rep)
+    routing = load_routing(rep, ctx)
     servers = resolve_mcp(cfg, rep)
     provider = cfg["provider"]["name"]
 
@@ -5189,6 +5254,10 @@ def main() -> int:
     d_set.add_argument("--summary", help="o que a demanda trata, em até 4 linhas (o painel mostra no Mapa da demanda)")
     d_set.add_argument("--pr", action="append", metavar="REPO=N",
                        help="PR aberta de um repositório da demanda (repetível): AssistenteCertificado=7788")
+    d_set.add_argument("--task", action="append", metavar="TICKET=ID",
+                       help="work item (Task) criado para um ticket (repetível): front=145301")
+    d_set.add_argument("--loop", help="laço de correção depois da entrega (ex.: bug-145145): as rodadas de "
+                                      "review-<id>-<laço>-r<N>.md contam a partir de 1; `-` limpa")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")

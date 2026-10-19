@@ -70,6 +70,13 @@ describe('estado da demanda', () => {
     expect(roundFor('IMPLEMENT', ['plano.md'])).toEqual({ round: 0, kind: null })
   })
 
+  test('com um laço depois da entrega, só as revisões dele contam', async () => {
+    const files = ['review-131190-r4.md', 'review-131190-bug-144844-r1.md', 'review-131190-bug-144798-r2.md']
+    expect(roundFor('CODER_FIX', files, 'bug-144844')).toEqual({ round: 1, kind: 'revisão' })
+    expect(roundFor('CODER_FIX', files, 'bug-1')).toEqual({ round: 0, kind: null })
+    expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'revisão' })
+  })
+
   test('max_retries do routing.toml', async () => {
     expect(parseMaxRetries('[rules]\nmax_retries = 3\n')).toBe(3)
     expect(parseMaxRetries('')).toBe(3)

@@ -8,6 +8,8 @@ export type Runtime = {
   levels: Record<string, Record<string, string | null>>
   defaultLevel: string
   maxRetries: number
+  /** Limite do laço revisão do plano ⇄ correção; sem ele, o `maxRetries`. */
+  maxRetriesPlan?: number
   /** Nomes dos agentes ligados (planejador, codificador…). */
   agents: string[]
 }
@@ -94,14 +96,16 @@ export function checkDelegation(check: DelegationCheck): string | null {
         'num arquivo da pasta da demanda, nunca colados.',
     )
   }
-  const limit = runtime.maxRetries + check.extraRounds
+  const base = check.roundKind === 'plano' ? (runtime.maxRetriesPlan ?? runtime.maxRetries) : runtime.maxRetries
+  const limit = base + check.extraRounds
   if (check.kind === 'desenvolvimento' && check.round >= limit && check.step) {
     const codeLoop = check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['revisor', 'codificador'].includes(agent)
     const planLoop = check.roundKind === 'plano' && PLAN_FIX_STEPS.has(check.step) && ['revisor', 'planejador'].includes(agent)
     if (codeLoop || planLoop) {
       return fix(
         `a ${check.roundKind === 'plano' ? 'revisão do plano' : 'revisão'} já está na rodada ${check.round} e o ` +
-          `limite é ${limit} (max_retries${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
+          `limite é ${limit} (${check.roundKind === 'plano' ? 'max_retries_plan' : 'max_retries'}` +
+          `${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
           'Pare e leve ao Felipe (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
           'botão "Liberar +1 rodada" do painel ou com /aidw-rodada.',
       )
