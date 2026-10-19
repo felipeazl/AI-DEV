@@ -118,7 +118,7 @@ const PLAN_STEPS = new Set(['PLAN', 'SPEC', 'TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FI
 
 /**
  * A rodada que importa na etapa: a da revisão do plano ou a da revisão do código. Com um laço (`demand set --loop
- * bug-145145`, o caminho curto depois da entrega), só contam as revisões dele: `review-<id>-<laço>-r<N>.md`.
+ * bug-1234`, o caminho curto depois da entrega), só contam as revisões dele: `review-<id>-<laço>-r<N>.md`.
  */
 export function roundFor(step: string, files: string[], loop?: string | null): { round: number; kind: 'plano' | 'revisão' | null } {
   const max = (re: RegExp) =>
