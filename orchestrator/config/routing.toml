@@ -9,7 +9,8 @@
 # Cada agente termina com `"state": "<estado>"` usando as chaves de [rules] (veja o OUTPUT de
 # cada AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
 
-max_retries = 3
+max_retries = 3          # explorar ⇄ planejar e revisar ⇄ corrigir (no caminho curto, por item: demand set --loop)
+max_retries_plan = 2     # revisar o plano ⇄ corrigir o plano: SUGESTAO não reabre o plano
 
 [rules]
 # Início e plano (planejador; o orquestrador quando ele está desabilitado)
@@ -17,13 +18,13 @@ existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou r
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
 plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece: explorador, e
                                                 # um planejador novo no mesmo modo (conta em max_retries)
-spec_ready = "TEST_PLAN"                        # sem dúvidas: o qa monta o plano de testes (qa desabilitado: PLAN_REVIEW)
-test_plan_ready = "PLAN_REVIEW"                 # revisor confere o plano e o plano de testes (padrao+)
+spec_ready = "TEST_PLAN"                        # plano e tickets prontos: o qa monta o plano de testes (desabilitado: PLAN_REVIEW)
+test_plan_ready = "PLAN_REVIEW"                 # revisor confere o plano e o plano de testes (só complexa/crítica; abaixo: TICKETS)
 test_plan_has_open_questions = "HUMAN_APPROVAL" # critério sem cenário verificável ou dúvida real
-plan_review_approved = "TICKETS"
-plan_review_changes_requested = "PLAN_FIX"      # o orquestrador corrige o plano; nova rodada
+plan_review_approved = "TICKETS"                # o orquestrador cria os work items e o worktree (os tickets vieram com o plano)
+plan_review_changes_requested = "PLAN_FIX"      # CRITICO/IMPORTANTE: o planejador corrige plano e tickets; nova rodada
 plan_review_has_open_questions = "HUMAN_APPROVAL"
-tickets_ready = "IMPLEMENT"
+tickets_ready = "IMPLEMENT"                     # planejador em modo tickets (recorte)
 
 # Implementação (codificador)
 implementation_complete = "TEST"
@@ -73,17 +74,21 @@ policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, 
 #
 # Custo: effort é a principal alavanca de gasto depois do modelo. Na dúvida entre dois níveis,
 # escolha o menor e suba se o resultado mostrar que faltou (regras em [effort.escalate]).
+# O effort de cada papel nunca cai de um nível para o de cima (trivial ≤ simples ≤ padrao ≤ complexa ≤ critica).
+#
+# Contexto: contexts/<nome>/routing.toml, quando existe, vai por cima deste arquivo (tabelas se fundem, valores
+# substituem). Ex.: só `max_retries = 2` ou só `[effort.levels.padrao] reviewer = "high"`.
 
 [effort]
 default_level = "padrao"
 
 [effort.levels.trivial]
 when = "Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto."
-# Trivial não tem plano. Código e revisão em Sonnet high; api no Haiku.
+# Trivial não tem plano. Código e revisão em Sonnet low (ajuste pontual, re-revisão de uma correção simples); api no Haiku.
 planner = "none"
 explorer = "low"
-coder = "high"
-reviewer = "high"
+coder = "low"
+reviewer = "low"
 api-db = "low"
 documenter = "low"
 qa = "low"
@@ -97,11 +102,12 @@ api-db = "haiku"
 
 [effort.levels.simples]
 when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
-# Planejador, codificador e revisor em Sonnet high; api em Sonnet low (monta SQL/chamadas que o Felipe aprova).
-planner = "high"
+# Mesmo effort do padrao no planejador, codificador e revisor: o que o nível simples economiza são as etapas (sem
+# revisão do plano, plano de testes enxuto), não o raciocínio. api em Sonnet low (monta SQL/chamadas que o usuário aprova).
+planner = "medium"
 explorer = "low"
-coder = "high"
-reviewer = "high"
+coder = "medium"
+reviewer = "medium"
 api-db = "low"
 documenter = "low"
 qa = "low"
@@ -115,7 +121,7 @@ reviewer = "sonnet"
 
 [effort.levels.padrao]
 when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
-# O caso comum: Sonnet medium no planejador, codificador e revisor (Opus só na crítica — Felipe, 2026-10-15).
+# O caso comum: Sonnet medium no planejador, codificador e revisor (Opus só na crítica).
 planner = "medium"
 explorer = "low"
 coder = "medium"

@@ -26,7 +26,9 @@ export type { CardPoint, CoverageItem, Criterion, Doubt, EffortBlock, Estimate, 
 
 export type DemandFile = { id?: string; title?: string; step?: string; status?: string; mode?: string; note?: string; summary?: string;
   repos?: { repo?: string; path?: string; branch?: string; base?: string; system?: string | null; pr?: string;
-    head?: string; source?: string }[]; history?: { step: string; at: string }[] }
+    head?: string; source?: string }[]; history?: { step: string; at: string }[]
+  /** Laço de correção depois da entrega (`demand set --loop`); as Tasks de cada ticket (`--task`). */
+  loop?: string; tasks?: Record<string, string> }
 
 /** Desenvolvimento, revisão de PR ou levantamento — o demand.json não grava o workflow; os arquivos dizem. */
 export function kindOf(demand: DemandFile, files: string[]): DemandKind {

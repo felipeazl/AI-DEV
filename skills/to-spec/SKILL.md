@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Turn a request into a persistent specification that becomes the source of truth for the task, then break it into self-contained tickets. Use at the start of any feature, bugfix or refactor, and again to cut the tickets once the plan is approved.
+description: Turn a request into a persistent specification that becomes the source of truth for the task, and break it into self-contained tickets in the same pass. Use at the start of any feature, bugfix or refactor, and again to fix the plan or recut its tickets.
 ---
 
 # to-spec
@@ -24,6 +24,7 @@ description: Turn a request into a persistent specification that becomes the sou
 7. **Open questions:** if there is a real doubt or more than one valid path, list them with
    options and your recommendation — that is the only reason to stop for the user. Otherwise
    the spec is final and the flow continues.
+8. Write the tickets in the same pass (section *Tickets*); they are delegated once the plan is approved.
 
 ## Checklists (every spec)
 
@@ -89,10 +90,13 @@ Finish with:
 {"state": "spec_ready | plan_has_open_questions", "spec": "<path>", "level": "<level>", "open_questions": []}
 ```
 
-## Tickets (after the plan is approved)
+## Tickets (written with the plan, delegated once it is approved)
 
 1. Every ticket traces back to at least one acceptance criterion (by its id, `CA1`) and names the rules (`RN1`) it touches.
-2. Split by independent units of work; a ticket touches a small, known set of files.
+2. One ticket per cohesive technical delivery — usually one system or repository, a known set of files that
+   one agent finishes in one pass. Each ticket becomes a work item and a delegation, so never split a delivery
+   into tiny tickets (one per file, method or criterion, or a separate ticket for comments, tests or docs of the
+   same code). Split only parts that are independent deliveries (another system, or one that must be done first).
 3. A ticket must be executable by an agent that never saw the conversation: goal, files in scope
    with `file:line`, acceptance criteria, out of scope, build/test command from *Systems*.
 4. Order by dependency; tickets on the same files run in sequence.

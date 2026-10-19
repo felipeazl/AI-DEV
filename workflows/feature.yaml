@@ -1,17 +1,16 @@
 name: feature
 description: Nova funcionalidade, do pedido até a documentação.
 steps:
-  - id: spec          # explorador antes, quando o código ainda não é conhecido
+  - id: spec          # plano e tickets no mesmo passo; explorador antes, quando o código ainda não é conhecido
     agent: planner
     skill: to-spec
   - id: test_plan       # qa (modo plan): plano-testes-<id>.md; qa desabilitado, pula
     agent: qa
-  - id: plan_review     # padrao ou acima; ⇄ planejador corrige o plano (PLAN_FIX)
+  - id: plan_review     # só complexa/crítica; ⇄ planejador corrige plano e tickets (PLAN_FIX, max_retries_plan)
     agent: reviewer
     skill: code-review
-  - id: tickets
-    agent: planner
-    skill: to-spec
+  - id: tickets         # os tickets vieram com o plano: o orquestrador cria os work items e o worktree
+    agent: orchestrator
   - id: implement
     agent: coder
     for_each: ticket
@@ -32,7 +31,7 @@ steps:
     optional: true
   - id: manual_test     # roteiro manual do qa com o usuário, depois da revisão aprovada (só se houver)
     agent: orchestrator
-  - id: docs
+  - id: docs            # a doc dos repositórios vem nos tickets; aqui só o que fica fora deles
     agent: documenter
   - id: final_review
     agent: orchestrator

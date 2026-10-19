@@ -225,13 +225,14 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
 
     def test_tabela_de_modelos_por_nivel(self) -> None:
-        """A tabela modelo/effort por nível (Felipe, 2026-09-30; Opus só na crítica, 2026-10-15): nada acima de high;
-        planejador fora do trivial; no Codex, o equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
+        """A tabela modelo/effort por nível (Felipe, 2026-09-30; Opus só na crítica, 2026-10-15; effort que nunca cai
+        de um nível para o de cima, 2026-10-19): nada acima de high; planejador fora do trivial; no Codex, o
+        equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
         esperado = {  # papel: (trivial, simples, padrao, complexa, critica); None = não roda
-            "planner": (None, "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
+            "planner": (None, "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
             "explorer": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/high"),
-            "coder": ("sonnet/high", "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
-            "reviewer": ("sonnet/high", "sonnet/high", "sonnet/medium", "sonnet/high", "opus/high"),
+            "coder": ("sonnet/low", "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
+            "reviewer": ("sonnet/low", "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
             "bug-hunter": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
             "security": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
             "api-db": ("haiku/", "sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high"),
@@ -1031,6 +1032,60 @@ class SessionModeTest(unittest.TestCase):
 
 class ContextTest(unittest.TestCase):
     """aidw.py context list / check / create / use (skills contexto-listar, contexto-usar, contexto-criar)."""
+
+    def test_contexto_sobrescreve_routing_e_workflows(self) -> None:
+        """contexts/<nome>/routing.toml vai por cima do núcleo; workflows/ do contexto substituem os de mesmo nome; o
+        mapa tipo de card → workflow aparece no orquestrador e um workflow inexistente no mapa é erro."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            ctx_dir = root / "contexts" / "exemplo"
+            (ctx_dir / "routing.toml").write_text('max_retries = 2\n\n[effort.levels.padrao]\nreviewer = "high"\n',
+                                                  encoding="utf-8")
+            (ctx_dir / "workflows").mkdir()
+            (ctx_dir / "workflows" / "bugfix.yaml").write_text(
+                "name: bugfix\ndescription: Bug do contexto.\nsteps:\n  - id: implement\n    agent: coder\n",
+                encoding="utf-8")
+            toml = ctx_dir / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8") + '\n[workflows]\nby_type = { "Bug" = "bugfix" }\n',
+                            encoding="utf-8")
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            self.assertEqual(b["routing"]["max_retries"], 2)
+            self.assertEqual(b["routing"]["max_retries_plan"], 2, "o do núcleo continua")
+            self.assertEqual(b["routing"]["effort"]["levels"]["padrao"]["reviewer"], "high")
+            self.assertEqual(b["routing"]["effort"]["levels"]["padrao"]["coder"], "medium", "o resto vem do núcleo")
+            self.assertIn("when", b["routing"]["effort"]["levels"]["padrao"])
+            self.assertEqual(b["resolved"]["reviewer"]["by_level"]["padrao"][1], "high")
+            orq = b["orchestrator_md"]
+            self.assertIn("## Workflows", orq)
+            self.assertIn("Bug do contexto.", orq)
+            self.assertIn("contexts/exemplo/workflows/bugfix.yaml", orq)
+            self.assertIn("- Bug → `bugfix`", orq)
+            self.assertIn("workflows/feature.yaml", orq)
+
+            toml.write_text(toml.read_text(encoding="utf-8").replace('"bugfix" }', '"nao-existe" }'), encoding="utf-8")
+            rep = aidw.Report(quiet=True)
+            aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertTrue(any("nao-existe" in e for e in rep.errors), rep.errors)
+
+    def test_demanda_guarda_tasks_dos_tickets(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--task", "front=5001", "--json")
+            self.assertEqual((code, d["tasks"]), (0, {"front": "5001"}), d)
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--task", "api=#5002", "--json")
+            self.assertEqual(d["tasks"], {"front": "5001", "api": "5002"}, "soma às que já estavam")
+            code, err = wt.aidw_json(root, "demand", "set", "us-9", "--task", "api", "--json")
+            self.assertEqual(code, 1, err)
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "bug-1234", "--json")
+            self.assertEqual(d["loop"], "bug-1234")
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "-", "--json")
+            self.assertNotIn("loop", d)
+            code, err = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "Bug 1", "--json")
+            self.assertEqual(code, 1, err)
 
     def test_ciclo_de_contextos(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:

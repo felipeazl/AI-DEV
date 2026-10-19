@@ -344,8 +344,8 @@
     "trivial": {
       "planejador": null,
       "explorador": "explorador",
-      "codificador": "codificador-sonnet-high",
-      "revisor": "revisor-sonnet-high",
+      "codificador": "codificador-sonnet-low",
+      "revisor": "revisor-sonnet-low",
       "api": "api-haiku",
       "qa": "qa-low",
       "documentador": "documentador",
@@ -353,10 +353,10 @@
       "seguranca": "seguranca-low"
     },
     "simples": {
-      "planejador": "planejador-sonnet-high",
+      "planejador": "planejador-sonnet-medium",
       "explorador": "explorador",
-      "codificador": "codificador-sonnet-high",
-      "revisor": "revisor-sonnet-high",
+      "codificador": "codificador-sonnet-medium",
+      "revisor": "revisor-sonnet-medium",
       "api": "api-low",
       "qa": "qa-low",
       "documentador": "documentador",
@@ -398,5 +398,6 @@
     }
   },
   "default_level": "padrao",
-  "max_retries": 3
+  "max_retries": 3,
+  "max_retries_plan": 2
 }
