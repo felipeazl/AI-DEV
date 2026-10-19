@@ -224,8 +224,8 @@
     "trivial": {
       "planejador": null,
       "explorador": "explorador",
-      "codificador": "codificador-gpt-5-6-terra-high",
-      "revisor": "revisor-gpt-5-6-terra-high",
+      "codificador": "codificador-gpt-5-6-terra-low",
+      "revisor": "revisor-gpt-5-6-terra-low",
       "api": "api-gpt-5-6-luna-low",
       "qa": "qa-low",
       "documentador": "documentador-low",
@@ -233,10 +233,10 @@
       "seguranca": "seguranca-low"
     },
     "simples": {
-      "planejador": "planejador-gpt-5-6-terra-high",
+      "planejador": "planejador-gpt-5-6-terra-medium",
       "explorador": "explorador",
-      "codificador": "codificador-gpt-5-6-terra-high",
-      "revisor": "revisor-gpt-5-6-terra-high",
+      "codificador": "codificador-gpt-5-6-terra-medium",
+      "revisor": "revisor-gpt-5-6-terra-medium",
       "api": "api-low",
       "qa": "qa-low",
       "documentador": "documentador-low",
@@ -278,5 +278,6 @@
     }
   },
   "default_level": "padrao",
-  "max_retries": 3
+  "max_retries": 3,
+  "max_retries_plan": 2
 }

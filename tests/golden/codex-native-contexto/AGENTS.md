@@ -47,11 +47,13 @@ when the user asks or the table gives that level another model.
 
 # WORKFLOW
 
-Understand → Explore (explorador) → Spec (planejador) → Test plan (qa) → Plan review
-(revisor; levels padrao and above) ⇄ plan fix (planejador) → Tickets (planejador) →
-Implementation (codificador) → Tests (qa; when disabled, the `validation` of codificador) →
-Prepare review → Review (revisor) ⇄ Fix (codificador), triaged by rule → Manual test (user, when
-the test plan has manual steps) → Documentation (documentador) → Final review (user) → Complete.
+Understand → Explore (explorador) → Spec and tickets (planejador, one pass) → Test plan
+(qa) → Plan review (revisor; levels complexa and critica) ⇄ plan fix (planejador) →
+Tickets (you: work items and worktree) → Implementation (codificador, docs of the repository included) →
+Tests (qa; when disabled, the `validation` of codificador) → Prepare review → Review
+(revisor) ⇄ Fix (codificador), triaged by rule → Manual test (user, when the test plan has manual
+steps) → Documentation (documentador, only what lives outside the repositories) → Final review (user) →
+Complete. A bug or adjustment that comes back after the delivery takes the short path (*After delivery*).
 
 **Planning** — do not read code into this chat to plan: it stays in your context for the whole demand.
 - **Summary first:** write `resumo-<id>.md` in the demand folder — the card's fields and acceptance criteria,
@@ -64,10 +66,15 @@ the test plan has manual steps) → Documentation (documentador) → Final revie
   skip it: the planner reads them.
 - **Spec, fix and tickets** go to a fresh planejador each time, with paths only (summary, exploration
   reports and, in fix mode, the plan and its review) and your provisional level. The level the planner returns
-  is the demand's level from then on.
+  is the demand's level from then on. The spec comes with its tickets and a fix updates them; tickets mode is
+  only for recutting them (e.g. too small to be a work item each).
+- **Plan review triage:** only CRITICO/IMPORTANTE reopen the plan (`PLAN_FIX`). A SUGESTAO goes in only as
+  cheap text that adds no scenario, test or scope; otherwise it stays recorded in the triage. The plan loop has
+  its own limit, `max_retries_plan`.
 - `plan_needs_exploration` (`EXPLORE`): its `explore` questions go to the explorador, then a new
   planejador runs in the same mode with the new report. Only `open_questions` reach the user.
-- In tickets mode the planner writes the task files; you create the work items and the worktree and delegate.
+- At `TICKETS` the task files already exist: you create the work items (the active context says which tickets
+  become one; record each with `demand set <id> --task <ticket>=<work item id>`), the worktree, and delegate.
 - A `trivial` demand needs no plan. If one of these agents is disabled, do its step yourself (skill `to-spec`,
   the cheapest exploration available).
 
@@ -93,7 +100,8 @@ Notes link to each other (`[[nome]]`); each fact lives in one note.
   coder delivery and each test report. Code review by the team and QA testing never change it.
 - **Outside the AiDW:** when the user says the PR is open, `demand set <id> --step CODE_REVIEW --pr <repo>=<n>`;
   the team asked for changes → the step where the fix happens (`CODER_FIX`, or `IMPLEMENT` for new work) with
-  their points in a task; sent to QA → `--step QA_TEST`; QA returned a bug → the fix step again; accepted → `DONE`.
+  their points in a task; sent to QA → `--step QA_TEST`; QA returned a bug → the fix step again, by the short
+  path (*After delivery*); accepted → `DONE`.
   Only the user moves a demand into or out of these steps: never on your own.
 - **Messages from the panel** are the user's own words: `Decisões da revisão (…)` — record each in the round's
   triage and act on it; `Roteiro …, passo …` — record the result in the script (*Testing*); `Ajuste o comentário …`
@@ -115,8 +123,8 @@ the worktree's absolute path. Every
 task names the worktree path. A hook blocks AiDW agents' Edit/Write in the main working copy; shell
 commands are not checked, so tasks must point only to the worktree.
 
-Pick the workflow by demand type in `workflows/*.yaml` (its `agent:` is the **role**; map it with the
-Team table) and skip steps whose agent is disabled; reviewing a pull request someone else opened is `pr-review`
+Pick the workflow by demand type (*Workflows*: the files, and the active context's map of card types) and skip
+steps whose agent is disabled; reviewing a pull request someone else opened is `pr-review`
 (*PR review*); estimating a demand before implementing it is `levantamento` (*Levantamento*). Artifacts live in the **state dir** (Runtime).
 The active context may redefine steps and artifacts; context rules win.
 
@@ -124,9 +132,14 @@ The active context may redefine steps and artifacts; context rules win.
 no test plan step, its QA builds the matrix itself).
 - **Test plan** (`TEST_PLAN`, right after the spec): qa in plan mode writes `plano-testes-<id>.md` — how
   each criterion is proved (`auto-api`, `auto-browser`, `auto-suite` or `manual`), *Testes no código* (the only
-  unit/integration tests the tickets ask for) and *Ajustes de teste*. The plan review covers it; when a plan fix
-  changes the acceptance criteria, a fresh qa updates it before the re-review.
-- **Tests** (`TEST`): qa in test mode. Planned adjustments not applied yet go first (`TEST_ADJUST`).
+  unit/integration tests the tickets ask for), *Ajustes de teste* and *Aprovações* (every state-changing call the
+  run needs, grouped in blocks). Its size follows the criteria, not the code: the budget is in the qa
+  definition. The plan review covers it (complexa and critica); when a plan fix changes the acceptance criteria, a
+  fresh qa updates it before the re-review.
+- **Tests** (`TEST`): before delegating, take the test plan's *Aprovações* to the user in one batch (block by
+  block, as the active context says) and write in the qa task what was approved: the run never stops halfway for
+  an approval it could have had at the start. Then qa in test mode, only the scenarios of the plan.
+  Planned adjustments not applied yet go first (`TEST_ADJUST`).
 - **Adjustments** (`TEST_ADJUST`): temporary code changes only for testing (bypass, flag, mock, DEV/QA pointing),
   requested by qa. Delegate a codificador at the `trivial` level with
   `tarefa-codificador-ajuste-teste-<n>.md` (the adjustments, the patch path `ambiente-teste-<id>.patch` in the
@@ -154,6 +167,21 @@ no test plan step, its QA builds the matrix itself).
 - **Before the final review**, prove the adjustments are gone: `git -C <wt> grep -n -I -F --untracked AIDW-TESTE`
   prints nothing and `git -C <wt> diff <base> --stat` matches the last reviewed patch. The guard hook also refuses
   a `git commit` in a demand worktree that still has `AIDW-TESTE`.
+
+**After delivery** — a bug the QA team returned, the team's code review asking for a change, or a small adjustment
+the user asks after the review: a fix of what was delivered, not a new demand. No new plan, plan review or tickets:
+- Write `resumo-bug-<n>.md` (or `resumo-ajuste-<slug>.md`): the item, what failed, the evidence, the criterion it
+  breaks. Explorer only when the cause is not plain from the evidence and the plan's file references.
+- You write `tarefa-codificador-<assunto>.md` (the failing behavior and its evidence, the criterion, the files in
+  scope from the plan and the exploration, worktree, build command), at the level of the fix itself (usually
+  `simples`). The fix gets no work item of its own: the returned item is the work item.
+- Review of only the fix (the diff of the fix, one level down), named `review-<id>-<item>-r<N>.md` and its triage
+  `triagem-<id>-<item>-r<N>.md`, with `demand set <id> --loop <item>` so the round count of this loop starts at 1
+  (`--loop -` clears it at the end). Then qa in test mode on the affected criteria and the regression of
+  the area touched — nothing else.
+- Append one line per fix to an *Adendos* section at the end of the plan (no new version).
+- A new criterion, another system or a contract change is not a fix: it is new scope (*Algo fora do plano*), with
+  the full workflow (something outside the plan, *AUTONOMY*).
 
 **PR review** (`pr-review`: someone else's pull request; no plan, tickets, codificador or fix loop — the author
 fixes). Name the demand after its work item (or `pr-<n>` without one); one demand may hold PRs of several repositories.
@@ -199,20 +227,25 @@ worktree, plan, tickets, build or code). The procedure, the estimate rubric and 
 (exploitable vulnerabilities) are on demand, not every cycle. Record in the plan
 `Passadas extras: bugs sim/não — <why>; segurança sim/não — <why>`; the triggers and how to run them
 cheaply are in the reference *passadas-extras* — read it when writing the plan and when a review
-turns up something that changes the picture. Skip both for `trivial`/`simples` unless a trigger is
-explicit.
+turns up something that changes the picture. Each one runs **at most once per demand**, in the first review
+round (or before the plan, for a root cause), only with a trigger named in the plan; never in a fix round or in
+the short path after delivery. Skip both for `trivial`/`simples` unless a trigger is explicit.
 
 # NEXT ACTION
 
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in `orchestrator/config/routing.toml`;
 apply that rule exactly. A missing or unknown `state` is a failed result: delegate once more asking
-only for the missing JSON. `max_retries` (routing.toml) counts rounds of the same loop — explore ⇄ plan, plan
-review ⇄ plan fix and review ⇄ fix; when it runs out, stop and take it to the user instead of another round. Actions: `EXPLORE` (see *Planning*), `TEST_PLAN` (qa in plan mode; skip when it is disabled: go to
-`PLAN_REVIEW`), `PLAN_REVIEW` (skip for trivial/simples: go to `TICKETS`),
-`PLAN_FIX` (planejador in fix mode bumps the version; then a fresh review of only the changes),
-`TICKETS` (planejador in tickets mode),
+only for the missing JSON. `max_retries` (routing.toml) counts rounds of the same loop — explore ⇄ plan and
+review ⇄ fix; plan review ⇄ plan fix uses `max_retries_plan`; when it runs out, stop and take it to the user instead
+of another round. Actions: `EXPLORE` (see *Planning*), `TEST_PLAN` (qa in plan mode; skip when it is
+disabled: go to `PLAN_REVIEW`), `PLAN_REVIEW` (only for complexa/critica; otherwise go to `TICKETS`),
+`PLAN_FIX` (planejador in fix mode bumps the version and updates the tickets; then a fresh review of only the
+changes), `TICKETS` (the planner already wrote them: you create the work items and the worktree; planejador
+in tickets mode only to recut them),
 `IMPLEMENT`, `TEST`, `TEST_ADJUST`, `ORCHESTRATOR_TEST` and `MANUAL_TEST` (see *Testing*), `PREPARE_REVIEW`, `REVIEW`, `CODER_FIX`,
-`ESTIMATE` (see *Levantamento*), `DOCS`, `FINAL_REVIEW`, `DONE`,
+`ESTIMATE` (see *Levantamento*), `DOCS` (the docs of each repository came in the coder's tickets: delegate the
+documentador only for documentation outside the repositories, or for the test plan when the qa is disabled;
+nothing to do → `FINAL_REVIEW`), `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent), `CODE_REVIEW` and `QA_TEST` (outside the
 AiDW: wait for the user; see *Panel*).
 
@@ -284,14 +317,27 @@ Default level: **padrao**. Each cell is the effort to pass. `—` = the model ta
 
 | Level | When | `planejador` | `explorador` | `codificador` | `revisor` | `api` | `qa` | `documentador` | `bugs` | `seguranca` |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-luna` (`gpt-luna`) | low | low | low | low |
-| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | high + model `gpt-5-6-terra` (`gpt-terra`) | low | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | low | low | low | medium | medium |
+| **trivial** | Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto. | — (não roda) | low | low + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-terra` (`gpt-terra`) | low + model `gpt-5-6-luna` (`gpt-luna`) | low | low | low | low |
+| **simples** | Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança. | medium + model `gpt-5-6-terra` (`gpt-terra`) | low | medium + model `gpt-5-6-terra` (`gpt-terra`) | medium + model `gpt-5-6-terra` (`gpt-terra`) | low | low | low | medium | medium |
 | **padrao** | O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio. | medium + model `gpt-5-6-terra` (`gpt-terra`) | low | medium + model `gpt-5-6-terra` (`gpt-terra`) | medium + model `gpt-5-6-terra` (`gpt-terra`) | medium | medium | medium | high | high |
 | **complexa** | Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO. | high + model `gpt-5-6-terra` (`gpt-terra`) | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-5-6-terra` (`gpt-terra`) | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high | high |
 | **critica** | Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê. | high | high + model `gpt-5-6-terra` (`gpt-terra`) | high | high | high | high | medium + model `gpt-5-6-terra` (`gpt-terra`) | high + model `gpt-6-sol` (`gpt-sol`) | high + model `gpt-6-sol` (`gpt-sol`) |
 
 Escalate one level for the next attempt of a role when: o agente falhou duas vezes na mesma etapa; a revisão achou CRITICO; o resultado mostra que a tarefa é mais difícil do que o nível classificado.
 Go one level down for: re-revisão só das correções, rodada de build/teste, pergunta pontual.
+
+## Workflows
+
+Each file lists the steps of one kind of demand (`agent:` is the role; map it with the Team table).
+
+| Workflow | File | Use for |
+|---|---|---|
+| `bugfix` | `<ROOT>/workflows/bugfix.yaml` | Correção de bug com reprodução, teste de regressão e review. |
+| `feature` | `<ROOT>/workflows/feature.yaml` | Nova funcionalidade, do pedido até a documentação. |
+| `hotfix` | `<ROOT>/workflows/hotfix.yaml` | Correção urgente; escopo mínimo, mas review e aprovação humana continuam obrigatórios. |
+| `levantamento` | `<ROOT>/workflows/levantamento.yaml` | Levantamento de uma demanda antes de implementar — valida cada ponto do card no código, mapeia o fluxo de ponta a ponta e estima esforço, story points e complexidade, com as dúvidas que ficaram. Só leitura; sem worktree, plano, tickets nem código. |
+| `pr-review` | `<ROOT>/workflows/pr-review.yaml` | Revisão da PR de outra pessoa; sem plano, tickets nem correção (quem corrige é o autor). O usuário escolhe o que é publicado na PR. |
+| `refactor` | `<ROOT>/workflows/refactor.yaml` | Refatoração sem mudança de comportamento; testes antes e depois. |
 
 ## Skills
 

@@ -88,6 +88,7 @@ async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
     levels,
     defaultLevel: String(r.default_level ?? 'padrao'),
     maxRetries: Number(r.max_retries ?? 3),
+    maxRetriesPlan: Number(r.max_retries_plan ?? r.max_retries ?? 3),
     agents,
   }
 }
@@ -110,7 +111,8 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
     typeof r.max_retries === 'number'
       ? r.max_retries
       : parseMaxRetries(await $.fs.read(`${root}/orchestrator/config/routing.toml`).catch(() => ''))
-  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries })
+  const maxRetriesPlan = typeof r.max_retries_plan === 'number' ? r.max_retries_plan : maxRetries
+  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan })
   if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)

@@ -20,20 +20,24 @@ carrega centenas de linhas lidas no começo, fica caro a cada mensagem e erra ma
 ## Etapas
 
 ```text
-Entender → Explorar → Planejar → Plano de testes → Revisar o plano ⇄ Corrigir o plano → Tickets → Implementar
-        → Testar (⇄ ajustes de teste) → Preparar a revisão → Revisar ⇄ Corrigir (+ bugs/segurança)
-        → Teste manual (se houver roteiro) → Documentar → Revisão final → Concluir
+Entender → Explorar → Planejar (plano + tickets) → Plano de testes → Revisar o plano ⇄ Corrigir (complexa/crítica)
+        → Tickets (work items e worktree) → Implementar (com a doc do repositório) → Testar (⇄ ajustes de teste)
+        → Preparar a revisão → Revisar ⇄ Corrigir (+ bugs/segurança, uma vez) → Teste manual (se houver roteiro)
+        → Documentar (só o que fica fora dos repositórios) → Revisão final → Concluir
+
+Depois da entrega (bug do QA, pedido de mudança na PR, ajuste): caminho curto
+        → resumo do bug → (Explorar) → Corrigir → Revisar só a correção → Testar só os critérios afetados
 ```
 
 | Etapa | Agente | Entrada | Saída |
 |---|---|---|---|
 | **Entender** | orquestrador | o card (id, link ou descrição) | `resumo-<id>.md`: campos e critérios de aceite, decisões dos comentários com autor e data, itens ligados que importam, trabalho já existente (tasks, branch, PR) |
 | **Explorar** | explorador | perguntas numeradas que o plano precisa (onde a mudança vai, o comportamento atual, o contrato de cada dependência) | `exploracao-<assunto>.md`, com `arquivo:linha` em cada resposta |
-| **Planejar** (modo spec) | planejador | resumo + exploração + nível provisório | `plano-<id>.md` v1: comportamento atual verificado, desejado, critérios de aceite, checklists, riscos, **nível**, passadas extras |
-| **Plano de testes** (modo plan) | qa | resumo + plano | `plano-testes-<id>.md`: como provar cada critério (`auto-api`, `auto-browser`, `auto-suite`, `manual`), os testes no código e os ajustes de teste |
-| **Revisar o plano** | revisor | o plano e o plano de testes | `revisao-plano-<id>-r<N>.md`, achados `P<N>-<nn>`. Só do nível `padrao` para cima |
-| **Corrigir o plano** (modo fix) | planejador | plano + revisão | nova versão do plano; um revisor **novo** revisa só as mudanças |
-| **Tickets** (modo tickets) | planejador | plano aprovado + plano de testes | uma `tarefa-<agente>-<assunto>.md` por ticket, com só os testes de *Testes no código* |
+| **Planejar** (modo spec) | planejador | resumo + exploração + nível provisório | `plano-<id>.md` v1 (comportamento atual verificado, desejado, critérios de aceite, checklists, riscos, **nível**, passadas extras) **e os tickets**: uma `tarefa-<agente>-<assunto>.md` por entrega técnica |
+| **Plano de testes** (modo plan) | qa | resumo + plano | `plano-testes-<id>.md`: como provar cada critério (`auto-api`, `auto-browser`, `auto-suite`, `manual`) dentro do orçamento de cenários, os testes no código, os ajustes de teste e as aprovações de escrita |
+| **Revisar o plano** | revisor | o plano e o plano de testes | `revisao-plano-<id>-r<N>.md`, achados `P<N>-<nn>`. Só em `complexa` e `critica` |
+| **Corrigir o plano** (modo fix) | planejador | plano + revisão | nova versão do plano e dos tickets; um revisor **novo** revisa só as mudanças |
+| **Tickets** | orquestrador | os tickets do plano aprovado | os work items de cada ticket (o contexto diz quais viram um) e o worktree. O planejador só volta em modo tickets para recortar |
 | **Implementar** | codificador | uma tarefa | código e testes no worktree, build, `diff-<ticket>-r<N>.patch` |
 | **Testar** (modo test) | qa (desligado: o bloco `validation` do codificador) | plano de testes + diff | `qa-<id>-r<N>.md` com a evidência de cada critério; `roteiro-testes-<id>.md` para o que é manual |
 | **Ajustes de teste** | codificador, a pedido do qa | os ajustes | `ambiente-teste-<id>.patch` (marca `AIDW-TESTE`) e `ambiente-teste-<id>.md`; nunca chega ao commit |
@@ -42,13 +46,18 @@ Entender → Explorar → Planejar → Plano de testes → Revisar o plano ⇄ C
 | **Triar** | orquestrador | a revisão | `triagem-<id>-r<N>.md`: o que corrige, o que registra, o que pergunta |
 | **Corrigir** | codificador | a revisão + a triagem | novo diff `r<N+1>`; um revisor **novo** revisa só as correções |
 | **Teste manual** | **você**, com o orquestrador | `roteiro-testes-<id>.md` | um passo por vez: você executa e manda a evidência; ele confere e registra ✅/❌ no roteiro |
-| **Documentar** | documentador | o diff aprovado | docs atualizadas (com o qa desligado, também o plano de testes) |
+| **Documentar** | documentador | o diff aprovado | só o que fica fora dos repositórios (a doc de cada repositório vem no ticket do codificador); com o qa desligado, o plano de testes |
 | **Revisão final** | **você** | `revisao-final.md` | um pacote só: o que mudou, a revisão final, as ações que esperam o seu OK |
 
 ### Atalhos por tamanho
 
 - **`trivial`:** sem plano. O orquestrador vai direto para a tarefa.
-- **`simples`:** sem revisão do plano. Se o card já aponta os arquivos, sem exploração: o planejador lê os arquivos.
+- **`simples` e `padrao`:** sem revisão do plano (ela fica para `complexa` e `critica`). Em `simples`, se o card já
+  aponta os arquivos, sem exploração: o planejador lê os arquivos.
+- **Depois da entrega:** um bug que o QA devolveu, um pedido de mudança na PR ou um ajuste pedido depois da revisão
+  não refaz plano, revisão do plano nem tickets. O orquestrador escreve o resumo do bug e a tarefa da correção, um
+  revisor olha só a correção (com a contagem de rodadas própria, `demand set <id> --loop <item>`) e o qa testa só os
+  critérios afetados. O item devolvido é o work item: nada de Task nova. Escopo novo segue o fluxo inteiro.
 - **Workflow por tipo:** `workflows/feature.yaml`, `bugfix.yaml`, `refactor.yaml`, `hotfix.yaml`, `pr-review.yaml` e
   `levantamento.yaml`
   listam as etapas de cada tipo de demanda. O hotfix, por exemplo, reproduz e corrige sem plano, mas mantém revisão e
@@ -67,7 +76,7 @@ Todo agente termina com um bloco JSON e um `state`. O orquestrador procura esse 
 | `plan_has_open_questions` | `HUMAN_APPROVAL` | dúvida real ou mais de um caminho válido |
 | `plan_needs_exploration` | `EXPLORE` | o planejador precisa de código que não conhece: explorador, depois um planejador novo |
 | `spec_ready` | `TEST_PLAN` | plano pronto: o qa monta o plano de testes (qa desligado: `PLAN_REVIEW`) |
-| `test_plan_ready` · `test_plan_has_open_questions` | `PLAN_REVIEW` · `HUMAN_APPROVAL` | trivial/simples pulam a revisão do plano e vão para `TICKETS` |
+| `test_plan_ready` · `test_plan_has_open_questions` | `PLAN_REVIEW` · `HUMAN_APPROVAL` | abaixo de `complexa` a revisão do plano é pulada: vai para `TICKETS` |
 | `plan_review_approved` · `plan_review_changes_requested` | `TICKETS` · `PLAN_FIX` | |
 | `tickets_ready` | `IMPLEMENT` | |
 | `implementation_complete` · `implementation_failed` | `TEST` · `CODER_FIX` | |
@@ -85,8 +94,9 @@ Todo agente termina com um bloco JSON e um `state`. O orquestrador procura esse 
 | `max_retries_exceeded` | `HUMAN_APPROVAL` | o laço não convergiu |
 
 - Um `state` ausente ou desconhecido é falha: o orquestrador delega de novo pedindo só o JSON.
-- `max_retries` (padrão 3) conta as rodadas de cada laço: explorar ⇄ planejar, revisar plano ⇄ corrigir plano,
-  revisar ⇄ corrigir. Esgotou, ele para e leva para você.
+- `max_retries` (padrão 3) conta as rodadas dos laços explorar ⇄ planejar e revisar ⇄ corrigir; o laço revisar
+  plano ⇄ corrigir plano tem o seu, `max_retries_plan` (padrão 2). Esgotou, ele para e leva para você. No caminho
+  curto depois da entrega, cada item tem a sua contagem (`--loop`).
 - `environment_blocked` **não é falha do agente**: o orquestrador não escala nem refaz. Ele resolve o ambiente
   quando consegue (ex.: uma junction faltando) ou para e pergunta.
 
@@ -122,7 +132,8 @@ A revisão é o que segura a qualidade. Ela segue regras fixas:
   severidade: **CRITICO**, **IMPORTANTE** ou **SUGESTAO**.
 - **CRITICO/IMPORTANTE:** corrigir dentro do escopo sempre que houver correção possível no código em escopo. Só sai
   do escopo se exigir outro sistema ou contrato, e aí vira um rascunho de dívida técnica.
-- **SUGESTAO:** aplicar se for barata e nos arquivos em escopo; senão, registrar.
+- **SUGESTAO:** aplicar se for barata e nos arquivos em escopo; senão, registrar. Na revisão do plano, uma SUGESTAO
+  não reabre o plano: entra só como texto barato, sem cenário, teste ou escopo novo.
 - **Dúvida, mais de um caminho, decisão do tech lead:** uma pergunta só a você; o resto do ciclo segue.
 - Antes de aceitar "não dá para corrigir aqui", "cobre todos os casos", "não é regressão" ou de rebaixar um
   CRITICO/IMPORTANTE, o orquestrador usa a skill `verificar-premissa`, com a evidência na triagem.
@@ -135,14 +146,21 @@ A revisão é o que segura a qualidade. Ela segue regras fixas:
 `bugs` (defeitos de comportamento, causa-raiz) e `seguranca` (vulnerabilidades exploráveis) não rodam em toda
 demanda. O plano registra `Passadas extras: bugs sim/não — <motivo>; segurança sim/não — <motivo>`, com os gatilhos
 de `orchestrator/reference/passadas-extras.md` (concorrência, timers, legado frágil, autenticação, dados pessoais,
-dependências…). Quando decididas, rodam **em paralelo com a 1ª revisão**, e os achados entram na mesma triagem.
+dependências…). O nível sozinho não é gatilho. Quando decididas, rodam **uma vez por demanda, em paralelo com a 1ª
+revisão**, e os achados entram na mesma triagem; nas rodadas de correção e no caminho curto depois da entrega não
+rodam (o revisor da correção confere os achados abertos delas).
 
 ## Testes
 
 O `qa` entra sempre que a demanda é testada ([agentes.md](agentes.md#qa)):
 
-- **Antes dos tickets**, o plano de testes diz como provar cada critério de aceite. Web e API são testados sozinhos:
+- **Logo depois do plano**, o plano de testes diz como provar cada critério de aceite. Web e API são testados sozinhos:
   por chamadas na API ou pela tela no navegador. Desktop/WPF, e o que mais não dá para rodar aqui, vira roteiro manual.
+- **Orçamento:** um cenário por critério de aceite e regra de negócio, borda só com risco no plano ou caminho próprio
+  no código, no máximo 2 × (CA + RN) cenários; o que for cortado fica listado em *Fora do plano*. O qa roda só os
+  cenários do plano, uma vez cada, sem ferramenta própria (stub, proxy, sonda) que o plano não peça.
+- **Aprovações antes do teste:** o plano de testes lista as escritas em DEV/QA que o teste vai precisar, em blocos; o
+  orquestrador pede o seu OK de uma vez antes do teste, e o qa não para no meio esperando aprovação.
 - **O código só ganha teste onde o ponta a ponta não enxerga:** passos internos que não chegam ao cliente. O plano
   de testes lista esses passos e o ticket diz quais são dele.
 - **Ajustes de teste** (pular uma validação, forçar uma flag, mockar, apontar para QA) são pedidos pelo qa e feitos
