@@ -71,8 +71,8 @@ describe('estado da demanda', () => {
   })
 
   test('com um laço depois da entrega, só as revisões dele contam', async () => {
-    const files = ['review-131190-r4.md', 'review-131190-bug-144844-r1.md', 'review-131190-bug-144798-r2.md']
-    expect(roundFor('CODER_FIX', files, 'bug-144844')).toEqual({ round: 1, kind: 'revisão' })
+    const files = ['review-9001-r4.md', 'review-9001-bug-1234-r1.md', 'review-9001-bug-1235-r2.md']
+    expect(roundFor('CODER_FIX', files, 'bug-1234')).toEqual({ round: 1, kind: 'revisão' })
     expect(roundFor('CODER_FIX', files, 'bug-1')).toEqual({ round: 0, kind: null })
     expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'revisão' })
   })

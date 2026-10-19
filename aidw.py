@@ -3325,7 +3325,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         data.pop("loop", None)
     elif loop:
         if not DEMAND_RE.match(loop.strip().lower()):
-            return {"ok": False, "error": f"--loop inválido {loop!r} (use letras minúsculas, números e -, ex.: bug-145145)"}
+            return {"ok": False, "error": f"--loop inválido {loop!r} (use letras minúsculas, números e -, ex.: bug-1234)"}
         data["loop"] = loop.strip().lower()
     data["updated"] = now
     path = demand_path(ctx, demand)
@@ -5255,8 +5255,8 @@ def main() -> int:
     d_set.add_argument("--pr", action="append", metavar="REPO=N",
                        help="PR aberta de um repositório da demanda (repetível): AssistenteCertificado=7788")
     d_set.add_argument("--task", action="append", metavar="TICKET=ID",
-                       help="work item (Task) criado para um ticket (repetível): front=145301")
-    d_set.add_argument("--loop", help="laço de correção depois da entrega (ex.: bug-145145): as rodadas de "
+                       help="work item (Task) criado para um ticket (repetível): front=5001")
+    d_set.add_argument("--loop", help="laço de correção depois da entrega (ex.: bug-1234): as rodadas de "
                                       "review-<id>-<laço>-r<N>.md contam a partir de 1; `-` limpa")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
