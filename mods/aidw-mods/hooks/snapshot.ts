@@ -77,6 +77,8 @@ export type SnapshotInput = {
   files: string[]
   texts: Record<string, string>
   maxRetries: number
+  /** Limite do laço revisão do plano ⇄ correção (routing.toml `max_retries_plan`); sem ele, o `maxRetries`. */
+  maxRetriesPlan?: number
 }
 
 export function buildSnapshot(input: SnapshotInput): Snapshot {
@@ -87,7 +89,8 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
   const delegations = parseDelegations(text('metricas.md'))
   const plan = parsePlanMeta(text(planFile(files)))
   const level = plan.level ?? delegations.at(-1)?.level ?? null
-  const { round, kind: roundKind } = roundFor(step, files)
+  const { round, kind: roundKind } = roundFor(step, files, demand.loop)
+  const maxRetries = roundKind === 'plano' ? (input.maxRetriesPlan ?? input.maxRetries) : input.maxRetries
 
   // achados: todas as rodadas, com a triagem de cada uma
   const findings: Finding[] = []
@@ -191,7 +194,7 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     planVersion: plan.version,
     round,
     roundKind,
-    maxRetries: input.maxRetries,
+    maxRetries,
     delegations,
     tokens: delegations.reduce((n, d) => n + d.tokens, 0),
     budget: budgetFor(level),

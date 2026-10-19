@@ -116,15 +116,19 @@ export function budgetFor(level: string | null): number {
 
 const PLAN_STEPS = new Set(['PLAN', 'SPEC', 'TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FIX', 'EXPLORE'])
 
-/** A rodada que importa na etapa: a da revisão do plano ou a da revisão do código. */
-export function roundFor(step: string, files: string[]): { round: number; kind: 'plano' | 'revisão' | null } {
+/**
+ * A rodada que importa na etapa: a da revisão do plano ou a da revisão do código. Com um laço (`demand set --loop
+ * bug-1234`, o caminho curto depois da entrega), só contam as revisões dele: `review-<id>-<laço>-r<N>.md`.
+ */
+export function roundFor(step: string, files: string[], loop?: string | null): { round: number; kind: 'plano' | 'revisão' | null } {
   const max = (re: RegExp) =>
     files.reduce((m, f) => Math.max(m, Number(re.exec(f)?.[1] ?? 0)), 0)
   if (PLAN_STEPS.has(step)) {
     const round = max(/^revisao-plano-.*-r(\d+)\.md$/)
     return { round, kind: round ? 'plano' : null }
   }
-  const round = max(/^review-.*-r(\d+)\.md$/)
+  const tag = loop ? loop.replace(/[^a-z0-9-]/gi, '') : ''
+  const round = max(tag ? new RegExp(`^review-.*-${tag}-r(\\d+)\\.md$`) : /^review-.*-r(\d+)\.md$/)
   return { round, kind: round ? 'revisão' : null }
 }
 

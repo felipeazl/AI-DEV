@@ -77,4 +77,14 @@ describe('travas da delegação', () => {
     const plan = base({ subagentType: 'aidw:planejador', step: 'PLAN_FIX', round: 3, roundKind: 'plano' })
     expect(checkDelegation(plan)).toContain('revisão do plano')
   })
+
+  test('o laço do plano tem o limite próprio (max_retries_plan)', async () => {
+    const runtime = { ...RUNTIME, maxRetriesPlan: 2 }
+    const plan = (round: number) =>
+      checkDelegation(base({ runtime, subagentType: 'aidw:planejador', step: 'PLAN_FIX', round, roundKind: 'plano' }))
+    expect(plan(1)).toBe(null)
+    expect(plan(2)).toContain('max_retries_plan')
+    const code = checkDelegation(base({ runtime, step: 'CODER_FIX', round: 2, roundKind: 'revisão' }))
+    expect(code).toBe(null)
+  })
 })

@@ -49,10 +49,11 @@ não responde. Continua só levantando fatos: quem estima é o orquestrador.
 ### Planejador
 Três modos, sempre num agente novo:
 - **spec:** escreve o `plano-<id>.md` a partir do resumo e da exploração (skill `to-spec`, pré-carregada): comportamento
-  atual verificado, desejado, critérios de aceite, checklists, riscos, nível e passadas extras.
-- **fix:** recebe o plano e a revisão dele e grava a nova versão.
-- **tickets:** corta o plano aprovado em tarefas autocontidas, uma por ticket, com arquivos em escopo e `arquivo:linha`,
-  o comando de build e as regras do projeto.
+  atual verificado, desejado, critérios de aceite, checklists, riscos, nível e passadas extras — e, no mesmo passo,
+  os tickets: tarefas autocontidas, uma por entrega técnica (nunca minúsculas: cada uma vira um work item), com
+  arquivos em escopo e `arquivo:linha`, o comando de build e as regras do projeto.
+- **fix:** recebe o plano e a revisão dele e grava a nova versão, acertando os tickets que a mudança toca.
+- **tickets:** só para recortar os tickets (ex.: o orquestrador achou que encheriam o board de entregas pequenas).
 
 Se precisa de código que não conhece, devolve `plan_needs_exploration` com as perguntas; o orquestrador manda ao
 explorador e chama um planejador novo. Sonnet (Opus só na crítica): o plano decide o custo de todas as etapas seguintes.
@@ -88,8 +89,9 @@ logs; gera ou ajusta dados de teste, descobre ids, investiga integrações. **To
 exato e só executa depois do seu OK (skill `database-safe`).
 
 ### Documentador
-Atualiza README, ARCHITECTURE, changelog e docs de API a partir do diff **aprovado** e redige work items (US,
-dívida técnica) para você confirmar. Com o `qa` desligado, também gera o plano de testes.
+Documenta o que fica fora dos repositórios e redige work items (US, dívida técnica) para você confirmar. README,
+ARCHITECTURE e docs de API de cada repositório vêm no ticket do codificador, junto com o código. Com o `qa`
+desligado, também gera o plano de testes.
 
 ### Bugs e Segurança (sob demanda)
 - **bugs:** procura defeitos de comportamento reais, cada um com um cenário de falha concreto, ou acha a causa-raiz de
@@ -134,10 +136,10 @@ A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude;
 
 | Agente | trivial | simples | padrao | complexa | critica |
 |---|---|---|---|---|---|
-| planejador | não roda | Sonnet high | Sonnet medium | Sonnet high | Opus high |
+| planejador | não roda | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
 | explorador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet high |
-| codificador | Sonnet high | Sonnet high | Sonnet medium | Sonnet high | Opus high |
-| revisor | Sonnet high | Sonnet high | Sonnet medium | Sonnet high | Opus high |
+| codificador | Sonnet low | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
+| revisor | Sonnet low | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
 | bugs · seguranca | Sonnet low | Sonnet medium | Sonnet high | Sonnet high | Opus high |
 | api | Haiku | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
 | documentador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet medium |
@@ -146,7 +148,8 @@ A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude;
 Por que assim:
 - **Ler é barato, decidir é caro.** Explorador e documentador ficam no Haiku; o raciocínio vai para quem planeja,
   codifica e revisa.
-- **Sonnet em quase tudo:** high nas demandas pequenas e na complexa, medium no padrão.
+- **Sonnet em quase tudo:** low no trivial, medium no simples e no padrão, high na complexa. O effort nunca cai de
+  um nível para o de cima: o simples economiza em etapas, não em raciocínio.
 - **Opus só na crítica** (planejador, codificador, revisor, bugs e segurança): o caso excepcional, em que errar custa
   mais que o modelo.
 - **Nada acima de `high`:** acima disso o ganho é pequeno e a sessão do plano se esgota rápido.

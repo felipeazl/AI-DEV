@@ -49,7 +49,19 @@ prerequisites, criterion → scenario → evidence matrix, edge cases). For each
 - `manual` — no way to run it here (desktop/WPF, hardware, a third party that blocks `localhost`): a
   step for the user, in the manual script.
 
-Add two sections the other agents use:
+**Budget** — the plan proves the criteria, it does not explore the code:
+
+- One scenario per acceptance criterion (`CA`) and business rule (`RN`). An edge case gets its own scenario
+  only when the plan marks it as a risk or the code takes a different path for it; values with the same path
+  go in one scenario.
+- At most **2 × (CA + RN)** scenarios in all. Over that, merge or cut the lowest-risk edges and list what
+  you cut under *Fora do plano* (one line each), so the orchestrator can bring one back.
+- `trivial`/`simples`: at most one scenario per criterion plus 3 edges, and *Testes no código* only when a
+  criterion cannot be seen end to end.
+- No own tooling (stubs, proxies, probes, harness scripts) unless the plan names it with the reason; no
+  repetitions to collect statistics; each scenario runs once.
+
+Add three sections the other agents use:
 
 - **Testes no código** — the internal steps the end-to-end checks above would **not** reveal easily
   (a calculation, a mapping, a state transition, a retry/timer, data persisted but never shown, an
@@ -58,8 +70,17 @@ Add two sections the other agents use:
 - **Ajustes de teste** — temporary code changes the tests need (bypass a validation, force a flag, mock
   a dependency, point to DEV/QA): what, where (`file:line`), why. They are applied by the coder only for
   the test run and removed before any commit.
+- **Aprovações** — every state-changing call or write the run will need (data setup, a call that changes a
+  protocol, e-mail/OTP), grouped in blocks of the same kind of write on the same data, each with what it
+  changes and the read-only check after it. The orchestrator gets the user's OK for them before the test
+  step, so the run does not stop halfway.
 
 # PROCESS — test mode
+
+Run **only the scenarios of the test plan**, once each, with the tools the plan names. A scenario you
+cannot prove that way is `doubt` with what is missing — not a reason to build tooling, add "complement"
+scenarios or repeat runs. A write that is not among the approvals in your task: do not wait for it; finish
+everything else and return `policy_requires_approval` with all such writes together.
 
 1. **Automated suite** — build and tests with the commands from *Systems*. Compare new warnings and
    failures with the base branch.
