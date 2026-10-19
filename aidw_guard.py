@@ -2,7 +2,8 @@
 
 - PreToolUse (Edit/Write/MultiEdit/NotebookEdit) — guard: um agente do AiDW não escreve no working copy
   principal de um repositório que tem worktree ativo de demanda (state/worktrees.json); ele trabalha no
-  worktree. A conversa principal não tem regra: o usuário continua livre no working copy dele.
+  worktree. Arquivo de outro repositório git aninhado nele (ex.: contexts/<nome>) não conta. A conversa principal
+  não tem regra: o usuário continua livre no working copy dele.
 - PreToolUse (Bash/PowerShell) — `git commit` num worktree ativo de demanda que ainda tem a marca `AIDW-TESTE`
   (ajuste temporário de teste) é recusado, para qualquer sessão: o ajuste é revertido antes do commit.
 - UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:orquestrar` ou `/aidw:levantamento`
@@ -43,6 +44,16 @@ def norm(p: str) -> str:
 def inside(child: str, parent: str) -> bool:
     c, p = norm(child), norm(parent)
     return c == p or c.startswith(p.rstrip("\\/") + os.sep)
+
+
+def in_nested_repo(target: str, repo: str) -> bool:
+    """O arquivo fica num outro repositório git aninhado no repo (ex.: contexts/<nome> dentro do AiDW)."""
+    root, d = norm(repo), os.path.dirname(norm(target))
+    while d != root and inside(d, root):
+        if os.path.exists(os.path.join(d, ".git")):
+            return True
+        d = os.path.dirname(d)
+    return False
 
 
 def read_json(path: Path, default):
@@ -145,7 +156,8 @@ def pre_tool_use(data: dict) -> dict | None:
             target = os.path.join(data["cwd"], target)
         resolved.append(target)
     for e in read_json(REGISTRY, {}).get("worktrees", []):
-        if e.get("status") == "active" and any(inside(x, e["repo"]) and not inside(x, e["path"]) for x in resolved):
+        if e.get("status") == "active" and any(inside(x, e["repo"]) and not inside(x, e["path"])
+                                               and not in_nested_repo(x, e["repo"]) for x in resolved):
             return deny(f"AiDW: {e['repo']} tem o worktree da demanda {e['demand']} em {e['path']} "
                         f"(branch {e['branch']}). Edite o arquivo correspondente no worktree, não no working copy "
                         "principal.")

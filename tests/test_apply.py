@@ -495,6 +495,11 @@ class WorktreeTest(unittest.TestCase):
                      "cwd": str(repo)}
             self.assertIn('"deny"', self.guard(root, {**coder, "tool_input": {"file_path": str(repo / "app.txt")}}))
             self.assertEqual(self.guard(root, {**coder, "tool_input": {"file_path": str(path / "app.txt")}}), "")
+            nested = repo / "contexts" / "ctx"
+            (nested / ".git").mkdir(parents=True)
+            self.assertEqual(self.guard(root, {**coder, "tool_input": {"file_path": str(nested / "demandas" / "x.md")}}), "",
+                             "outro repositório git aninhado no repo não é o working copy dele")
+            self.assertIn('"deny"', self.guard(root, {**coder, "tool_input": {"file_path": str(repo / "contexts" / "x.md")}}))
             codex = {"hook_event_name": "PreToolUse", "agent_type": "aidw-codificador", "tool_name": "apply_patch",
                      "cwd": str(repo)}
             patch = lambda f: "*** Begin Patch\n*** Update File: " + f + "\n@@\n-v1\n+v2\n*** End Patch"  # noqa: E731
