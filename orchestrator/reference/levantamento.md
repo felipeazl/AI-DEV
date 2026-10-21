@@ -91,6 +91,9 @@ Para quem vai responder (PO, Tech Lead, outro time), não para quem leu o códig
   numeradas `D1`, `D2`… na ordem do documento.
 - Ordem dentro do tema: as que bloqueiam o início primeiro; depois as que mudam a estimativa; por último as de detalhe.
 - Não pergunte o que o código já respondeu; isso vai como fato no levantamento.
+- **Respondida:** sai do tema e vai para o grupo `**Respondidas em <dd/mm>**`, no fim, em uma linha com a resposta e
+  quem decidiu (`- **D3.** Só os 5 campos do card têm tratamento (PO e TL, 20/10). *Para:* PO`); o painel mostra
+  esse grupo recolhido e conta só as abertas.
 
 Exemplo de tom:
 
@@ -151,7 +154,7 @@ Total **≈ <soma> SP**.
 resumo-<id>.md · pontos-<id>.md · exploracao-levantamento.md
 ```
 
-O painel do AiDW (aba *Card × código* e *Estimativa e dúvidas*) lê exatamente essas tabelas e marcações: mantenha os
+O painel do AiDW (abas *Card × código*, *Estimativa* e *Dúvidas*) lê exatamente essas tabelas e marcações: mantenha os
 cabeçalhos, as colunas e os rótulos `*Para:*` e `*Muda a estimativa:*` como estão.
 
 ## 7. Fechar

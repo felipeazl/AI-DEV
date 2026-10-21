@@ -280,6 +280,7 @@
   "default_level": "padrao",
   "max_retries": 3,
   "max_retries_plan": 2,
-  "panel": false,
-  "external_steps": []
+  "panel": true,
+  "external_steps": [],
+  "votes": []
 }
