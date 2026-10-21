@@ -8,9 +8,29 @@ import {
   parseDelegation,
   parseMaxRetries,
   parseMetricas,
+  parseOrchestrator,
   parseState,
   roundFor,
 } from '../hooks/aidw'
+
+describe('métricas do orquestrador', () => {
+  test('soma as sessões do metricas-orquestrador.md', async () => {
+    const md = [
+      '# Métricas do orquestrador', '',
+      '| Sessão | Início | Atualizado | Modelo | Turnos | Duração | Entrada | Cache escrito | Cache lido | Saída | Custo equiv. (USD) |',
+      '|---|---|---|---|---|---|---|---|---|---|---|',
+      '| 79aafeb8 | 2026-10-21 08:43 | 2026-10-21 09:10 | claude-opus-5-5 | 2 | 50s | 15 | 302,000 | 300,000 | 1,500 | 2.51 |',
+      '| dcc0d767 | 2026-10-21 10:00 | 2026-10-21 10:05 | claude-opus-5-5 | 1 | 9s | 5 | 1,000 | 1,000 | 100 | — |',
+    ].join('\n')
+    const o = parseOrchestrator(md)
+    expect(o.rows.map(r => [r.session, r.turns, r.seconds, r.tokens, r.cacheRead, r.cost])).toEqual([
+      ['79aafeb8', 2, 50, 603_515, 300_000, 2.51],
+      ['dcc0d767', 1, 9, 2_105, 1_000, null],
+    ])
+    expect([o.turns, o.tokens, o.cost]).toEqual([3, 605_620, 2.51])
+    expect(parseOrchestrator('')).toEqual({ rows: [], turns: 0, tokens: 0, cost: null })
+  })
+})
 
 describe('delegação do AiDW', () => {
   test('lê pasta da demanda, nível e tarefa do prompt', async () => {

@@ -2,7 +2,7 @@
 // quais arquivos ler, o register.tsx lê e entrega os textos, `buildSnapshot` monta.
 
 import type { CoverageItem, Finding, Repo, Snapshot } from '../types'
-import { budgetFor, parseDelegations, roundFor } from './aidw'
+import { budgetFor, parseDelegations, parseOrchestrator, roundFor } from './aidw'
 import {
   decisionOf,
   groupArtifacts,
@@ -58,6 +58,7 @@ export function wanted(files: string[]): string[] {
   const out = new Set<string>()
   const add = (f: string | null | undefined) => f && out.add(f)
   add(files.includes('metricas.md') ? 'metricas.md' : null)
+  add(files.includes('metricas-orquestrador.md') ? 'metricas-orquestrador.md' : null)
   add(planFile(files))
   add(testPlanFile(files))
   add(first(files, /^resumo.*\.md$/))
@@ -197,6 +198,7 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     maxRetries,
     delegations,
     tokens: delegations.reduce((n, d) => n + d.tokens, 0),
+    orchestrator: parseOrchestrator(text('metricas-orquestrador.md')),
     budget: budgetFor(level),
     findings,
     vote: parseVote(text(reviews.at(-1))),

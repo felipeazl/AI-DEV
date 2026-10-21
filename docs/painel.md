@@ -29,12 +29,15 @@ vem cada dado e o que os agentes passam a gravar para isso.
 ## Faixa acima do prompt
 
 ```text
-AiDW it-101662 · contexto ▬▬▬▭▭ 41% · 7d ▬▬▬▬▭ 58% · 5h ▬▬▭▭▭ 32% · ▶ codificador (otimizacao-r2) 2m10s
+AiDW it-101662 · contexto ▬▬▬▭▭ 160k · 7d ▬▬▬▬▭ 58% · 5h ▬▬▭▭▭ 32% · ▶ codificador (otimizacao-r2) 2m10s
 ```
 
-- **O que mostra:** AiDW, o id da demanda, o contexto, o 7d e o 5h, cada um com barra fina e %, e os agentes
-  rodando (nome, tarefa, tempo). Sem agente rodando, essa parte some.
-- **A partir de 80%:** a barra e o número ficam amarelos; no 7d e no 5h entra a hora em que a janela renova.
+- **O que mostra:** AiDW, o id da demanda, o contexto em tokens, o 7d e o 5h em %, cada um com barra fina, e os
+  agentes rodando (nome, tarefa, tempo). Sem agente rodando, essa parte some.
+- **Contexto:** em tokens, não em % da janela (1M): cada ação do orquestrador relê a conversa inteira, então o que
+  pesa é o tamanho. A barra enche em 250k e fica amarela daí em diante (o ponto em que o mod sugere `/compact`).
+- **7d e 5h a partir de 80%:** a barra e o número ficam amarelos e entra a hora local em que a janela renova (com o
+  dia, quando não é hoje).
 - **Dados:** contexto e janelas de uso em `$.session.usage()` (`context`, `rateLimits` `five_hour`/`seven_day`, só em
   assinatura; sem leitura, o 7d e o 5h não aparecem); agentes rodando pelo próprio mod.
 - **Saíram:** fase, "espera você", orçamento, rodada e laço travado, AIDW-TESTE e código lido no chat (estão na Geral).
@@ -58,7 +61,7 @@ tipo e o número da demanda pequenos em cima e o título em destaque.
    o título do card.
 2. **Mapa da demanda:**
    - resumo de até 4 linhas sobre o que a demanda trata;
-   - três números: critérios de aceite, tokens dos agentes e tempo de agentes trabalhando;
+   - quatro números: critérios de aceite, tokens dos agentes, tokens do orquestrador e tempo de agentes trabalhando;
    - **progresso** numa barra fina em dois grupos: **AiDW** (Entender, Plano, Implementar, Testar, Revisar, Revisão
      final) e **Time e QA** (Code review, Testes QA, Pronto), com o nome da etapa atual e "etapa N de 9". Quando o time
      ou a QA devolve, a etapa de fora fica amarela com "↩ voltou do Code review · 1ª vez" e a barra volta para onde o
@@ -132,11 +135,16 @@ tipo e o número da demanda pequenos em cima e o título em destaque.
 
 ### Métricas
 
-- Quatro números: delegações, tokens, tempo de agentes e rodadas de revisão.
+- Cinco números: delegações, tokens dos agentes, tokens do orquestrador, tempo de agentes e rodadas de revisão.
+- **Orquestrador (chat principal):** uma linha por sessão e modelo, com turnos, a parte que foi cache lido, os tokens
+  e o custo equivalente; embaixo, o total. Vem do `metricas-orquestrador.md`, que o mod soma a cada turno (`aidw.py
+  record-orchestrator`). O custo é o preço de API (cache escrito a 2× a entrada, o TTL de 1h do chat): uma régua do
+  peso no limite do plano, não a conta. O effort do chat não chega ao mod; para comparar efforts, use um chat novo
+  para cada um (cada sessão é uma linha).
 - Tokens por dia (colunas, com tooltip de chamadas e tempo); por agente e por modelo/effort em barras horizontais.
 - Resultado das chamadas e retrabalho como etiquetas com contagem.
 - As 8 delegações mais recentes, com "ver todas"; os artefatos em grupos recolhidos.
-- Custo em US$ só quando o `metricas.md` traz.
+- Custo em US$ das delegações só quando o `metricas.md` traz.
 
 ### Revisão de PR · Achados e voto
 

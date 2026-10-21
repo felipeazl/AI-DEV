@@ -38,6 +38,23 @@ export type Delegation = {
   cost: number | null
 }
 
+/** Uma linha do metricas-orquestrador.md: o chat principal numa sessão, com um modelo. */
+export type OrchestratorRow = {
+  session: string
+  updated: string
+  model: string
+  turns: number
+  seconds: number
+  /** Entrada, cache escrito, cache lido e saída somados. */
+  tokens: number
+  cacheWrite: number
+  cacheRead: number
+  output: number
+  /** Equivalente em preço de API (não é a conta da assinatura). */
+  cost: number | null
+}
+export type OrchestratorUsage = { rows: OrchestratorRow[]; turns: number; tokens: number; cost: number | null }
+
 export type Finding = {
   id: string
   round: number
@@ -135,6 +152,8 @@ export type Snapshot = {
   maxRetries: number
   delegations: Delegation[]
   tokens: number
+  /** O próprio orquestrador (chat principal), do metricas-orquestrador.md. */
+  orchestrator: OrchestratorUsage
   budget: number
   findings: Finding[]
   vote: string

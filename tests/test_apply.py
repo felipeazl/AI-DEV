@@ -1092,6 +1092,41 @@ class ContextTest(unittest.TestCase):
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "Bug 1", "--json")
             self.assertEqual(code, 1, err)
 
+    def test_pasta_da_demanda_exclui_o_claude_md_da_raiz(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--step", "UNDERSTAND", "--json")
+            settings = Path(d["folder"]) / ".claude" / "settings.json"
+            pattern = "**/" + root.as_posix().split(":", 1)[-1].lstrip("/") + "/CLAUDE.md"
+            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {"claudeMdExcludes": [pattern]},
+                             "chat aberto na pasta da demanda não carrega o CLAUDE.md da raiz junto com a skill")
+            settings.write_text(json.dumps({"claudeMdExcludes": ["**/outro/CLAUDE.md"], "model": "x"}), encoding="utf-8")
+            wt.aidw_json(root, "demand", "set", "us-9", "--step", "EXPLORE", "--json")
+            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
+                             {"claudeMdExcludes": ["**/outro/CLAUDE.md", pattern], "model": "x"}, "o que já havia fica")
+
+    def test_metricas_do_orquestrador_somam_por_sessao_e_modelo(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            demand = Path(tmp) / "us-9"
+            turn = ["record-orchestrator", "--demand", str(demand), "--session", "79aafeb8-0000",
+                    "--input", "10", "--cache-write", "300000", "--cache-read", "0", "--output", "800",
+                    "--duration-ms", "30000"]
+            code, r = wt.aidw_json(root, *turn, "--model", "claude-opus-5-5")
+            self.assertEqual((code, r["turns"]), (0, 1), r)
+            self.assertAlmostEqual(r["cost_usd"], (10 * 4 + 300000 * 8 + 800 * 20) / 1e6,
+                                   msg="cache escrito a 2× a entrada")
+            code, r = wt.aidw_json(root, *turn, "--model", "claude-opus-5-5")
+            self.assertEqual(r["turns"], 2, "a mesma sessão e modelo somam na mesma linha")
+            code, r = wt.aidw_json(root, *turn, "--model", "claude-sonnet-5-5")
+            self.assertEqual(r["turns"], 1, "outro modelo é outra linha")
+            text = (demand / "metricas-orquestrador.md").read_text(encoding="utf-8")
+            rows = [line for line in text.splitlines() if line.startswith("| 79aafeb8 |")]
+            self.assertEqual(len(rows), 2, text)
+            self.assertIn("| claude-opus-5-5 | 2 | 60s | 20 | 600,000 | 0 | 1,600 |", rows[0])
+
     def test_ciclo_de_contextos(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")

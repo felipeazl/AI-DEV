@@ -1,7 +1,7 @@
 // Leitura pura dos artefatos do AiDW: o prompt de uma delegação, o JSON final do agente, o metricas.md,
 // as rodadas de revisão e o routing.toml. Sem `$`, para os testes rodarem sem o engine.
 
-import type { Delegation as MetricsRow } from '../types'
+import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorUsage } from '../types'
 
 export type Delegation = { demand: string; level: string | null; task: string | null }
 
@@ -99,6 +99,48 @@ export function parseDelegations(text: string): MetricsRow[] {
     })
   }
   return out
+}
+
+/**
+ * O contexto do orquestrador em tokens: cada ação relê a conversa inteira, então o que pesa é o tamanho, não a
+ * fração da janela (1M). A partir de CONTEXT_WARN o mod sugere /compact; numa espera longa por você, a partir de
+ * CONTEXT_COMPACT ele compacta sozinho (a volta depois de 1h regravaria o contexto inteiro no cache).
+ */
+export const CONTEXT_WARN = 250_000
+export const CONTEXT_COMPACT = 150_000
+/** Etapas em que a demanda fica parada com você ou com o time (o teste manual, passo a passo, não conta). */
+export const LONG_WAIT = new Set(['HUMAN_APPROVAL', 'FINAL_REVIEW', 'CODE_REVIEW', 'QA_TEST'])
+
+/** As linhas do metricas-orquestrador.md (`aidw.py record-orchestrator`): o chat principal por sessão e modelo. */
+export function parseOrchestrator(text: string): OrchestratorUsage {
+  const num = (s: string | undefined) => {
+    const n = Number((s ?? '').replace(/[.,\s]|s$/g, ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  const rows: OrchestratorRow[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const c = line.split('|').map(x => x.trim())
+    if (c.length < 13 || !/^[0-9a-f-]{4,}$/.test(c[1] ?? '')) continue
+    const [input, cacheWrite, cacheRead, output] = [num(c[7]), num(c[8]), num(c[9]), num(c[10])]
+    rows.push({
+      session: c[1] ?? '',
+      updated: c[3] ?? '',
+      model: c[4] ?? '',
+      turns: num(c[5]),
+      seconds: num(c[6]),
+      tokens: input + cacheWrite + cacheRead + output,
+      cacheWrite,
+      cacheRead,
+      output,
+      cost: usd(c[11]),
+    })
+  }
+  return {
+    rows,
+    turns: rows.reduce((n, r) => n + r.turns, 0),
+    tokens: rows.reduce((n, r) => n + r.tokens, 0),
+    cost: rows.some(r => r.cost !== null) ? rows.reduce((n, r) => n + (r.cost ?? 0), 0) : null,
+  }
 }
 
 /** Orçamento de tokens da demanda (soma das delegações) por nível: passar dele avisa, não trava. */

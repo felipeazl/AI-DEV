@@ -67,10 +67,13 @@ const norm = (path: string) => path.replace(/\\/g, '/')
 const PROPS_BAND = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 160, scroll: { offset: 0, bodyRows: 4 }, view: {} }
 const PROPS_PANE = { title: 'AiDW', isFocused: true, bodyColumns: 160, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 
-type Fake = { runs: (readonly string[])[]; fills: string[]; submits: string[] }
+type Fake = { runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; clock: ReturnType<typeof mock.clock> }
 
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. */
-function fake(on: On, opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string }): Fake {
+function fake(
+  on: On,
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number },
+): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify(RUNTIME),
     'C:/AiDW/state/sessions.json': JSON.stringify(opts.orchestrating ? { [SESSION]: { plugin: 'aidw', argument: opts.argument ?? '' } } : {}),
@@ -78,8 +81,12 @@ function fake(on: On, opts: { orchestrating: boolean; demand: string; argument?:
   for (const [id, entries] of Object.entries(DEMANDS)) {
     for (const [name, text] of Object.entries(entries)) files[`${STATE}/${id}/${name}`] = text
   }
-  const out: Fake = { runs: [], fills: [], submits: [] }
-  mock.clock(on)
+  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], clock: mock.clock(on) }
+  on('ui.toast', ($, e) => {
+    out.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.id', () => ({ value: SESSION }))
@@ -87,7 +94,7 @@ function fake(on: On, opts: { orchestrating: boolean; demand: string; argument?:
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: { percent: 41, tokens: 82_000 },
+      context: { percent: 41, tokens: opts.contextTokens ?? 82_000 },
       rateLimits: [
         { kind: 'seven_day', percentUsed: 58 },
         { kind: 'five_hour', percentUsed: 91, resetsAt: '2026-10-14T16:40:00Z' },
@@ -177,8 +184,12 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     const band = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'AbovePrompt', props: PROPS_BAND })
     await has(band, /^us-1$/)
     await has(band, /contexto/)
+    await has(band, /^82k$/) // o contexto em tokens, não em % da janela
     await has(band, /^58%$/)
-    await has(band, /91% \(renova 16:40\)/)
+    // a hora é a local (o resetsAt vem em UTC), com o dia na frente quando não é hoje
+    const reset = new Date('2026-10-14T16:40:00Z')
+    const hm = `${String(reset.getHours()).padStart(2, '0')}:${String(reset.getMinutes()).padStart(2, '0')}`
+    await has(band, new RegExp(`91% \\(renova (\\d\\d/\\d\\d )?${hm}\\)`))
     expect(await band.find({ type: 'Text', text: /orçamento/ })).toBeUndefined()
     await band.unmount()
 
@@ -291,6 +302,49 @@ test('um Agent fora do AiDW passa direto', async ($, on) => {
   const ran = await $.tool.call({ tool: 'Agent', description: 'x', prompt: 'Find the config loader' })
   expect(f.runs).toEqual([])
   expect(ran.context ?? []).toEqual([])
+})
+
+const TURN = (cacheRead: number) => ({
+  answer: 'ok', durationMs: 5_000, isAborted: false, turnId: 't1', reason: 'answer' as const,
+  usage: { model: 'claude-opus-5-5', input_tokens: 3, output_tokens: 700, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 10_000 },
+})
+
+test('fim de turno numa espera longa: grava o turno do orquestrador e compacta uma vez', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'pr-7', contextTokens: 300_000 })
+  const compactions: string[] = []
+  on('session.compact', ($, e) => {
+    compactions.push(e.instructions ?? '')
+    return { messages: [{ role: 'user', text: 'resumo da conversa', toolUses: [] }] as never, tokensBefore: 300_000, tokensAfter: 40_000 }
+  })
+  await $.session.start(START('pr-7'))
+  await $.turn.complete(TURN(290_000))
+  const rec = f.runs.find(a => a.includes('record-orchestrator')) ?? []
+  for (const [flag, value] of [['--demand', `${STATE}/pr-7`], ['--session', SESSION], ['--model', 'claude-opus-5-5'], ['--cache-read', '290000'], ['--cache-write', '10000'], ['--output', '700']] as const) {
+    expect(rec[rec.indexOf(flag) + 1]).toBe(value)
+  }
+  expect(compactions).toEqual([]) // só entre turnos, logo depois deste
+  await f.clock.advance(1_000)
+  expect(compactions.length).toBe(1)
+  expect(compactions[0]).toContain('FINAL_REVIEW')
+  await $.turn.complete(TURN(295_000))
+  await f.clock.advance(1_000)
+  expect(compactions.length).toBe(1) // a mesma espera não compacta de novo
+})
+
+test('fim de turno com contexto alto fora de espera: sugere /compact uma vez, sem compactar', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', contextTokens: 300_000 })
+  const compactions: string[] = []
+  on('session.compact', ($, e) => {
+    compactions.push(e.instructions ?? '')
+    return { messages: [] }
+  })
+  await $.session.start(START('us-1'))
+  await $.turn.complete(TURN(290_000))
+  await $.turn.complete(TURN(295_000))
+  await f.clock.advance(1_000)
+  expect(f.toasts.filter(t => t.includes('/compact')).length).toBe(1)
+  expect(f.toasts.find(t => t.includes('/compact'))).toContain('300k tokens')
+  expect(compactions).toEqual([])
 })
 
 test('filtro de segredos nas linhas da conversa', async ($, on) => {
