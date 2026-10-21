@@ -1092,6 +1092,34 @@ class ContextTest(unittest.TestCase):
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "Bug 1", "--json")
             self.assertEqual(code, 1, err)
 
+    def test_etapa_de_fora_do_contexto(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            code, err = wt.aidw_json(root, "demand", "set", "us-9", "--step", "UX_VALIDATION", "--json")
+            self.assertEqual(code, 1, "sem o contexto declarar, a etapa não existe")
+            toml = root / "contexts" / "exemplo" / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8") + (
+                '\n[[workflows.external_steps]]\nstep = "UX_VALIDATION"\nname = "Validação UX"\nbefore = "CODE_REVIEW"\n'
+                'who = "o UX"\nwhen = "o card tem UX Owner"\n'), encoding="utf-8")
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "UX_VALIDATION", "--json")
+            self.assertEqual((code, d["extra_steps"]), (0, ["UX_VALIDATION"]), d)
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--step", "UX_VALIDATION", "--json")
+            self.assertEqual((code, d["step"]), (0, "UX_VALIDATION"), d)
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "-UX_VALIDATION", "--json")
+            self.assertNotIn("extra_steps", d)
+            code, err = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "QA_TEST", "--json")
+            self.assertEqual(code, 1, "só etapa declarada pelo contexto")
+
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            aidw.check_external_steps({"name": "x", "workflows": {"external_steps": [
+                {"step": "REVIEW", "name": "a", "before": "CODE_REVIEW", "when": "b"},
+                {"step": "UX", "name": "a", "before": "DONE", "when": "b"},
+                {"step": "ux-val", "name": "a", "before": "CODE_REVIEW", "when": "b"},
+                {"step": "SEM_NOME", "before": "QA_TEST", "when": "b"}]}}, rep)
+            self.assertEqual(len(rep.errors), 4, rep.errors)
+
     def test_pasta_da_demanda_exclui_o_claude_md_da_raiz(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")

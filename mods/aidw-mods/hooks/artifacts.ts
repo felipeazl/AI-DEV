@@ -28,7 +28,9 @@ export type DemandFile = { id?: string; title?: string; step?: string; status?: 
   repos?: { repo?: string; path?: string; branch?: string; base?: string; system?: string | null; pr?: string;
     head?: string; source?: string }[]; history?: { step: string; at: string }[]
   /** Laço de correção depois da entrega (`demand set --loop`); as Tasks de cada ticket (`--task`). */
-  loop?: string; tasks?: Record<string, string> }
+  loop?: string; tasks?: Record<string, string>
+  /** Etapas de fora do contexto pelas quais a demanda passa (`demand set --extra-step`). */
+  extra_steps?: string[] }
 
 /** Desenvolvimento, revisão de PR ou levantamento — o demand.json não grava o workflow; os arquivos dizem. */
 export function kindOf(demand: DemandFile, files: string[]): DemandKind {
@@ -108,8 +110,13 @@ export function waitingFor(step: string | undefined): string | null {
   }
 }
 
+/** Uma etapa de fora que o contexto acrescenta (`runtime.json` → `external_steps`), antes de `before`. */
+export type ExternalStep = { step: string; name: string; before: string; who?: string }
+
+type Stage = { name: string; group: ProgressStage['group']; steps: string[]; who?: string }
+
 /** As etapas da barra de progresso do Mapa da demanda: as do AiDW e, no desenvolvimento, as de fora (time e QA). */
-const STAGES: Record<DemandKind, { name: string; group: ProgressStage['group']; steps: string[] }[]> = {
+const STAGES: Record<DemandKind, Stage[]> = {
   desenvolvimento: [
     { name: 'Entender', group: 'aidw', steps: ['UNDERSTAND', 'EXPLORE'] },
     { name: 'Plano', group: 'aidw', steps: ['SPEC', 'PLAN', 'TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FIX', 'TICKETS'] },
@@ -117,8 +124,8 @@ const STAGES: Record<DemandKind, { name: string; group: ProgressStage['group']; 
     { name: 'Testar', group: 'aidw', steps: ['TEST', 'ORCHESTRATOR_TEST', 'MANUAL_TEST'] },
     { name: 'Revisar', group: 'aidw', steps: ['PREPARE_REVIEW', 'REVIEW', 'CODER_FIX', 'DOCS'] },
     { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
-    { name: 'Code review', group: 'fora', steps: ['CODE_REVIEW'] },
-    { name: 'Testes QA', group: 'fora', steps: ['QA_TEST'] },
+    { name: 'Code review', group: 'fora', steps: ['CODE_REVIEW'], who: 'o time' },
+    { name: 'Testes QA', group: 'fora', steps: ['QA_TEST'], who: 'a QA' },
     { name: 'Pronto', group: 'fora', steps: ['DONE'] },
   ],
   'pr-review': [
@@ -142,8 +149,8 @@ const STAGES: Record<DemandKind, { name: string; group: ProgressStage['group']; 
  * uma volta: conta para aquela etapa de fora e, enquanto a demanda não voltar a ela, a etapa fica "voltou".
  * HUMAN_APPROVAL e RETURN ficam na etapa anterior.
  */
-export function progress(kind: DemandKind, demand: DemandFile): Progress {
-  const stages = STAGES[kind]
+export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalStep[] = []): Progress {
+  const stages = withExternal(STAGES[kind], kind, demand, extra)
   const stageOf = (step: string) => stages.findIndex(s => s.steps.includes(step))
   const history = (demand.history ?? []).map(h => h.step).filter(s => stageOf(s) >= 0)
   const step = demand.step ?? ''
@@ -170,6 +177,7 @@ export function progress(kind: DemandKind, demand: DemandFile): Progress {
     stages: stages.map((s, i) => ({
       name: s.name,
       group: s.group,
+      ...(s.who ? { who: s.who } : {}),
       state: done || i < current
         ? 'feito'
         : i === current
@@ -184,6 +192,22 @@ export function progress(kind: DemandKind, demand: DemandFile): Progress {
     returnedFrom,
     returns,
   }
+}
+
+/**
+ * As etapas de fora do contexto entram no desenvolvimento só para a demanda que passa por elas: marcada com
+ * `demand set --extra-step` ou com a etapa no histórico. Cada uma fica logo antes da etapa `before`.
+ */
+function withExternal(base: Stage[], kind: DemandKind, demand: DemandFile, extra: ExternalStep[]): Stage[] {
+  if (kind !== 'desenvolvimento') return base
+  const used = new Set([...(demand.extra_steps ?? []), ...(demand.history ?? []).map(h => h.step), demand.step ?? ''])
+  const out = [...base]
+  for (const e of extra) {
+    if (!used.has(e.step)) continue
+    const at = out.findIndex(s => s.steps.includes(e.before))
+    out.splice(at < 0 ? out.length - 1 : at, 0, { name: e.name, group: 'fora', steps: [e.step], ...(e.who ? { who: e.who } : {}) })
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------------------------------------------

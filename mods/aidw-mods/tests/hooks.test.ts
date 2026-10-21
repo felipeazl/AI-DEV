@@ -67,21 +67,21 @@ const norm = (path: string) => path.replace(/\\/g, '/')
 const PROPS_BAND = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 160, scroll: { offset: 0, bodyRows: 4 }, view: {} }
 const PROPS_PANE = { title: 'AiDW', isFocused: true, bodyColumns: 160, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 
-type Fake = { runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; clock: ReturnType<typeof mock.clock> }
+type Fake = { runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; opens: number; clock: ReturnType<typeof mock.clock> }
 
-/** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. */
+/** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number },
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean },
 ): Fake {
   const files: Record<string, string> = {
-    'C:/AiDW/.aidw/runtime.json': JSON.stringify(RUNTIME),
+    'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
     'C:/AiDW/state/sessions.json': JSON.stringify(opts.orchestrating ? { [SESSION]: { plugin: 'aidw', argument: opts.argument ?? '' } } : {}),
   }
   for (const [id, entries] of Object.entries(DEMANDS)) {
     for (const [name, text] of Object.entries(entries)) files[`${STATE}/${id}/${name}`] = text
   }
-  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], clock: mock.clock(on) }
+  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], opens: 0, clock: mock.clock(on) }
   on('ui.toast', ($, e) => {
     out.toasts.push(e.text)
     return { value: undefined }
@@ -101,7 +101,10 @@ function fake(
       ],
     } as never,
   }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', () => {
+    out.opens += 1
+    return { value: { isPlaced: true } }
+  })
   on('ui.close', () => ({ value: undefined }))
   on('fs.read', ($, e) => {
     const text = files[norm(e.path)]
@@ -284,6 +287,21 @@ test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   await pane.press({ key: 'post-levantamento' })
   expect(f.fills.at(-1)).toContain('publique no card lv-9')
   await pane.unmount()
+})
+
+test('contexto sem painel: a faixa aparece, o painel não abre e /aidw-painel explica', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', panel: false })
+  await $.session.start(START('us-1'))
+  expect(f.opens).toBe(0)
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^us-1$/)
+  await has(band, /^82k$/)
+  await band.unmount()
+  const r = await $.command.run({ command: 'aidw-painel', args: '' } as never)
+  expect(JSON.stringify(r)).toContain('painel está desligado')
+  expect(f.opens).toBe(0)
+  // as travas continuam: a us-1 está no limite de rodadas
+  expect(why(await $.tool.call(delegation()))).toContain('Liberar +1 rodada')
 })
 
 test('fora do modo orquestrador, o mod não trava, não grava nem mostra nada', async ($, on) => {

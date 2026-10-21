@@ -101,7 +101,9 @@ Notes link to each other (`[[nome]]`); each fact lives in one note.
 - **Outside the AiDW:** when the user says the PR is open, `demand set <id> --step CODE_REVIEW --pr <repo>=<n>`;
   the team asked for changes → the step where the fix happens (`CODER_FIX`, or `IMPLEMENT` for new work) with
   their points in a task; sent to QA → `--step QA_TEST`; QA returned a bug → the fix step again, by the short
-  path (*After delivery*); accepted → `DONE`.
+  path (*After delivery*); accepted → `DONE`. The active context may add outside steps before these (*Workflows*):
+  the same rules, `--step <STEP>` when the user says the demand went there, and a change it asks for takes the short
+  path.
   Only the user moves a demand into or out of these steps: never on your own.
 - **Messages from the panel** are the user's own words: `Decisões da revisão (…)` — record each in the round's
   triage and act on it; `Roteiro …, passo …` — record the result in the script (*Testing*); `Ajuste o comentário …`

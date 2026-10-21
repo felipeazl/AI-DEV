@@ -128,7 +128,9 @@ ACTIONS = {"EXPLORE", "TEST_PLAN", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEM
            "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "ESTIMATE", "DOCS", "FINAL_REVIEW", "DONE",
            "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST"}
 # Etapas de fora do AiDW (o time revisa a PR, a QA testa): gravadas quando o usuário avisa; o painel as mostra à parte.
+# O contexto pode declarar outras ([[workflows.external_steps]]), cada uma antes de uma destas.
 EXTERNAL_STEPS = ("CODE_REVIEW", "QA_TEST")
+EXTERNAL_STEP_RE = re.compile(r"^[A-Z][A-Z0-9_]*[A-Z0-9]$")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
 
@@ -1107,6 +1109,30 @@ def runtime_lines(cfg: dict, ctx: dict | None, orchestrator: bool = False) -> li
     ]
 
 
+def context_external_steps(ctx: dict | None) -> list[dict]:
+    """As etapas de fora que o contexto acrescenta ([[workflows.external_steps]]): step, name, before, who, when."""
+    steps = (ctx.get("workflows", {}).get("external_steps", []) if ctx else []) or []
+    return [s for s in steps if isinstance(s, dict) and s.get("step")]
+
+
+def check_external_steps(ctx: dict | None, rep: Report) -> None:
+    seen: set[str] = set()
+    for s in (ctx.get("workflows", {}).get("external_steps", []) if ctx else []) or []:
+        where = f"contexto {ctx['name']}: [[workflows.external_steps]]"
+        if not isinstance(s, dict) or not EXTERNAL_STEP_RE.match(str(s.get("step", ""))):
+            rep.error(f"{where} precisa de `step` em MAIÚSCULAS_COM_SUBLINHADO (atual: {s!r})")
+            continue
+        step = s["step"]
+        if step in ACTIONS or step == "UNDERSTAND" or step in seen:
+            rep.error(f"{where} {step!r} repete uma etapa que já existe")
+        if s.get("before") not in EXTERNAL_STEPS:
+            rep.error(f"{where} {step!r}: `before` deve ser {' ou '.join(EXTERNAL_STEPS)} (atual: {s.get('before')!r})")
+        for key in ("name", "when"):
+            if not str(s.get(key, "")).strip():
+                rep.error(f"{where} {step!r} sem `{key}`")
+        seen.add(step)
+
+
 def workflows_section(ctx: dict | None) -> str:
     rows = ["## Workflows", "",
             "Each file lists the steps of one kind of demand (`agent:` is the role; map it with the Team table).", "",
@@ -1120,6 +1146,11 @@ def workflows_section(ctx: dict | None) -> str:
                  *[f"- {kind} → `{name}`" for kind, name in wf["by_type"].items()]]
     if wf.get("notes"):
         rows += ["", *[f"- {n}" for n in wf["notes"]]]
+    if extra := context_external_steps(ctx):
+        rows += ["", "Outside steps of the active context (handled like `CODE_REVIEW`/`QA_TEST`: only the user moves a "
+                 "demand into or out of them). When the plan says a demand goes through one, record it with "
+                 "`demand set <id> --extra-step <STEP>` so the panel shows it:", ""]
+        rows += [f"- `{s['step']}` — {s['name']}, before `{s['before']}`: {s['when']}" for s in extra]
     return "\n".join(rows)
 
 
@@ -1924,6 +1955,7 @@ def workflow_files(ctx: dict | None) -> dict[str, Path]:
 
 def check_workflows(resolved: dict, skills: dict, ctx: dict | None, rep: Report) -> None:
     files = workflow_files(ctx)
+    check_external_steps(ctx, rep)
     for kind, name in (ctx.get("workflows", {}).get("by_type", {}) if ctx else {}).items():
         if name not in files:
             rep.error(f"contexto {ctx['name']}: [workflows.by_type] {kind!r} aponta para o workflow inexistente {name!r}")
@@ -2093,6 +2125,11 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
         "max_retries": b["routing"].get("max_retries", 3),
         "max_retries_plan": b["routing"].get("max_retries_plan", b["routing"].get("max_retries", 3)),
+        # o painel lateral do mod segue os artefatos de um jeito de trabalhar: só o contexto que o liga ([mods] panel)
+        "panel": bool(ctx.get("mods", {}).get("panel", False)) if ctx else False,
+        # etapas de fora do contexto, para a barra de progresso do painel
+        "external_steps": [{k: s.get(k, "") for k in ("step", "name", "before", "who")}
+                           for s in context_external_steps(ctx)],
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"
@@ -3279,13 +3316,19 @@ DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK ante
 
 def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
                mode: str = "", summary: str = "", prs: list[str] | None = None,
-               tasks: list[str] | None = None, loop: str | None = None) -> dict:
+               tasks: list[str] | None = None, loop: str | None = None, extra_steps: list[str] | None = None) -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
     if not DEMAND_RE.match(demand):
         return {"ok": False, "error": f"id de demanda inválido {demand!r} (use letras minúsculas, números e -)"}
-    if step and step not in ACTIONS and step != "UNDERSTAND":
-        return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND ou uma ação de NEXT ACTION)"}
+    outside = [s["step"] for s in context_external_steps(ctx)]
+    if step and step not in ACTIONS and step not in outside and step != "UNDERSTAND":
+        return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND, uma ação de NEXT ACTION ou uma "
+                                      "etapa de fora do contexto)"}
+    for item in extra_steps or []:
+        if item.lstrip("-") not in outside:
+            return {"ok": False, "error": f"--extra-step {item!r}: não é etapa de fora do contexto "
+                                          f"({', '.join(outside) or 'o contexto não declara nenhuma'})"}
     if status and status not in DEMAND_STATUS:
         return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
     if mode and mode not in DEMAND_MODES:
@@ -3329,6 +3372,11 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
         if not DEMAND_RE.match(loop.strip().lower()):
             return {"ok": False, "error": f"--loop inválido {loop!r} (use letras minúsculas, números e -, ex.: bug-1234)"}
         data["loop"] = loop.strip().lower()
+    for item in extra_steps or []:
+        chosen = [s for s in data.get("extra_steps", []) if s != item.lstrip("-")]
+        data["extra_steps"] = chosen if item.startswith("-") else [*chosen, item]
+        if not data["extra_steps"]:
+            data.pop("extra_steps")
     data["updated"] = now
     path = demand_path(ctx, demand)
     write_json_atomic(path, data)
@@ -3378,7 +3426,7 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
         result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
-                            args.mode or "", args.summary or "", args.pr, args.task, args.loop)
+                            args.mode or "", args.summary or "", args.pr, args.task, args.loop, args.extra_step)
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -5332,6 +5380,9 @@ def main() -> int:
                        help="work item (Task) criado para um ticket (repetível): front=5001")
     d_set.add_argument("--loop", help="laço de correção depois da entrega (ex.: bug-1234): as rodadas de "
                                       "review-<id>-<laço>-r<N>.md contam a partir de 1; `-` limpa")
+    d_set.add_argument("--extra-step", action="append", metavar="STEP",
+                       help="etapa de fora do contexto pela qual a demanda passa (repetível; o painel a mostra): "
+                            "UX_VALIDATION; `-UX_VALIDATION` tira")
     d_show = dm.add_parser("show", help="mostra o demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="demandas do contexto (mais recentes primeiro)")
