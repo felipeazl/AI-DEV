@@ -15,7 +15,7 @@ import {
   parseState,
 } from './aidw'
 import { voteValue } from './artifacts'
-import type { DemandFile } from './artifacts'
+import type { DemandFile, ExternalStep } from './artifacts'
 import { diffSummary, splitDiff } from './diffs'
 import type { DiffFile } from './diffs'
 import { checkDelegation } from './guards'
@@ -123,7 +123,8 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
       ? r.max_retries
       : parseMaxRetries(await $.fs.read(`${root}/orchestrator/config/routing.toml`).catch(() => ''))
   const maxRetriesPlan = typeof r.max_retries_plan === 'number' ? r.max_retries_plan : maxRetries
-  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan })
+  const externalSteps = Array.isArray(r.external_steps) ? (r.external_steps as ExternalStep[]) : []
+  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps })
   if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)
@@ -201,10 +202,15 @@ async function checkActive($: EngineInterface): Promise<boolean> {
   }
   if (on && !was) {
     await measure($)
-    await openPanel($, false)
+    if (await panelOn($)) await openPanel($, false)
   }
   if (!on && was) await $.ui.close({ id: PANE }).catch(() => undefined)
   return on
+}
+
+/** O painel só existe no contexto que o liga (`[mods] panel = true`); a faixa e o resto do mod valem em todos. */
+async function panelOn($: EngineInterface): Promise<boolean> {
+  return (await runtimeJson($)).panel === true
 }
 
 async function openPanel($: EngineInterface, asked: boolean): Promise<void> {
@@ -322,7 +328,7 @@ async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs:
     const key = `ctx:${s.id}`
     if (tokens < CONTEXT_COMPACT) {
       if ((await read($, warned))[key]) await update($, warned, w => ({ ...w, [key]: false })) // compactou: avisa de novo
-    } else if (LONG_WAIT.has(s.step)) {
+    } else if (LONG_WAIT.has(s.step) || s.progress.stages.some(x => x.state === 'com-time')) {
       const once = `compact:${s.id}:${s.step}:${s.delegations.length}` // uma vez por espera
       if (!(await read($, warned))[once]) {
         await update($, warned, w => ({ ...w, [once]: true }))
@@ -438,9 +444,10 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await checkActive($)
+    const panel = await panelOn($)
     for (const command of [
       { name: 'aidw-faixa', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
-      { name: 'aidw-painel', description: 'Abre o painel do AiDW (geral, critérios, revisão, diffs, métricas…)', argumentHint: '[aba]' },
+      ...(panel ? [{ name: 'aidw-painel', description: 'Abre o painel do AiDW (geral, critérios, revisão, diffs, métricas…)', argumentHint: '[aba]' }] : []),
       { name: 'aidw-rodada', description: 'Libera mais uma rodada no laço de revisão travado pelo max_retries' },
     ]) {
       await $.command.register(command).catch(() => undefined)
@@ -470,6 +477,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'aidw-painel' }, async ($, e) => {
+    if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = true` no context.toml liga).' }
     const s = await read($, snap)
     if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:orquestrar).' }
     if (e.args.trim()) await update($, tab, () => tabFor(s.kind, e.args.trim().toLowerCase()))
@@ -613,6 +621,10 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e) as unknown as UI
     const s = await read($, snap)
+    if (!(await panelOn($))) {
+      const { Text } = ui
+      return <Text dimColor>O painel do AiDW está desligado neste contexto.</Text>
+    }
     if (!s) {
       const { Text } = ui
       return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:orquestrar ou /aidw:levantamento.</Text>

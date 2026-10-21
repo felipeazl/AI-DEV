@@ -368,7 +368,7 @@ function General(ui: UI, v: ViewState, act: Actions) {
     : s.step === 'DONE'
       ? 'Pronto'
       : outside
-        ? `${outside.name} · com ${outside.name === 'Testes QA' ? 'a QA' : 'o time'}`
+        ? `${outside.name} · com ${outside.who ?? 'o time'}`
         : `${p.current}${s.waiting ? ' · espera você' : ''}`
   const situationColor = outside ? C.blue : s.waiting ? C.amber : C.mid
   const seconds = s.delegations.reduce((n, d) => n + d.seconds, 0)
