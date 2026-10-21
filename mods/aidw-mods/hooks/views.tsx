@@ -4,7 +4,7 @@
 import type { Elements } from 'claude-code'
 
 import type { Delegation, DemandKind, DiffView, Finding, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
-import { compact } from './aidw'
+import { CONTEXT_WARN, compact } from './aidw'
 import { KIND_LABEL, VOTES } from './artifacts'
 import { stateLabel } from './snapshot'
 
@@ -128,6 +128,14 @@ const secs = (s: number) =>
 const fileUrl = (p: string) => `file:///${encodeURI(p.replace(/\\/g, '/'))}`
 const ddmm = (iso: string) => (/^\d{4}-(\d{2})-(\d{2})/.exec(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso)
 const modelName = (m: string) => /opus|sonnet|haiku|fable/i.exec(m)?.[0]?.toLowerCase() ?? (m || '—')
+const two = (n: number) => String(n).padStart(2, '0')
+/** A hora local de um instante ISO (o `resetsAt` vem em UTC); com o dia quando não é hoje. */
+export const localTime = (iso: string, now: number) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const hm = `${two(d.getHours())}:${two(d.getMinutes())}`
+  return d.toDateString() === new Date(now).toDateString() ? hm : `${two(d.getDate())}/${two(d.getMonth() + 1)} ${hm}`
+}
 
 /** Uma barra fina de medição: SVG no app, blocos de texto onde não há SVG. */
 function meter(ui: UI, key: string, percent: number, color: string, width = 64) {
@@ -202,25 +210,25 @@ const WARN = 80
 export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number) {
   const { Box, Text } = ui
   const parts: unknown[] = []
-  const add = (key: string, label: string, percent: number, extra = '') => {
-    const color = percent >= WARN ? C.amber : C.mid
+  const add = (key: string, label: string, percent: number, text: string, warn = WARN) => {
+    const color = percent >= warn ? C.amber : C.mid
     parts.push(
       <Box key={key} gap={1} alignItems="center">
-        <Text color={percent >= WARN ? C.amber : C.dim}> · {label}</Text>
+        <Text color={percent >= warn ? C.amber : C.dim}> · {label}</Text>
         {meter(ui, `${key}-m`, percent, color)}
-        <Text color={percent >= WARN ? C.amber : C.dim}>
-          {percent}%{extra}
-        </Text>
+        <Text color={percent >= warn ? C.amber : C.dim}>{text}</Text>
       </Box>,
     )
   }
   if (usage) {
-    add('ctx', 'contexto', usage.percent)
+    // o contexto em tokens, com a barra cheia no ponto de compactar: cada ação relê a conversa inteira
+    add('ctx', 'contexto', Math.round((usage.tokens / CONTEXT_WARN) * 100), compact(usage.tokens), 100)
     for (const kind of ['7d', '5h'] as const) {
       const l = usage.limits.find(x => x.kind === kind)
       if (!l) continue
-      const reset = l.percent >= WARN && l.resetsAt ? ` (renova ${l.resetsAt.slice(11, 16)})` : ''
-      add(kind, kind, Math.round(l.percent), reset)
+      const at = l.percent >= WARN && l.resetsAt ? localTime(l.resetsAt, now) : ''
+      const reset = at ? ` (renova ${at})` : ''
+      add(kind, kind, Math.round(l.percent), `${Math.round(l.percent)}%${reset}`)
     }
   }
   return (
@@ -399,6 +407,7 @@ function General(ui: UI, v: ViewState, act: Actions) {
           <Box gap={2}>
             {stat('st-ca', String(criteria), 'critérios de aceite')}
             {stat('st-tk', compact(s.tokens), 'tokens dos agentes')}
+            {stat('st-or', compact(s.orchestrator.tokens), 'tokens do orquestrador')}
             {stat('st-tm', secs(seconds), 'de agentes trabalhando')}
           </Box>
           <Box flexDirection="column">
@@ -1088,6 +1097,7 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   const { Box, Text, Button, Link } = ui
   const s = v.snap
   const d = s.delegations
+  const o = s.orchestrator
   const seconds = d.reduce((n, x) => n + x.seconds, 0)
   const priced = d.filter(x => x.cost !== null)
   const rounds = new Set(s.findings.filter(f => f.source !== 'bugs' && f.source !== 'segurança').map(f => f.file)).size
@@ -1111,10 +1121,47 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
       <Box gap={1}>
         {kpi('k-del', String(d.length), 'delegações')}
         {kpi('k-tok', compact(s.tokens), 'tokens dos agentes')}
+        {kpi('k-orc', compact(o.tokens), 'tokens do orquestrador')}
         {kpi('k-tim', secs(seconds), 'de agentes trabalhando')}
         {kpi('k-rnd', String(rounds), 'rodadas de revisão')}
       </Box>
       {priced.length > 0 && <Text color={C.dim}>Custo: US$ {priced.reduce((n, x) => n + (x.cost ?? 0), 0).toFixed(2)} em {priced.length} de {d.length} delegações</Text>}
+      {o.rows.length > 0 &&
+        card(
+          ui,
+          'orc',
+          'Orquestrador (chat principal)',
+          <Box flexDirection="column">
+            {o.rows.map((r, i) => (
+              <Box key={`or-${i}`} gap={2}>
+                <Box width={10}>
+                  <Text color={C.dim}>{r.session}</Text>
+                </Box>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Text>{modelName(r.model)}</Text>
+                </Box>
+                <Box width={10} justifyContent="flex-end">
+                  <Text color={C.dim}>{`${r.turns} turnos`}</Text>
+                </Box>
+                <Box width={14} justifyContent="flex-end">
+                  <Text color={C.dim}>{`${pct(r.cacheRead, r.tokens)}% cache lido`}</Text>
+                </Box>
+                <Box width={6} justifyContent="flex-end">
+                  <Text>{compact(r.tokens)}</Text>
+                </Box>
+                <Box width={10} justifyContent="flex-end">
+                  <Text color={C.mid}>{r.cost !== null ? `US$ ${r.cost.toFixed(2)}` : '—'}</Text>
+                </Box>
+              </Box>
+            ))}
+            {o.cost !== null && (
+              <Text color={C.dim}>
+                Equivalente em preço de API: US$ {o.cost.toFixed(2)} em {o.turns} turnos (régua do peso no limite do plano, não a conta)
+              </Text>
+            )}
+          </Box>,
+          'uma linha por sessão e modelo',
+        )}
       {d.length > 0 && card(ui, 'dias', 'Tokens por dia', dayChart(ui, groupBy(d, x => x.date)), ui.Svg ? 'passe o mouse para ver chamadas e tempo' : '')}
       {d.length > 0 && hbars(ui, 'ag', 'Por agente', groupBy(d, x => x.agent).sort((a, b) => b.tokens - a.tokens))}
       {d.length > 0 && hbars(ui, 'md', 'Por modelo e effort', groupBy(d, x => `${modelName(x.model)} · ${x.effort}`).sort((a, b) => b.tokens - a.tokens))}

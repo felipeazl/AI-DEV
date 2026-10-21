@@ -1,8 +1,19 @@
 import { atom, read, update } from 'claude-code'
-import type { BuiltinToolResults, EngineInterface, Register } from 'claude-code'
+import type { BuiltinToolResults, EngineInterface, Register, TurnUsage } from 'claude-code'
 
 import type { DiffView, ReviewFilter, Snapshot } from '../types'
-import { demandIds, demandSetId, labelFor, parseDelegation, parseMaxRetries, parseState } from './aidw'
+import {
+  CONTEXT_COMPACT,
+  CONTEXT_WARN,
+  LONG_WAIT,
+  compact,
+  demandIds,
+  demandSetId,
+  labelFor,
+  parseDelegation,
+  parseMaxRetries,
+  parseState,
+} from './aidw'
 import { voteValue } from './artifacts'
 import type { DemandFile } from './artifacts'
 import { diffSummary, splitDiff } from './diffs'
@@ -251,32 +262,81 @@ async function warnOnce($: EngineInterface, key: string, text: string): Promise<
   $.ui.toast(text, { timeoutMs: 10_000 })
 }
 
-/** O contexto e as janelas de uso do plano (5h, 7d) para a faixa. */
+/** O contexto (em tokens) e as janelas de uso do plano (5h, 7d) para a faixa. */
 async function measure($: EngineInterface): Promise<number | null> {
   try {
     const u = await $.session.usage()
-    const percent = Math.round(u.context.percent ?? 0)
+    const tokens = u.context.tokens ?? 0
     const limits = (u.rateLimits ?? [])
       .filter(l => l.kind === 'five_hour' || l.kind === 'seven_day')
       .map(l => ({ kind: l.kind === 'five_hour' ? ('5h' as const) : ('7d' as const), percent: l.percentUsed, resetsAt: l.resetsAt ?? '' }))
-    await update($, usage, () => ({ percent, tokens: u.context.tokens ?? 0, limits }))
-    return percent
+    await update($, usage, () => ({ percent: Math.round(u.context.percent ?? 0), tokens, limits }))
+    return tokens
   } catch {
     return null // sem uso medido nesta superfície
   }
 }
 
-/** Avisos do fim de um turno do orquestrador: espera o Felipe, contexto. */
-async function endOfTurn($: EngineInterface): Promise<void> {
+/** Soma o turno do chat principal ao metricas-orquestrador.md da demanda (`aidw.py record-orchestrator`). */
+async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: number): Promise<void> {
+  const argv = [
+    python, `${root}/aidw.py`, 'record-orchestrator', '--demand', s.dir, '--session', await $.session.id(),
+    '--model', u.model, '--input', String(u.input_tokens), '--cache-write', String(u.cache_creation_input_tokens),
+    '--cache-read', String(u.cache_read_input_tokens), '--output', String(u.output_tokens), '--duration-ms', String(Math.round(ms)),
+  ]
+  await $.process.run(argv, { cwd: root, timeoutMs: 30_000 }).catch(() => null)
+}
+
+/**
+ * Compacta a conversa antes de uma espera longa por você: na volta, depois de 1h, o cache expirou e o contexto inteiro
+ * seria regravado. Roda logo depois do turno (entre turnos); se você já mandou outra mensagem, não compacta.
+ */
+async function compactForWait($: EngineInterface, id: string, step: string, before: number): Promise<void> {
+  try {
+    const r = await $.session.compact({
+      instructions:
+        `Compactação do AiDW antes de esperar o usuário na etapa ${step} da demanda ${id}. Mantenha o que está com ele ` +
+        '(a pergunta, a aprovação ou o pacote, com as opções e a recomendação) e as decisões ainda não gravadas; o resto ' +
+        'está nos arquivos da pasta da demanda.',
+    })
+    if (r.skip !== undefined) return
+    const after = r.tokensAfter ? ` → ${compact(r.tokensAfter)}` : ''
+    $.ui.toast(`AiDW: contexto compactado antes de esperar você (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
+  } catch {
+    // um turno começou antes: a compactação fica para a próxima espera
+  }
+}
+
+/** O fim de um turno do orquestrador: métrica do turno, contexto e espera por você. */
+async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs: number }): Promise<void> {
   await refresh($)
+  const before = await read($, snap)
+  if (before && e.usage) {
+    await recordTurn($, before, e.usage, e.durationMs)
+    await refresh($)
+  }
   const s = await read($, snap)
-  const percent = await measure($)
-  {
-    if (percent !== null && percent >= 80) {
-      await warnOnce($, `ctx:${s?.id}:80`, `AiDW: o contexto do orquestrador está em ${percent}% — delegue mais e leia menos no chat`)
+  const tokens = await measure($)
+  if (!s) return
+  if (tokens !== null) {
+    const key = `ctx:${s.id}`
+    if (tokens < CONTEXT_COMPACT) {
+      if ((await read($, warned))[key]) await update($, warned, w => ({ ...w, [key]: false })) // compactou: avisa de novo
+    } else if (LONG_WAIT.has(s.step)) {
+      const once = `compact:${s.id}:${s.step}:${s.delegations.length}` // uma vez por espera
+      if (!(await read($, warned))[once]) {
+        await update($, warned, w => ({ ...w, [once]: true }))
+        $.clock.after(1_000, () => void compactForWait($, s.id, s.step, tokens))
+      }
+    } else if (tokens >= CONTEXT_WARN) {
+      await warnOnce(
+        $,
+        key,
+        `AiDW: o contexto do orquestrador está em ${compact(tokens)} tokens e cada ação relê tudo — ao virar de etapa, ` +
+          'rode /compact (o estado da demanda está nos arquivos)',
+      )
     }
   }
-  if (!s) return
   if (s.waiting) await warnOnce($, `wait:${s.id}:${s.step}:${s.delegations.length}`, `AiDW: ${s.id} espera você — ${s.waiting}`)
 }
 
@@ -516,7 +576,7 @@ export const register: Register = (on, options) => {
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: notice(header, p) }] } })
       $.ui.toast(`AiDW: ${p.agent.split(':').pop()} (${p.label}) terminou${state ? ` — ${state}` : ''}`, { timeoutMs: 8_000 })
     } else if (!id && (await read($, active))) {
-      await endOfTurn($)
+      await endOfTurn($, e)
     }
     return next(e)
   })

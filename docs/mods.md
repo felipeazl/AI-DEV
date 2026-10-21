@@ -21,9 +21,10 @@ Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostra
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
 | [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)) | painel lateral (`/aidw-painel`) |
-| [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md` | resultado do agente |
+| [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
-| [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto encheu | toasts |
+| [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |
+| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho antes de uma espera longa; sugere `/compact` a partir de 250k tokens | fim do turno |
 | [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
 | [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
 | [Notas no prompt](#notas-da-base-de-conhecimento) | `[[nota]]` numa mensagem leva a nota junto | contexto da mensagem |
@@ -32,12 +33,13 @@ Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostra
 ## Faixa da demanda
 
 ```text
-AiDW it-101662 · contexto ▬▬▬▭▭ 41% · 7d ▬▬▬▬▭ 58% · 5h ▬▬▬▬▬ 91% (renova 16:40) · ▶ codificador (otimizacao-r2) 2m10s
+AiDW it-101662 · contexto ▬▬▬▭▭ 160k · 7d ▬▬▬▬▭ 58% · 5h ▬▬▬▬▬ 91% (renova 16:40) · ▶ codificador (otimizacao-r2) 2m10s
 ```
 
-O id da demanda, o contexto deste chat e as janelas de uso do plano (7d e 5h), cada um com barra fina e %, e os
-agentes rodando. A partir de 80% fica amarelo; no 7d e no 5h entra a hora em que a janela renova. As janelas só
-aparecem em conta de assinatura. A faixa some em `DONE`. **`/aidw-faixa`** esconde e mostra.
+O id da demanda, o contexto deste chat em tokens (a barra enche em 250k) e as janelas de uso do plano (7d e 5h) em %,
+cada um com barra fina, e os agentes rodando. O 7d e o 5h ficam amarelos a partir de 80% e mostram a hora local em
+que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
+`DONE`. **`/aidw-faixa`** esconde e mostra.
 
 ## Painel do AiDW
 
@@ -68,6 +70,10 @@ ferramenta, duração e o `state` lido do JSON final do agente.
   conseguiu, ele roda à mão.
 - **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa e um
   toast.
+- **O orquestrador:** no fim de cada turno do chat principal, o mod soma o uso do turno (entrada, cache escrito, cache
+  lido e saída, como a API informou) no `metricas-orquestrador.md` da demanda, pelo `aidw.py record-orchestrator`: uma
+  linha por sessão e modelo, com o custo equivalente em preço de API. É o que o `metricas.md` não mostra e costuma ser
+  a maior parte do gasto.
 
 ## Travas da delegação
 
@@ -91,7 +97,20 @@ esse laço.
 Toasts, cada um uma vez:
 - **A demanda espera você:** aprovação, teste manual ou revisão final.
 - **Agente terminou:** um agente em segundo plano terminou, com o `state` dele.
-- **Contexto:** o contexto do orquestrador passou de 80%.
+- **Contexto:** o contexto do orquestrador passou de 250k tokens fora de uma espera longa (ver *Contexto enxuto*).
+- **Compactou:** o mod compactou a conversa antes de uma espera longa, com o tamanho antes e depois.
+
+## Contexto enxuto
+
+Cada ação do orquestrador relê a conversa inteira, e uma volta depois de 1h parado regrava tudo no cache, ao preço
+cheio. Por isso o mod mede o contexto em tokens no fim de cada turno:
+- **Espera longa** (`HUMAN_APPROVAL`, `FINAL_REVIEW`, `CODE_REVIEW`, `QA_TEST`) com 150k tokens ou mais: compacta
+  sozinho, logo depois do turno, uma vez por espera, pedindo ao resumo que guarde o que está com você (a pergunta, a
+  aprovação ou o pacote) e as decisões não gravadas; o estado da demanda volta em seguida (*Estado depois da
+  compactação*). Se você responder antes, a compactação não roda. O teste manual não conta: é passo a passo.
+- **Fora de espera**, a partir de 250k tokens: um toast sugere `/compact` na próxima virada de etapa. Depois que o
+  contexto cai abaixo de 150k, o aviso pode voltar.
+- Os limites ficam em `hooks/aidw.ts` (`CONTEXT_WARN`, `CONTEXT_COMPACT`, `LONG_WAIT`).
 
 ## Economia do orquestrador
 
@@ -149,7 +168,7 @@ Claude Code (`pluginConfigs`): `aidwRoot` (a pasta do `aidw.py`) e `python` (o c
 | `hooks/guards.ts` | as travas da delegação |
 | `hooks/secrets.ts` | o filtro de segredos |
 | `hooks/diffs.ts` | o diff dividido por arquivo |
-| `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `routing.toml` |
+| `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `metricas-orquestrador.md`, `routing.toml`, limites do contexto |
 | `types/index.d.ts` | o contrato do estado (`PluginState['aidw-mods']`) e os tipos do retrato |
 
 - **Um mod novo:** entra como mais hooks no `register.tsx`. A lógica pura vai num arquivo próprio, com teste. O mod
