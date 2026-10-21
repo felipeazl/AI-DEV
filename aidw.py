@@ -66,6 +66,8 @@ GEN_REF_DIR = GEN_DIR / "reference"           # referências do orquestrador, j�
 
 # Claude Code
 CLAUDE_MD = ROOT / "CLAUDE.md"
+# O CLAUDE.md do modo projeto, para `claudeMdExcludes` (glob sobre o caminho absoluto, sem a letra do disco)
+ROOT_CLAUDE_MD_EXCLUDE = "**/" + ROOT.as_posix().split(":", 1)[-1].lstrip("/") + "/CLAUDE.md"
 CLAUDE_SETTINGS = ROOT / ".claude" / "settings.local.json"
 CLAUDE_SKILLS = ROOT / ".claude" / "skills"
 CLAUDE_SUBAGENTS = ROOT / ".claude" / "agents"   # subagentes nativos (modo native)
@@ -3330,7 +3332,27 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     data["updated"] = now
     path = demand_path(ctx, demand)
     write_json_atomic(path, data)
+    exclude_root_claude_md(path.parent)
     return {"ok": True, "folder": path.parent.as_posix(), **({"warning": warning} if warning else {}), **data}
+
+
+def exclude_root_claude_md(folder: Path) -> None:
+    """Pasta de demanda dentro da raiz do AiDW: o chat aberto nela carregaria o CLAUDE.md do modo projeto além da
+    skill orquestrar, as mesmas regras duas vezes. O `.claude/settings.json` da pasta (lido da pasta da sessão)
+    exclui o da raiz; o que já estiver no arquivo fica."""
+    try:
+        folder.resolve().relative_to(ROOT)
+    except ValueError:
+        return
+    f = folder / ".claude" / "settings.json"
+    try:
+        data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return  # arquivo que não é nosso e não lemos: não mexe
+    excludes = data.setdefault("claudeMdExcludes", [])
+    if ROOT_CLAUDE_MD_EXCLUDE not in excludes:
+        excludes.append(ROOT_CLAUDE_MD_EXCLUDE)
+        write_json_atomic(f, data)
 
 
 def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
@@ -4399,6 +4421,59 @@ def append_metrics(demand: Path, row: dict) -> None:
         fh.write(line)
 
 
+# Preço de API em US$ por milhão de tokens (entrada, saída, cache lido), por prefixo do id do modelo; o primeiro que
+# casa vale. O cache escrito custa 2× a entrada (TTL de 1h, o do chat do Claude Code). Uma régua do peso no limite
+# do plano, não a conta: na assinatura não há cobrança por token.
+API_PRICES = (("claude-opus-5-5", 4, 20, 0.2), ("claude-opus", 5, 25, 0.5), ("claude-sonnet-4", 3, 15, 0.3),
+              ("claude-sonnet", 2, 10, 0.2), ("claude-haiku-5-5", 0.1, 0.5, 0.01), ("claude-haiku", 1, 5, 0.1))
+ORCH_METRICS = "metricas-orquestrador.md"
+ORCH_COLS = ("Sessão", "Início", "Atualizado", "Modelo", "Turnos", "Duração", "Entrada", "Cache escrito",
+             "Cache lido", "Saída", "Custo equiv. (USD)")
+
+
+def api_cost(model: str, tokens_in: int, cache_write: int, cache_read: int, tokens_out: int) -> float | None:
+    price = next((p for p in API_PRICES if model.startswith(p[0])), None)
+    if price is None:
+        return None
+    _, inp, out, read = price
+    return (tokens_in * inp + cache_write * inp * 2 + cache_read * read + tokens_out * out) / 1_000_000
+
+
+def record_orchestrator(args: argparse.Namespace) -> int:
+    """Soma um turno do chat principal (o orquestrador) à linha da sessão e do modelo no metricas-orquestrador.md."""
+    f = Path(args.demand).resolve() / ORCH_METRICS
+    session, model = args.session[:8], args.model or "?"
+    rows: list[list[str]] = []
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == len(ORCH_COLS) and re.fullmatch(r"[0-9a-f-]{4,}", cells[0]):
+                rows.append(cells)
+
+    def num(s: str) -> int:
+        return int(re.sub(r"\D", "", s) or 0)
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    row = next((r for r in rows if r[0] == session and r[3] == model), None)
+    if row is None:
+        row = [session, now, now, model, "0", "0s", "0", "0", "0", "0", "—"]
+        rows.append(row)
+    sums = [num(row[4]) + 1, num(row[5]) + round((args.duration_ms or 0) / 1000), num(row[6]) + args.input,
+            num(row[7]) + args.cache_write, num(row[8]) + args.cache_read, num(row[9]) + args.output]
+    cost = api_cost(model, *sums[2:])
+    f.parent.mkdir(parents=True, exist_ok=True)
+    row[2:] = [now, model, str(sums[0]), f"{sums[1]}s", *(f"{n:,}" for n in sums[2:]),
+               f"{cost:.2f}" if cost is not None else "—"]
+    f.write_text("# Métricas do orquestrador\n\nConsumo do chat principal (o orquestrador) por sessão e modelo, somado a "
+                 "cada turno pelo mod aidw-mods. O custo é o equivalente em preço de API (cache escrito a 2× a entrada), "
+                 "uma régua do peso no limite do plano, não a conta. As delegações ficam no metricas.md.\n\n"
+                 "| " + " | ".join(ORCH_COLS) + " |\n|" + "---|" * len(ORCH_COLS) + "\n"
+                 + "".join("| " + " | ".join(r) + " |\n" for r in rows), encoding="utf-8", newline="\n")
+    print(json.dumps({"ok": True, "file": f.as_posix(), "session": session, "model": model, "turns": sums[0],
+                      "cost_usd": cost}, ensure_ascii=False))
+    return 0
+
+
 def codex_subagent_usage(task_name: str) -> dict | None:
     """Tokens, duração e modelo reais do subagente Codex, pela sessão dele em ~/.codex/sessions
     (a mais recente cujo agent_path termina em /<task_name>)."""
@@ -4529,8 +4604,7 @@ def debug_dump(demand: Path, name: str, cmd: list[str], proc: subprocess.Complet
 
 
 def run_claude(a: dict, role: str, model: dict, effort: str, prompt: str, args, ctx) -> dict:
-    exclude = "**/" + ROOT.as_posix().split(":", 1)[-1].lstrip("/") + "/CLAUDE.md"
-    settings = {"claudeMdExcludes": [exclude]}
+    settings = {"claudeMdExcludes": [ROOT_CLAUDE_MD_EXCLUDE]}
     profile = RUN_PROFILE.get(role, {})
     cmd = [shutil.which("claude"), "-p", "--agents", str(CLAUDE_AGENTS_JSON), "--agent", a["name"],
            "--model", model["model_id"], "--output-format", "stream-json", "--verbose",
@@ -5304,8 +5378,18 @@ def main() -> int:
     p_rec.add_argument("--tool-uses", type=int, help="Claude: tool_uses do resultado do Agent")
     p_rec.add_argument("--duration-ms", type=int, help="Claude: duration_ms do resultado do Agent")
     p_rec.add_argument("--codex-task", help="Codex: task_name do spawn (lê os tokens reais da sessão)")
+    p_orc = sub.add_parser("record-orchestrator",
+                           help="soma um turno do orquestrador ao metricas-orquestrador.md (gravado pelo mod)")
+    p_orc.add_argument("--demand", required=True, help="pasta da demanda")
+    p_orc.add_argument("--session", required=True, help="id da sessão do chat")
+    p_orc.add_argument("--model", help="modelo que respondeu (id da API)")
+    for name in ("input", "cache-write", "cache-read", "output"):
+        p_orc.add_argument(f"--{name}", type=int, default=0, help=f"tokens de {name} do turno")
+    p_orc.add_argument("--duration-ms", type=int, help="duração do turno")
     args = parser.parse_args()
     command = args.command or "setup"
+    if command == "record-orchestrator":
+        return record_orchestrator(args)  # a cada turno: sem carregar catálogo nem configuração
 
     catalog = load_catalog()
     cfg = load_config()
