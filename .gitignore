@@ -23,6 +23,9 @@ contexts/*/
 .env
 .env.*
 
+# Retratos de página e logs do MCP do Playwright
+/.playwright-mcp/
+
 # Python
 __pycache__/
 *.pyc
