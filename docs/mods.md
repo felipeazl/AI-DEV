@@ -15,12 +15,24 @@ Os mods do AiDW ficam ligados **só no modo orquestrador**:
 
 Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
 
+**O painel é por contexto.** Ele segue os artefatos de um jeito de trabalhar (cobertura de critérios, revisão em
+cartões, roteiro manual, levantamento) e só existe no contexto que o liga no `context.toml`:
+
+```toml
+[mods]
+panel = true
+```
+
+Sem isso, o painel não abre, o `/aidw-painel` não é registrado e a demanda fica só com a faixa acima do prompt
+(demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
+segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
+
 ## Visão geral
 
 | Mod | Para quê | Onde aparece |
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)) | painel lateral (`/aidw-painel`) |
+| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); só no contexto com `[mods] panel = true` | painel lateral (`/aidw-painel`) |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
 | [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |

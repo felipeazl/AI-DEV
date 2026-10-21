@@ -9,6 +9,8 @@ export type ProgressStage = {
   group: 'aidw' | 'fora'
   /** `com-time`: a etapa de fora em que a demanda está; `voltou`: a etapa de fora que devolveu o trabalho. */
   state: 'feito' | 'atual' | 'pendente' | 'com-time' | 'voltou'
+  /** Com quem a demanda fica numa etapa de fora ("o time", "a QA", "o UX"). */
+  who?: string
 }
 
 export type Progress = {

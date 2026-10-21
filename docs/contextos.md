@@ -114,6 +114,36 @@ notes = [
   destravar, ordem de build. Como o sistema funciona, contratos e armadilhas do código vão para a base de
   conhecimento (abaixo), que o agente lê quando o sistema entra na tarefa.
 
+### Etapas de fora do AiDW
+
+O núcleo tem duas etapas em que a demanda fica com outras pessoas: `CODE_REVIEW` (o time revisa a PR) e `QA_TEST`
+(a QA testa). O contexto pode acrescentar outras antes delas, por exemplo uma validação de UX:
+
+```toml
+[[workflows.external_steps]]
+step = "UX_VALIDATION"            # MAIÚSCULAS_COM_SUBLINHADO; vira etapa do `demand set --step`
+name = "Validação UX"             # o nome na barra de progresso do painel
+before = "CODE_REVIEW"            # CODE_REVIEW ou QA_TEST
+who = "o UX"                      # "com o UX" na etiqueta de situação
+when = "quando a demanda passa por ela e o que acontece antes e depois"   # vai para o orquestrador
+```
+
+- O `apply` confere a declaração e põe a etapa na seção *Workflows* do orquestrador e no `runtime.json`.
+- Como `CODE_REVIEW` e `QA_TEST`, só o usuário move a demanda para dentro ou para fora dela; um pedido de ajuste
+  segue o caminho curto.
+- A barra de progresso só mostra a etapa na demanda que passa por ela: marcada com `demand set <id> --extra-step
+  UX_VALIDATION` (o orquestrador marca quando o plano diz) ou que já esteve nela.
+
+### Painel do AiDW
+
+```toml
+[mods]
+panel = true                      # liga o painel lateral do aidw-mods (padrão: desligado)
+```
+
+O painel segue os artefatos de um jeito de trabalhar (cobertura, revisão em cartões, roteiro manual, levantamento);
+sem a chave, o contexto fica só com a faixa acima do prompt e o resto dos mods ([mods.md](mods.md#quando-ficam-ligados)).
+
 ### O que cada agente recebe
 
 ```toml
