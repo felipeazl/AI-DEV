@@ -15,7 +15,7 @@ import {
   progress,
 } from '../hooks/artifacts'
 import { buildSnapshot } from '../hooks/snapshot'
-import { reviewRounds, roundName } from '../hooks/views'
+import { C, reviewRounds, roundName, svgDoc } from '../hooks/views'
 
 const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ step, at: '' })) })
 
@@ -236,5 +236,16 @@ describe('levantamento V2', () => {
       ['D14', 'Regras', '', ''],
     ])
     expect(d[0]?.why).toBe('O título fala em A3, e a Feature em SafeID.')
+  })
+})
+
+describe('cores', () => {
+  test('o painel usa chaves do tema; o SVG leva a paleta clara e a escura', async () => {
+    for (const v of Object.values(C)) expect(v).toMatch(/^[a-z][A-Za-z]+$/)
+    const doc = svgDoc(10, 6, '<rect class="f-promptBorder"/>')
+    expect(doc).toContain('.f-promptBorder{fill:#e4e2da}')
+    expect(doc).toContain('@media (prefers-color-scheme: dark){')
+    expect(doc).toContain('.f-promptBorder{fill:#3a3937}')
+    for (const v of new Set(Object.values(C))) expect(doc).toContain(`.f-${v}{`)
   })
 })
