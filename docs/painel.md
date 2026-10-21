@@ -4,6 +4,9 @@ Especificação da faixa acima do prompt e do painel do AiDW (mod `aidw-mods`, s
 tela com mocks em 14/10/2026. Os mods em geral estão em [mods.md](mods.md); aqui fica o que cada tela mostra, de onde
 vem cada dado e o que os agentes passam a gravar para isso.
 
+A faixa vale em todo contexto. O painel só existe no contexto que o liga (`[mods] panel = true` no `context.toml`;
+hoje, o safeweb), porque segue os artefatos daquele jeito de trabalhar ([mods.md](mods.md#quando-ficam-ligados)).
+
 ## Princípios
 
 - **Simples, limpo e no padrão do app do Claude:** cartões com borda sutil e cantos arredondados, rótulos pequenos em
@@ -63,7 +66,8 @@ tipo e o número da demanda pequenos em cima e o título em destaque.
    - resumo de até 4 linhas sobre o que a demanda trata;
    - quatro números: critérios de aceite, tokens dos agentes, tokens do orquestrador e tempo de agentes trabalhando;
    - **progresso** numa barra fina em dois grupos: **AiDW** (Entender, Plano, Implementar, Testar, Revisar, Revisão
-     final) e **Time e QA** (Code review, Testes QA, Pronto), com o nome da etapa atual e "etapa N de 9". Quando o time
+     final) e **Time e QA** (Code review, Testes QA, Pronto, mais as etapas de fora que o contexto acrescenta, como a
+     Validação UX, só na demanda que passa por elas), com o nome da etapa atual e "etapa N de 9". Quando o time
      ou a QA devolve, a etapa de fora fica amarela com "↩ voltou do Code review · 1ª vez" e a barra volta para onde o
      ajuste é feito; um contador discreto guarda as voltas ("voltas: Code review 1× · QA 1×").
 3. **Agentes rodando:** nome, tarefa e tempo; sem nenhum, "Nenhum agente rodando · último: …".

@@ -29,7 +29,7 @@ import {
   timeline,
   waitingFor,
 } from './artifacts'
-import type { DemandFile } from './artifacts'
+import type { DemandFile, ExternalStep } from './artifacts'
 
 const REVIEW = /^review-.*-r(\d+)\.md$/
 const PLAN_REVIEW = /^revisao-plano-.*-r(\d+)\.md$/
@@ -80,6 +80,8 @@ export type SnapshotInput = {
   maxRetries: number
   /** Limite do laço revisão do plano ⇄ correção (routing.toml `max_retries_plan`); sem ele, o `maxRetries`. */
   maxRetriesPlan?: number
+  /** Etapas de fora do contexto (`runtime.json` → `external_steps`). */
+  externalSteps?: ExternalStep[]
 }
 
 export function buildSnapshot(input: SnapshotInput): Snapshot {
@@ -186,7 +188,7 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     summary: (demand.summary ?? '').trim(),
     waiting: waitingFor(step),
     timeline: timeline(kind, demand),
-    progress: progress(kind, demand),
+    progress: progress(kind, demand, input.externalSteps),
     repos,
     artifacts: groupArtifacts(files),
     patches: files.filter(f => f.endsWith('.patch')).sort(),

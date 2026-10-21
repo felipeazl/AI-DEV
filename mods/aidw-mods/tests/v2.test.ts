@@ -40,6 +40,20 @@ describe('progresso do Mapa da demanda', () => {
     const p = progress('desenvolvimento', steps('FINAL_REVIEW', 'DONE'))
     expect(p.stages.every(s => s.state === 'feito')).toBe(true)
   })
+
+  test('etapa de fora do contexto: só na demanda que passa por ela, antes da etapa indicada', async () => {
+    const ux = [{ step: 'UX_VALIDATION', name: 'Validação UX', before: 'CODE_REVIEW', who: 'o UX' }]
+    const names = (p: ReturnType<typeof progress>) => p.stages.map(s => s.name)
+    expect(names(progress('desenvolvimento', steps('IMPLEMENT'), ux))).not.toContain('Validação UX')
+    const marked = progress('desenvolvimento', { ...steps('IMPLEMENT'), extra_steps: ['UX_VALIDATION'] }, ux)
+    expect(names(marked).slice(5, 8)).toEqual(['Revisão final', 'Validação UX', 'Code review'])
+    expect(marked.total).toBe(10)
+    const withUx = progress('desenvolvimento', steps('FINAL_REVIEW', 'UX_VALIDATION'), ux)
+    expect(withUx.stages.find(s => s.name === 'Validação UX')).toEqual({ name: 'Validação UX', group: 'fora', who: 'o UX', state: 'com-time' })
+    const back = progress('desenvolvimento', steps('FINAL_REVIEW', 'UX_VALIDATION', 'CODER_FIX'), ux)
+    expect([back.current, back.returnedFrom, back.returns['Validação UX']]).toEqual(['Revisar', 'Validação UX', 1])
+    expect(progress('pr-review', steps('UX_VALIDATION'), ux).stages.map(s => s.name)).not.toContain('Validação UX')
+  })
 })
 
 describe('critérios, regras e cenários', () => {
