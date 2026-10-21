@@ -19,13 +19,13 @@ export type DelegationCheck = {
   prompt: string
   model?: string
   runtime: Runtime
-  /** As últimas mensagens do Felipe nesta sessão (a mais nova por último). */
+  /** As últimas mensagens do usuário nesta sessão (a mais nova por último). */
   userPrompts: string[]
   /** Etapa gravada da demanda e a rodada do laço dela. */
   step: string | null
   round: number
   roundKind: 'plano' | 'revisão' | null
-  /** Rodadas extras liberadas pelo Felipe (botão ou /aidw-rodada). */
+  /** Rodadas extras liberadas pelo usuário (botão ou /aidw-rodada). */
   extraRounds: number
   /** pr-review e levantamento não têm laço de correção. */
   kind: DemandKind | null
@@ -63,7 +63,7 @@ export function checkDelegation(check: DelegationCheck): string | null {
   if (check.model && !said(check, MODEL_WORDS)) {
     return fix(
       `não passe \`model\` (${check.model}): o modelo de cada agente vem da tabela Effort per task. ` +
-        'Só passe outro modelo quando o Felipe pedir nesta conversa.',
+        'Só passe outro modelo quando o usuário pedir nesta conversa.',
     )
   }
   if (!/Pasta da demanda:/.test(prompt)) {
@@ -106,7 +106,7 @@ export function checkDelegation(check: DelegationCheck): string | null {
         `a ${check.roundKind === 'plano' ? 'revisão do plano' : 'revisão'} já está na rodada ${check.round} e o ` +
           `limite é ${limit} (${check.roundKind === 'plano' ? 'max_retries_plan' : 'max_retries'}` +
           `${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
-          'Pare e leve ao Felipe (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
+          'Pare e leve ao usuário (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
           'botão "Liberar +1 rodada" do painel ou com /aidw-rodada.',
       )
     }

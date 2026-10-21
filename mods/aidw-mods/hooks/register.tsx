@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register, TurnUsage } from 'claude-code'
 
-import type { DiffView, ReviewFilter, Snapshot } from '../types'
+import type { DiffView, ReviewFilter, Snapshot, VoteOption } from '../types'
 import {
   CONTEXT_COMPACT,
   CONTEXT_WARN,
@@ -22,7 +22,7 @@ import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
 import { redactBlocks } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
-import { Band, Panel, levantamentoText, prDecisionText, reviewDecisionText, tabFor } from './views'
+import { Band, Panel, diffSources, levantamentoText, prDecisionText, prTriageDecisionText, reviewDecisionText, tabFor } from './views'
 import type { Actions, UI } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
@@ -37,6 +37,7 @@ const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
 const extraRounds = atom({ plugin: 'aidw-mods', key: 'extraRounds' } as const, {})
 const publish = atom({ plugin: 'aidw-mods', key: 'publish' } as const, {})
 const vote = atom({ plugin: 'aidw-mods', key: 'vote' } as const, '')
+const votes = atom({ plugin: 'aidw-mods', key: 'votes' } as const, {})
 const drafts = atom({ plugin: 'aidw-mods', key: 'drafts' } as const, {})
 const diff = atom({ plugin: 'aidw-mods', key: 'diff' } as const, null)
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
@@ -62,7 +63,7 @@ let root = 'C:/AiDW'
 let python = 'python'
 // Subagentes em segundo plano: a métrica chega no turn.complete deles, pelo agentId.
 const background = new Map<string, Pending>()
-// As últimas mensagens do Felipe (a trava de `model` confere se ele pediu outro modelo).
+// As últimas mensagens do usuário (a trava de `model` confere se ele pediu outro modelo).
 const userPrompts: string[] = []
 // Diffs já calculados, por fonte (o estado guarda só o arquivo aberto).
 const diffCache = new Map<string, DiffFile[]>()
@@ -124,12 +125,14 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
       : parseMaxRetries(await $.fs.read(`${root}/orchestrator/config/routing.toml`).catch(() => ''))
   const maxRetriesPlan = typeof r.max_retries_plan === 'number' ? r.max_retries_plan : maxRetries
   const externalSteps = Array.isArray(r.external_steps) ? (r.external_steps as ExternalStep[]) : []
-  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps })
+  const scale = Array.isArray(r.votes) ? (r.votes as VoteOption[]) : []
+  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps, votes: scale })
   if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)
   if (before?.id !== next.id) {
     await update($, vote, () => voteValue(next.vote))
+    await update($, votes, () => ({}))
     await update($, publish, () => ({}))
     await update($, diff, () => null)
     await update($, reviewRound, () => next.round)
@@ -137,6 +140,14 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
     await update($, decisionTab, () => '')
     await update($, decisions, () => ({}))
   }
+  if (tabFor(next.kind, await read($, tab)) === 'diffs') await ensureDiff($, next)
+}
+
+/** Diffs abre com o diff da primeira fonte já carregado; o guardado só vale se a fonte é desta demanda. */
+async function ensureDiff($: EngineInterface, s: Snapshot): Promise<void> {
+  const sources = diffSources(s)
+  const current = await read($, diff)
+  if (sources[0] && !sources.some(x => x.value === current?.source)) await showDiff($, sources[0].value)
 }
 
 /** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes da revisão final. */
@@ -208,9 +219,9 @@ async function checkActive($: EngineInterface): Promise<boolean> {
   return on
 }
 
-/** O painel só existe no contexto que o liga (`[mods] panel = true`); a faixa e o resto do mod valem em todos. */
+/** O painel vale em todo contexto, menos no que o desliga (`[mods] panel = false`); a faixa e o resto do mod, sempre. */
 async function panelOn($: EngineInterface): Promise<boolean> {
-  return (await runtimeJson($)).panel === true
+  return (await runtimeJson($)).panel !== false
 }
 
 async function openPanel($: EngineInterface, asked: boolean): Promise<void> {
@@ -477,7 +488,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'aidw-painel' }, async ($, e) => {
-    if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = true` no context.toml liga).' }
+    if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
     const s = await read($, snap)
     if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:orquestrar).' }
     if (e.args.trim()) await update($, tab, () => tabFor(s.kind, e.args.trim().toLowerCase()))
@@ -636,7 +647,11 @@ export const register: Register = (on, options) => {
     }
     const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])
     const act: Actions = {
-      tab: t => void update($, tab, () => t),
+      tab: t =>
+        void (async () => {
+          await update($, tab, () => t)
+          if (t === 'diffs') await ensureDiff($, s)
+        })(),
       refresh: () => void refresh($),
       extraRound: () => void update($, extraRounds, x => ({ ...x, [s.id]: (x[s.id] ?? 0) + 1 })),
       reviewFile: f => void update($, reviewFile, () => f),
@@ -663,9 +678,12 @@ export const register: Register = (on, options) => {
           return out
         }),
       vote: value => void update($, vote, () => value),
+      votePr: (pr, value) => void update($, votes, x => ({ ...x, [pr]: value })),
       sendPrDecision: () =>
         void (async () => {
-          const text = prDecisionText(s, await read($, publish), await read($, vote), await read($, drafts))
+          const text = s.prTriage
+            ? prTriageDecisionText(s, await read($, publish), await read($, votes), await read($, drafts))
+            : prDecisionText(s, await read($, publish), await read($, vote), await read($, drafts))
           await fill(text, 'AiDW: a decisão está no prompt; revise e envie')
         })(),
       adjustInChat: text => void fill(text, 'AiDW: o texto está no prompt; diga o que ajustar e envie'),
@@ -706,11 +724,13 @@ export const register: Register = (on, options) => {
         tab: await read($, tab),
         publish: await read($, publish),
         vote: await read($, vote),
+        votes: await read($, votes),
         drafts: await read($, drafts),
         diff: await read($, diff),
         usage: await read($, usage),
         extraRounds: (await read($, extraRounds))[s.id] ?? 0,
         columns: e.props.bodyColumns,
+        surface: e.surface,
         canAppDiff: e.surface === 'desktop',
         reviewFile: await read($, reviewFile),
         decisionTab: await read($, decisionTab),

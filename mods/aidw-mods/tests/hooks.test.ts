@@ -52,6 +52,29 @@ const DEMANDS: Record<string, Record<string, string>> = {
       '### R1-02 — SUGESTAO — `x.cs:2`', '**O quê:** nome', '', 'Voto sugerido: aguardar autor (`-5`).',
     ].join('\n'),
   },
+  'pr-8': {
+    'demand.json': JSON.stringify({
+      id: 'pr-8', step: 'FINAL_REVIEW',
+      repos: [
+        { repo: 'C:/p/Gedar', path: 'C:/wt/pr-8/Gedar', branch: 'pr/8', base: 'a', pr: '8', source: 'b' },
+        { repo: 'C:/p/Emissao', path: 'C:/wt/pr-8/Emissao', branch: 'pr/9', base: 'a', pr: '9', source: 'b' },
+      ],
+    }),
+    'review-pr-8-r1.md': '### R1-01 — IMPORTANTE — `a.cs:1`\n**O quê:** trava a tela\n',
+    'triagem-pr-8-r2.md': [
+      '# Triagem — pr-8, rodada 2', '', '## Comentários', '',
+      '| C | PR | Sev. | Arquivo:linha | Origem | Recomendação | Situação |', '|---|---|---|---|---|---|---|',
+      '| C1 | 8 | IMPORTANTE | `a.cs:1` | R1-01, B1-01 | publicar | publicado (thread 1), resolvido na r2 |',
+      '| C2 | 8 | DUVIDA | geral | R1-D1 | publicar como pergunta | a decidir |',
+      '| C3 | 9 | SUGESTAO | `b.cs:2` | R1-04 | não publicar | não publicado (r1) |', '',
+      '### C1 — chamada síncrona na thread de UI', '> Tire o `Get` da thread de UI.', '',
+      '### C2 — a modal reaparece a cada recarga', '> A modal deve reaparecer a cada recarga?', '',
+      '### C3 — log duplicado', '> Um log só basta.', '',
+      '## Votos', '', '| PR | Revisor | AiDW | Por quê |', '|---|---|---|---|', '| 8 | 5 | 10 | C1 resolvido |', '| 9 | 5 | sem voto | só o C3 |', '',
+      '## Fora das PRs', '', '- **S1-01 (Tech Lead):** filtro por solicitação.', '',
+      '## Publicado', '', '- C1: PR 8, thread 1.',
+    ].join('\n'),
+  },
   'lv-9': {
     'demand.json': JSON.stringify({ id: 'lv-9', title: 'Algo (levantamento)', step: 'ESTIMATE', repos: [] }),
     'levantamento-lv-9.md': [
@@ -192,7 +215,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     // a hora é a local (o resetsAt vem em UTC), com o dia na frente quando não é hoje
     const reset = new Date('2026-10-14T16:40:00Z')
     const hm = `${String(reset.getHours()).padStart(2, '0')}:${String(reset.getMinutes()).padStart(2, '0')}`
-    await has(band, new RegExp(`91% \\(renova (\\d\\d/\\d\\d )?${hm}\\)`))
+    await has(band, new RegExp(`91% · renova (\\d\\d/\\d\\d )?${hm}`))
     expect(await band.find({ type: 'Text', text: /orçamento/ })).toBeUndefined()
     await band.unmount()
 
@@ -213,10 +236,10 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     await has(pane, /A cobertura ainda não foi registrada/)
     // Revisão: rodada como seletor, abas de decisão; decidir leva ao prompt
     await pane.press({ key: 'tab-revisao' })
-    await pane.select({ key: 'review-round', value: 'review-us-1-r4.md' })
+    await pane.press({ key: 'review-round-review-us-1-r4.md' })
     await pane.press({ key: 'dt-mantido' })
     await has(pane, /quebra o login/)
-    await pane.select({ key: 'review-round', value: 'review-us-1-r1.md' })
+    await pane.press({ key: 'review-round-review-us-1-r1.md' })
     await pane.press({ key: 'dt-voce' })
     await has(pane, /nome ruim/)
     await pane.press({ key: 'dec-R1-01-0' })
@@ -253,9 +276,9 @@ test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, o
   const f = fake(on, { orchestrating: true, demand: 'pr-7' })
   await $.session.start(START('pr-7'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  expect(await pane.find({ key: 'tab-achados' })).toBeDefined()
+  expect(await pane.find({ key: 'tab-comentarios' })).toBeDefined()
   expect(await pane.find({ key: 'tab-criterios' })).toBeUndefined()
-  await pane.press({ key: 'tab-achados' })
+  await pane.press({ key: 'tab-comentarios' })
   await has(pane, /^Isto quebra o contrato\.$/)
   await has(pane, /Comentário na PR 7/)
   await pane.press({ key: 'pa-R1-01' })
@@ -268,8 +291,29 @@ test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, o
   expect(f.fills.at(-1)).toContain('Publicar: R1-01, R1-02')
   expect(f.fills.at(-1)).toContain('Voto: Aprovar com sugestões (5)')
   await pane.press({ key: 'tab-diffs' })
-  await pane.select({ key: 'diff-source', value: 'patch:diff-pr7-Hope.patch' })
+  await pane.press({ key: 'diff-source-patch:diff-pr7-Hope.patch' })
   await has(pane, /1 arquivo · \+1 −1/)
+  await pane.unmount()
+})
+
+test('revisão de PR com triagem: comentários por PR, voto por PR e a decisão vai para o prompt', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'pr-8' })
+  await $.session.start(START('pr-8'))
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  await pane.press({ key: 'tab-comentarios' })
+  // abre em "A decidir": só o C2; o publicado aparece em Todos, com a situação da rodada 2
+  await has(pane, /^a modal reaparece a cada recarga$/)
+  expect(await pane.find({ type: 'Text', text: /resolvido na r2/ })).toBeUndefined()
+  await pane.press({ key: 'pt-todos' })
+  await has(pane, /^publicado \(thread 1\), resolvido na r2$/)
+  await has(pane, /^junta R1-01 · B1-01$/)
+  // o voto de cada PR vem da triagem: as duas sugestões, e o AiDW pré-marcado
+  await has(pane, /^Revisor: Aprovar com sugestões · AiDW: Aprovar · C1 resolvido$/)
+  await pane.press({ key: 'pp-C2' })
+  await pane.press({ key: 'vote-8-5' })
+  await pane.press({ key: 'pr-decision' })
+  expect(f.fills.at(-1)).toContain('PR 8: publicar C2; não publicar nenhum; voto: Aprovar com sugestões (5).')
+  expect(f.fills.at(-1)).toContain('PR 9: publicar nenhum; não publicar C3; voto: sem voto.')
   await pane.unmount()
 })
 
@@ -281,9 +325,11 @@ test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   await has(pane, /^aceitar CPF$/)
   await pane.press({ key: 'tab-estimativa' })
   await has(pane, /^5$/)
+  await pane.press({ key: 'tab-duvidas' })
   await pane.input({ key: 'duvida-D1', text: 'Só PF', kind: 'change' })
   await pane.input({ key: 'duvida-D1', text: 'Só PF' })
   expect(f.submits.at(-1)).toContain('Resposta à dúvida D1 do levantamento lv-9: Só PF')
+  await pane.press({ key: 'tab-estimativa' })
   await pane.press({ key: 'post-levantamento' })
   expect(f.fills.at(-1)).toContain('publique no card lv-9')
   await pane.unmount()

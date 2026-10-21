@@ -1,11 +1,11 @@
 // As telas da faixa e do painel (V2, docs/painel.md). Recebem a tabela de elementos da superfície (não o `$`), os
-// dados e as ações; o register.tsx monta as ações (que gravam o estado ou mandam a decisão do Felipe ao orquestrador).
+// dados e as ações; o register.tsx monta as ações (que gravam o estado ou mandam a decisão do usuário ao orquestrador).
 
 import type { Elements, ThemeKey } from 'claude-code'
 
-import type { Delegation, DemandKind, DiffView, Finding, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
+import type { Delegation, DemandKind, DiffView, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { CONTEXT_WARN, compact } from './aidw'
-import { KIND_LABEL, VOTES } from './artifacts'
+import { KIND_LABEL, VOTES, voteIn } from './artifacts'
 import { stateLabel } from './snapshot'
 
 type Desktop = Elements['desktop']
@@ -25,6 +25,7 @@ export type Actions = {
   sendReviewDecisions: () => void
   togglePublish: (id: string, value: boolean) => void
   vote: (value: string) => void
+  votePr: (pr: string, value: string) => void
   sendPrDecision: () => void
   adjustInChat: (text: string) => void
   draft: (key: string, value: string) => void
@@ -44,11 +45,15 @@ export type ViewState = {
   tab: string
   publish: Record<string, boolean>
   vote: string
+  /** O voto escolhido por PR; sem escolha, vale a sugestão da triagem. */
+  votes: Record<string, string>
   drafts: Record<string, string>
   diff: DiffView | null
   usage: Usage | null
   extraRounds: number
   columns: number
+  /** `terminal` mostra a tecla de cada aba (`1: Geral`); no app as teclas funcionam sem aparecer. */
+  surface: string
   canAppDiff: boolean
   reviewFile: string
   decisionTab: string
@@ -68,14 +73,15 @@ export const TABS: Record<DemandKind, [string, string][]> = {
   ],
   'pr-review': [
     ['geral', 'Geral'],
-    ['achados', 'Achados e voto'],
+    ['comentarios', 'Comentários'],
     ['diffs', 'Diffs'],
     ['metricas', 'Métricas'],
   ],
   levantamento: [
     ['geral', 'Geral'],
     ['codigo', 'Card × código'],
-    ['estimativa', 'Estimativa e dúvidas'],
+    ['estimativa', 'Estimativa'],
+    ['duvidas', 'Dúvidas'],
     ['metricas', 'Métricas'],
   ],
 }
@@ -89,7 +95,44 @@ const TAB_ALIAS: Record<string, string> = {
   revisão: 'revisao',
   pontos: 'codigo',
   card: 'codigo',
+  dúvidas: 'duvidas',
+  achados: 'comentarios',
+  comentários: 'comentarios',
 }
+
+/** Uma aba só aparece quando tem o que mostrar; a Geral sempre. */
+export function tabHasData(s: Snapshot, tab: string): boolean {
+  switch (tab) {
+    case 'criterios':
+      return s.coverage.length > 0 || s.criteria.length > 0
+    case 'revisao':
+      return reviewRounds(s).length > 0
+    case 'diffs':
+      return diffSources(s).length > 0
+    case 'manual':
+      return s.manual.some(m => !m.removed)
+    case 'metricas':
+      return s.delegations.length > 0 || s.orchestrator.rows.length > 0
+    case 'comentarios':
+      return (s.prTriage?.comments.length ?? 0) > 0 || prList(s).length > 0
+    case 'codigo':
+      return !!s.cardAsk || s.cardPoints.length > 0 || s.points.length > 0
+    case 'estimativa':
+      return !!s.estimate
+    case 'duvidas':
+      return s.doubts.length > 0
+    default:
+      return true
+  }
+}
+
+/** As abas do uso que têm dados. */
+export function visibleTabs(s: Snapshot): [string, string][] {
+  return TABS[s.kind].filter(([id]) => tabHasData(s, id))
+}
+
+/** Dúvida já respondida: o levantamento a põe num grupo "Respondidas …". */
+const answered = (d: Doubt) => /respondid/i.test(d.group)
 
 /** A tab pedida, ou a primeira do uso quando ela não existe nele. */
 export function tabFor(kind: DemandKind, tab: string): string {
@@ -193,14 +236,14 @@ function meter(ui: UI, key: string, percent: number, color: string, width = 64) 
   )
 }
 
-/** Um cartão: borda arredondada e sutil, rótulo pequeno em cinza. */
+/** Uma seção, como os cartões do painel lateral do Claude: borda sutil, título em negrito, à direita um resumo. */
 function card(ui: UI, key: string, label: string, children: unknown, right?: string) {
   const { Box, Text } = ui
   return (
     <Box key={key} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
       {(label || right) && (
-        <Box justifyContent="space-between">
-          <Text color={C.dim} bold>
+        <Box justifyContent="space-between" gap={2}>
+          <Text color={C.text} bold>
             {label}
           </Text>
           {right ? <Text color={C.dim}>{right}</Text> : <Text> </Text>}
@@ -219,17 +262,49 @@ function chip(ui: UI, key: string, text: string, color: string) {
   )
 }
 
-function header(ui: UI, s: Snapshot, title: string, extra?: string) {
+/** Texto dos artefatos: com `código` ou **negrito** vira Markdown; sem, Text. */
+function rich(ui: UI, key: string, text: string, color: string = C.text) {
+  if (/`|\*\*/.test(text) && ui.Markdown) return <ui.Markdown key={key} text={text} dimColor={color === C.dim} />
+  return (
+    <ui.Text key={key} color={color}>
+      {text}
+    </ui.Text>
+  )
+}
+
+/** Uma linha de número: rótulo à esquerda, valor (e um medidor opcional) à direita. */
+function stat(ui: UI, key: string, label: string, value: string, opts: { meter?: number; color?: string; missing?: boolean } = {}) {
   const { Box, Text } = ui
   return (
-    <Box key="hdr" flexDirection="column">
-      <Text color={C.dim}>
-        {s.id.toUpperCase().replace('-', ' ')} · {KIND_LABEL[s.kind]}
-        {extra ? ` · ${extra}` : ''}
+    <Box key={key} gap={2} alignItems="center">
+      <Box flexGrow={1} flexShrink={1}>
+        <Text color={C.dim}>{label}</Text>
+      </Box>
+      {opts.meter !== undefined && meter(ui, `${key}-m`, opts.meter, opts.color ?? C.green, 48)}
+      <Text color={opts.missing ? C.faint : (opts.color ?? C.text)} bold={!opts.missing}>
+        {value}
       </Text>
-      <Text bold color={C.strong}>
-        {title}
-      </Text>
+    </Box>
+  )
+}
+
+/**
+ * Escolher entre poucas opções (repositórios, PRs, rodadas): botões lado a lado, o escolhido com moldura; uma opção
+ * só vira texto; mais de 4, o seletor do app.
+ */
+function choices(ui: UI, key: string, options: { value: string; label: string }[], value: string, onPick: (v: string) => void) {
+  const { Box, Text, Button, Select } = ui
+  if (options.length === 1) return <Text key={key} color={C.dim}>{options[0]?.label}</Text>
+  if (options.length > 4) return <Select key={key} value={value} options={options} onSelect={onPick} />
+  return (
+    <Box key={key} gap={1} flexWrap="wrap">
+      {options.map(o =>
+        o.value === value ? (
+          <Button key={`${key}-${o.value}`} label={o.label} onPress={() => onPick(o.value)} />
+        ) : (
+          <Button key={`${key}-${o.value}`} label={o.label} plain dimColor onPress={() => onPick(o.value)} />
+        ),
+      )}
     </Box>
   )
 }
@@ -242,40 +317,46 @@ const WARN = 80
 export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number) {
   const { Box, Text } = ui
   const parts: unknown[] = []
-  const add = (key: string, label: string, percent: number, text: string, warn = WARN) => {
-    const color = percent >= warn ? C.amber : C.dim
+  const add = (key: string, label: string, percent: number, text: string, color: string) => {
     parts.push(
       <Box key={key} gap={1} alignItems="center">
-        <Text color={percent >= warn ? C.amber : C.dim}> · {label}</Text>
-        {meter(ui, `${key}-m`, percent, color)}
-        <Text color={percent >= warn ? C.amber : C.dim}>{text}</Text>
+        <Text color={color}>{label}</Text>
+        {meter(ui, `${key}-m`, percent, color === C.dim ? C.dim : color)}
+        <Text color={color}>{text}</Text>
       </Box>,
     )
   }
   if (usage) {
     // o contexto em tokens, com a barra cheia no ponto de compactar: cada ação relê a conversa inteira
-    add('ctx', 'contexto', Math.round((usage.tokens / CONTEXT_WARN) * 100), compact(usage.tokens), 100)
+    const ctx = Math.round((usage.tokens / CONTEXT_WARN) * 100)
+    add('ctx', 'contexto', ctx, compact(usage.tokens), ctx >= 100 ? C.amber : C.dim)
     for (const kind of ['7d', '5h'] as const) {
       const l = usage.limits.find(x => x.kind === kind)
       if (!l) continue
-      const at = l.percent >= WARN && l.resetsAt ? localTime(l.resetsAt, now) : ''
-      const reset = at ? ` (renova ${at})` : ''
-      add(kind, kind, Math.round(l.percent), `${Math.round(l.percent)}%${reset}`)
+      const p = Math.round(l.percent)
+      const at = p >= WARN && l.resetsAt ? localTime(l.resetsAt, now) : ''
+      if (p >= 100) add(kind, kind, 100, `limite${at ? ` · volta ${at}` : ''}`, C.red)
+      else add(kind, kind, p, `${p}%${at ? ` · renova ${at}` : ''}`, p >= WARN ? C.amber : C.dim)
     }
   }
+  // a etapa atual ao lado do id; o modelo quando não é desenvolvimento
+  const where = [s.kind === 'desenvolvimento' ? '' : KIND_LABEL[s.kind], s.progress.current].filter(Boolean).join(' · ')
   return (
-    <Box flexWrap="wrap" alignItems="center">
-      <Text color={C.claude} bold>
-        AiDW{' '}
-      </Text>
-      <Text>{s.id}</Text>
-      {parts as never}
-      {running.length > 0 && (
-        <Text color={C.blue}>
-          {' '}
-          · ▶ {running.map(a => `${a.agent} (${a.label}) ${secs(Math.max(0, Math.round((now - a.since) / 1000)))}`).join(' · ')}
+    <Box flexWrap="wrap" alignItems="center" gap={2}>
+      <Box gap={1}>
+        <Text color={C.claude} bold>
+          AiDW
         </Text>
-      )}
+        <Text>{s.id}</Text>
+        {where && <Text color={C.dim}>{where}</Text>}
+      </Box>
+      {running.map(a => (
+        <Box key={`run-${a.key}`} gap={1}>
+          <Text color={C.claude}>●</Text>
+          <Text>{`${a.agent} · ${a.label} · ${secs(Math.max(0, Math.round((now - a.since) / 1000)))}`}</Text>
+        </Box>
+      ))}
+      {parts as never}
     </Box>
   )
 }
@@ -283,9 +364,45 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
 // ---------------------------------------------------------------------------------------------------------------
 // Painel
 
+/** A situação da demanda no cabeçalho: com o time, espera você, pausada, pronta, ou só a etapa. */
+function situation(s: Snapshot): { text: string; color: string } {
+  const outside = s.progress.stages.find(x => x.state === 'com-time')
+  if (s.status === 'paused') return { text: 'Pausada', color: C.dim }
+  if (s.step === 'DONE') return { text: 'Pronto', color: C.green }
+  if (outside) return { text: `${outside.name} · com ${outside.who ?? 'o time'}`, color: C.blue }
+  if (s.waiting) return { text: `${s.progress.current} · espera você`, color: C.amber }
+  return { text: s.progress.current, color: C.dim }
+}
+
+/** O que espera você em cada aba (a contagem ao lado do nome). */
+function tabCount(v: ViewState, tab: string): number {
+  const s = v.snap
+  switch (tab) {
+    case 'revisao': {
+      const file = defaultRound(s, v.reviewFile)
+      return file ? roundFindings(s, file).filter(f => !(v.decisions[`${f.file}:${f.id}`] ?? (f.decision === 'pendente' ? '' : f.decision)) && !isFixed(f)).length : 0
+    }
+    case 'manual':
+      return s.manual.filter(m => !m.removed && !m.result && !/prepara/i.test(m.section)).length
+    case 'comentarios':
+      return s.prTriage
+        ? s.prTriage.comments.filter(c => !c.published && !c.declined && v.publish[c.id] === undefined).length
+        : prList(s).filter(f => !f.published && v.publish[f.id] === undefined).length
+    case 'duvidas':
+      return s.doubts.filter(d => !answered(d)).length
+    default:
+      return 0
+  }
+}
+
 export function Panel(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Button } = ui
-  const tab = tabFor(v.snap.kind, v.tab)
+  const { Box, Text, Button } = ui
+  const s = v.snap
+  const tabs = visibleTabs(s)
+  const wanted = tabFor(s.kind, v.tab)
+  const tab = tabs.some(([id]) => id === wanted) ? wanted : 'geral'
+  const terminal = v.surface === 'terminal'
+  const sit = situation(s)
   const body =
     tab === 'metricas'
       ? Metrics(ui, v, act)
@@ -297,27 +414,47 @@ export function Panel(ui: UI, v: ViewState, act: Actions) {
             ? Diffs(ui, v, act)
             : tab === 'manual'
               ? Manual(ui, v, act)
-              : tab === 'achados'
-                ? PrFindings(ui, v, act)
+              : tab === 'comentarios'
+                ? s.prTriage ? PrComments(ui, v, act) : PrFindings(ui, v, act)
                 : tab === 'codigo'
-                  ? CardCode(ui, v)
+                  ? CardCode(ui, v, act)
                   : tab === 'estimativa'
                     ? EstimateView(ui, v, act)
-                    : General(ui, v, act)
+                    : tab === 'duvidas'
+                      ? Doubts(ui, v, act)
+                      : General(ui, v, act)
   return (
     <Box flexDirection="column" gap={1}>
-      <Box flexWrap="wrap" gap={1}>
-        {TABS[v.snap.kind].map(([id, label], i) => (
-          <Button
-            key={`tab-${id}`}
-            label={label}
-            hotkey={String(i + 1)}
-            variant={id === tab ? 'primary' : undefined}
-            plain={id === tab ? undefined : true}
-            onPress={() => act.tab(id)}
-          />
-        ))}
-        <Button key="refresh" label="Atualizar" hotkey="r" plain dimColor onPress={() => act.refresh()} />
+      <Box key="hdr" flexDirection="column">
+        <Box gap={2} flexWrap="wrap">
+          <Text color={C.dim}>
+            {s.id.toUpperCase().replace('-', ' ')} · {KIND_LABEL[s.kind]}
+          </Text>
+          <Text color={sit.color} bold>
+            ● {sit.text}
+          </Text>
+        </Box>
+        <Text bold color={C.strong}>
+          {s.title || s.id}
+        </Text>
+      </Box>
+      <Box flexWrap="wrap" gap={1} alignItems="center">
+        {tabs.map(([id, label]) => {
+          const n = tabCount(v, id)
+          const hotkey = terminal ? String(TABS[s.kind].findIndex(([t]) => t === id) + 1) : undefined
+          return id === tab ? (
+            <Button key={`tab-${id}`} hotkey={hotkey} onPress={() => act.tab(id)}>
+              {label}
+              {n > 0 && <Text color={C.claude}> {n}</Text>}
+            </Button>
+          ) : (
+            <Button key={`tab-${id}`} hotkey={hotkey} plain dimColor onPress={() => act.tab(id)}>
+              {label}
+              {n > 0 && <Text color={C.claude}> {n}</Text>}
+            </Button>
+          )
+        })}
+        <Button key="refresh" label="↻" hotkey={terminal ? 'r' : undefined} plain dimColor onPress={() => act.refresh()} />
       </Box>
       {body}
     </Box>
@@ -352,13 +489,14 @@ function progressBar(ui: UI, s: Snapshot) {
     for (const g of groups) {
       labels.push(`<text x="${x}" y="9" font-size="10" ${fill(C.dim)} font-family="system-ui,sans-serif">${g.name}</text>`)
       for (const st of g.stages) {
-        const dashed = g.name !== 'AiDW' && st.state === 'pendente'
+        // as etapas de fora ainda não alcançadas são pontos vazados, não segmentos: não parecem barra quebrada
+        const hollow = g.name !== 'AiDW' && st.state === 'pendente'
         rects.push(
-          dashed
-            ? `<rect x="${x + 0.5}" y="15.5" width="${seg - 1}" height="5" rx="2.5" ${stroke(C.faint)} stroke-dasharray="3 2"><title>${st.name}</title></rect>`
+          hollow
+            ? `<circle cx="${x + 6}" cy="18" r="4.25" ${stroke(C.faint)} stroke-width="1.5"><title>${st.name}</title></circle>`
             : `<rect x="${x}" y="15" width="${seg}" height="6" rx="3" ${fill(STAGE_COLOR[st.state] ?? C.line)}><title>${st.name}</title></rect>`,
         )
-        x += seg + gap
+        x += (hollow ? 12 : seg) + gap
       }
       x += between - gap
     }
@@ -390,63 +528,63 @@ function progressBar(ui: UI, s: Snapshot) {
   )
 }
 
+/** Os números da Geral: os do modelo da demanda e, em todos, o consumo. */
+function numbers(ui: UI, s: Snapshot) {
+  const seconds = s.delegations.reduce((n, d) => n + d.seconds, 0)
+  const rows: unknown[] = []
+  if (s.kind === 'desenvolvimento') {
+    const ca = s.coverage.filter(c => c.kind === 'CA')
+    const ok = ca.filter(c => c.status === 'coberto').length
+    if (ca.length) rows.push(stat(ui, 'n-ca', 'Critérios de aceite cobertos', `${ok} de ${ca.length}`, { meter: pct(ok, ca.length) }))
+    else if (s.criteria.length) rows.push(stat(ui, 'n-ca', 'Critérios de aceite', String(s.criteria.length)))
+  } else if (s.kind === 'pr-review') {
+    const list = s.prTriage ? s.prTriage.comments : prList(s)
+    const published = list.filter(f => f.published).length
+    rows.push(stat(ui, 'n-pr', 'PRs', String(prsOf(s).length || '—')))
+    if (list.length) rows.push(stat(ui, 'n-pub', 'Comentários publicados', `${published} de ${list.length}`, { meter: pct(published, list.length) }))
+  } else if (s.estimate) {
+    const e = s.estimate
+    const open = s.doubts.filter(d => !answered(d)).length
+    rows.push(stat(ui, 'n-sp', 'Story points', e.sp || e.spCard || '—'))
+    const hours = [e.devDays || e.hours, e.qaDays && `+ ${e.qaDays} QA`].filter(Boolean).join(' ')
+    if (hours) rows.push(stat(ui, 'n-h', 'Horas', hours))
+    const cc = [e.complexity, e.confidence].filter(Boolean).join(' · ')
+    if (cc) rows.push(stat(ui, 'n-cc', 'Complexidade · confiança', cc))
+    if (s.doubts.length) rows.push(stat(ui, 'n-d', 'Dúvidas abertas', `${open} de ${s.doubts.length}`, open ? { color: C.amber } : {}))
+  }
+  rows.push(stat(ui, 'n-tk', 'Tokens dos agentes', compact(s.tokens)))
+  rows.push(
+    s.orchestrator.rows.length
+      ? stat(ui, 'n-or', 'Tokens do orquestrador', compact(s.orchestrator.tokens))
+      : stat(ui, 'n-or', 'Tokens do orquestrador', 'sem registro', { missing: true }),
+  )
+  rows.push(stat(ui, 'n-tm', 'Agentes trabalhando', secs(seconds)))
+  return rows
+}
+
 function General(ui: UI, v: ViewState, act: Actions) {
   const { Box, Text, Link } = ui
   const s = v.snap
   const p = s.progress
   const outside = p.stages.find(x => x.state === 'com-time')
-  const situation = s.status === 'paused'
-    ? 'Pausada'
-    : s.step === 'DONE'
-      ? 'Pronto'
-      : outside
-        ? `${outside.name} · com ${outside.who ?? 'o time'}`
-        : `${p.current}${s.waiting ? ' · espera você' : ''}`
-  const situationColor = outside ? C.blue : s.waiting ? C.amber : C.mid
-  const seconds = s.delegations.reduce((n, d) => n + d.seconds, 0)
-  const criteria = s.coverage.filter(c => c.kind === 'CA').length || s.criteria.length
   const returns = Object.entries(p.returns).map(([k, n]) => `${k} ${n}×`).join(' · ')
   const last = s.delegations.at(-1)
-  const prs = s.repos.filter(r => r.pr)
-  const stat = (key: string, n: string, label: string) => (
-    <Box key={key} flexDirection="column" flexGrow={1}>
-      <Text bold color={C.strong}>
-        {n}
-      </Text>
-      <Text color={C.dim}>{label}</Text>
-    </Box>
-  )
   const currentColor = outside ? C.blue : C.claude
   return (
     <Box flexDirection="column" gap={1}>
-      <Box key="hdr" flexDirection="column">
-        <Box gap={1}>
-          <Text color={C.dim}>
-            {s.id.toUpperCase().replace('-', ' ')} · {KIND_LABEL[s.kind]}
-          </Text>
-          {chip(ui, 'sit', situation, situationColor)}
-        </Box>
-        <Text bold color={C.strong}>
-          {s.title || s.id}
-        </Text>
-      </Box>
       {card(
         ui,
         'mapa',
         'Mapa da demanda',
         <Box flexDirection="column" gap={1}>
-          {s.summary ? <Text color={C.text}>{s.summary}</Text> : <Text color={C.dim}>Sem resumo gravado (o orquestrador grava ao entender o card).</Text>}
-          <Box gap={2}>
-            {stat('st-ca', String(criteria), 'critérios de aceite')}
-            {stat('st-tk', compact(s.tokens), 'tokens dos agentes')}
-            {stat('st-or', compact(s.orchestrator.tokens), 'tokens do orquestrador')}
-            {stat('st-tm', secs(seconds), 'de agentes trabalhando')}
-          </Box>
+          {s.summary ? rich(ui, 'summary', s.summary) : <Text color={C.dim}>Sem resumo gravado (o orquestrador grava ao entender o card).</Text>}
           <Box flexDirection="column">
             {progressBar(ui, s)}
-            <Box justifyContent="space-between">
+            <Box justifyContent="space-between" gap={2}>
               <Box gap={1}>
-                <Text color={currentColor}>{p.current}</Text>
+                <Text color={currentColor} bold>
+                  {p.current}
+                </Text>
                 {p.returnedFrom && chip(ui, 'volta', `↩ voltou do ${p.returnedFrom} · ${p.returns[p.returnedFrom] ?? 1}ª vez`, C.amber)}
               </Box>
               <Text color={C.dim}>
@@ -464,15 +602,15 @@ function General(ui: UI, v: ViewState, act: Actions) {
           )}
         </Box>,
       )}
+      {card(ui, 'numeros', 'Números', <Box flexDirection="column">{numbers(ui, s) as never}</Box>)}
+      {s.note && card(ui, 'proximo', 'Próximo passo', rich(ui, 'note', s.note), 'nota do orquestrador')}
       {card(
         ui,
         'agentes',
-        'Agentes rodando',
+        'Agentes',
         <Box flexDirection="column">
           {v.running.length === 0 && (
-            <Text color={C.dim}>
-              Nenhum agente rodando{last ? ` · último: ${last.agent} (${last.label}), ${stateLabel(last.state)}` : ''}
-            </Text>
+            <Text color={C.dim}>{last ? `último: ${last.agent} (${last.label}), ${stateLabel(last.state)}` : 'nenhuma delegação ainda'}</Text>
           )}
           {v.running.map(r => (
             <Box key={`run-${r.key}`} gap={2}>
@@ -480,13 +618,14 @@ function General(ui: UI, v: ViewState, act: Actions) {
               <Text bold color={C.strong}>
                 {r.agent}
               </Text>
-              <Box flexGrow={1}>
+              <Box flexGrow={1} flexShrink={1}>
                 <Text color={C.mid}>{r.label}</Text>
               </Box>
               <Text color={C.dim}>{secs(Math.max(0, Math.round((v.now - r.since) / 1000)))}</Text>
             </Box>
           ))}
         </Box>,
+        v.running.length ? `${v.running.length} rodando` : 'nenhum rodando',
       )}
       {card(
         ui,
@@ -499,35 +638,17 @@ function General(ui: UI, v: ViewState, act: Actions) {
             </Box>
             <Link key="lk-dir" href={fileUrl(s.dir)} label={`demandas/${s.id}`} />
           </Box>
-          {s.repos.length > 0 && (
-            <Box gap={2}>
+          {s.repos.map(r => (
+            <Box key={`br-${r.path}`} gap={2}>
               <Box width={10}>
-                <Text color={C.dim}>Branches</Text>
+                <Text color={C.dim}>{r.pr ? `PR ${r.pr}` : 'Branch'}</Text>
               </Box>
-              <Box flexDirection="column">
-                {s.repos.map(r => (
-                  <Box key={`br-${r.path}`} gap={1}>
-                    <Link key={`lk-${r.path}`} href={fileUrl(r.path)} label={r.name} />
-                    <Text color={C.dim}>{r.branch || '?'}</Text>
-                  </Box>
-                ))}
+              <Link key={`lk-${r.path}`} href={fileUrl(r.path)} label={r.name} />
+              <Box flexShrink={1}>
+                <Text color={C.dim}>{r.pr ? 'só leitura' : r.branch || '?'}</Text>
               </Box>
             </Box>
-          )}
-          {prs.length > 0 && (
-            <Box gap={2}>
-              <Box width={10}>
-                <Text color={C.dim}>PRs</Text>
-              </Box>
-              <Box gap={2} flexWrap="wrap">
-                {prs.map(r => (
-                  <Text key={`pr-${r.path}`} color={C.blue}>
-                    PR {r.pr} · {r.name}
-                  </Text>
-                ))}
-              </Box>
-            </Box>
-          )}
+          ))}
         </Box>,
       )}
     </Box>
@@ -551,16 +672,10 @@ function Coverage(ui: UI, v: ViewState) {
     { kind: 'CN', label: 'Cenários', from: 'do plano de testes', unit: 'cenários' },
   ].map(g => ({ ...g, items: s.coverage.filter(c => c.kind === g.kind) })).filter(g => g.items.length)
   if (!groups.length) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Critérios e Regras')}
-        <Text color={C.dim}>Sem critérios, regras ou cenários numerados no plano (CA1, RN1, CN1).</Text>
-      </Box>
-    )
+    return <Text color={C.dim}>Sem critérios, regras ou cenários numerados no plano (CA1, RN1, CN1).</Text>
   }
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Critérios e Regras')}
       {card(
         ui,
         'cob',
@@ -602,9 +717,9 @@ function Coverage(ui: UI, v: ViewState) {
                   <Text color={C.dim}>{i.id}</Text>
                 </Box>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Text color={C.text}>{i.text}</Text>
+                  {rich(ui, `ct-${i.id}`, i.text)}
                 </Box>
-                {chip(ui, `cs-${i.id}`, COVER[i.status]?.label ?? i.status, COVER[i.status]?.color ?? C.dim)}
+                <Text color={COVER[i.status]?.color ?? C.dim}>{COVER[i.status]?.label ?? i.status}</Text>
               </Box>
             ))}
           </Box>,
@@ -665,28 +780,32 @@ function codeBlock(ui: UI, key: string, f: Finding) {
   return <ui.Code key={key} source={source} format="diff" path={f.where || undefined} />
 }
 
-function Review(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Button, Select } = ui
-  const s = v.snap
+/** A rodada que a Revisão mostra: a escolhida; senão a com achado esperando você; senão a última do código. */
+function defaultRound(s: Snapshot, chosen: string): string {
   const rounds = reviewRounds(s)
-  if (!rounds.length) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Revisão')}
-        <Text color={C.dim}>Ainda não houve revisão.</Text>
-      </Box>
-    )
-  }
-  // sem escolha: a rodada com achado esperando você; senão a última do código
+  if (rounds.some(r => r.file === chosen)) return chosen
   const waiting = [...rounds].reverse().find(r =>
     s.findings.some(f => f.file === r.file && f.severity !== 'ELOGIO' && f.decision === 'pendente' && !isFixed(f)))
   const lastCode = [...rounds].reverse().find(r => r.label.startsWith('Código'))
-  const file = rounds.some(r => r.file === v.reviewFile) ? v.reviewFile : (waiting ?? lastCode ?? rounds.at(-1))?.file ?? ''
+  return (waiting ?? lastCode ?? rounds.at(-1))?.file ?? ''
+}
+
+/** Os achados de uma rodada, com as passadas de bugs e segurança da mesma rodada do código (sem elogios). */
+function roundFindings(s: Snapshot, file: string): Finding[] {
   const current = s.findings.find(f => f.file === file)
-  const inRound = s.findings.filter(
+  return s.findings.filter(
     f => f.severity !== 'ELOGIO' &&
       (f.file === file || (current && f.source !== 'plano' && f.source !== 'revisão' && f.round === current.round && current.source === 'revisão')),
   )
+}
+
+function Review(ui: UI, v: ViewState, act: Actions) {
+  const { Box, Text, Button } = ui
+  const s = v.snap
+  const rounds = reviewRounds(s)
+  if (!rounds.length) return <Text color={C.dim}>Ainda não houve revisão.</Text>
+  const file = defaultRound(s, v.reviewFile)
+  const inRound = roundFindings(s, file)
   const praise = s.findings.filter(f => f.file === file && f.severity === 'ELOGIO').length
   const decided = (f: Finding) => v.decisions[`${f.file}:${f.id}`] ?? (f.decision === 'pendente' ? '' : f.decision)
   const tabs = [
@@ -705,17 +824,18 @@ function Review(ui: UI, v: ViewState, act: Actions) {
   const marked = Object.keys(v.decisions).filter(k => k.startsWith(`${file}:`)).length
   const filterButton = (kind: keyof Omit<ReviewFilter, 'open'>, value: string, label: string) => {
     const on = f0[kind].includes(value)
-    return (
-      <Button key={`flt-${kind}-${value}`} label={`${on ? '✓ ' : ''}${label}`} plain={on ? undefined : true} onPress={() => act.toggleFilter(kind, value)} />
+    return on ? (
+      <Button key={`flt-${kind}-${value}`} label={`✓ ${label}`} onPress={() => act.toggleFilter(kind, value)} />
+    ) : (
+      <Button key={`flt-${kind}-${value}`} label={label} plain dimColor onPress={() => act.toggleFilter(kind, value)} />
     )
   }
   const activeFilters = f0.severities.length + f0.sources.length + f0.statuses.length
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Revisão')}
-      <Box justifyContent="space-between" alignItems="center">
-        <Select key="review-round" value={file} options={rounds.map(r => ({ value: r.file, label: r.label }))} onSelect={value => act.reviewFile(value)} />
-        <Button key="filters" label={activeFilters ? `Filtros · ${activeFilters}` : 'Filtros'} plain onPress={() => act.toggleFilters()} />
+      <Box justifyContent="space-between" alignItems="center" gap={2}>
+        {choices(ui, 'review-round', rounds.map(r => ({ value: r.file, label: r.label })), file, value => act.reviewFile(value))}
+        <Button key="filters" label={activeFilters ? `Filtros · ${activeFilters}` : 'Filtros'} plain dimColor onPress={() => act.toggleFilters()} />
       </Box>
       {f0.open && (
         <Box flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2}>
@@ -737,16 +857,14 @@ function Review(ui: UI, v: ViewState, act: Actions) {
           </Box>
         </Box>
       )}
-      <Box gap={2}>
-        {tabs.map(t => (
-          <Button
-            key={`dt-${t.id}`}
-            label={`${t.label} ${inRound.filter(f => t.has(f)).length}`}
-            plain={t.id === tab?.id ? undefined : true}
-            variant={t.id === tab?.id ? 'secondary' : undefined}
-            onPress={() => act.decisionTab(t.id)}
-          />
-        ))}
+      <Box gap={1} flexWrap="wrap">
+        {tabs.map(t =>
+          t.id === tab?.id ? (
+            <Button key={`dt-${t.id}`} label={`${t.label} ${inRound.filter(f => t.has(f)).length}`} onPress={() => act.decisionTab(t.id)} />
+          ) : (
+            <Button key={`dt-${t.id}`} label={`${t.label} ${inRound.filter(f => t.has(f)).length}`} plain dimColor onPress={() => act.decisionTab(t.id)} />
+          ),
+        )}
       </Box>
       {shown.length === 0 && <Text color={C.dim}>Nada aqui{tab?.id === 'voce' ? ': nenhum achado espera você nesta rodada.' : '.'}</Text>}
       {shown.map(f => findingCard(ui, v, act, f, decided(f), file))}
@@ -767,27 +885,35 @@ function findingCard(ui: UI, v: ViewState, act: Actions, f: Finding, decided: st
   const pending = !decided && !isFixed(f)
   const marked = v.decisions[`${file}:${f.id}`]
   const recommendsDrop = /^\W*(descart|cai\b|n[aã]o)/i.test(f.recommendation)
-  const options = f.options.length ? f.options.slice(0, 3) : ['Manter', 'Descartar']
+  // uma dúvida traz opções (a), (b)…: o texto inteiro numa lista e, nos botões, só a letra
+  const letter = (o: string) => /^\(([a-z])\)/.exec(o)?.[1] ?? ''
+  const options = f.options.length ? f.options.slice(0, 4) : ['Manter', 'Descartar']
   return (
     <Box key={`fc-${f.file}-${f.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
       <Box gap={1}>
         {chip(ui, `sev-${f.id}`, sev.label, sev.color)}
         <Text color={C.dim}>{f.id}</Text>
-        <Box flexGrow={1}>
+        <Box flexGrow={1} flexShrink={1}>
           <Text color={C.dim}>{f.where || f.source}</Text>
         </Box>
         {isFixed(f) ? chip(ui, `st-${f.id}`, f.status, C.green) : pending ? chip(ui, `st-${f.id}`, 'com você', C.amber) : chip(ui, `st-${f.id}`, decided, C.dim)}
       </Box>
-      <Text color={C.text}>{f.title}</Text>
+      {rich(ui, `ft-${f.id}`, f.title)}
       {codeBlock(ui, `code-${f.id}`, f)}
       {f.recommendation && (
-        <Box gap={1}>
-          <Text color={C.claude} bold>
-            Recomendação do AiDW
-          </Text>
-          <Box flexShrink={1}>
-            <Text color={C.text}>{f.recommendation}</Text>
-          </Box>
+        <Box flexDirection="column">
+          <Text color={C.dim}>Recomendação do AiDW</Text>
+          {rich(ui, `fr-${f.id}`, f.recommendation)}
+        </Box>
+      )}
+      {f.options.length > 0 && pending && (
+        <Box flexDirection="column">
+          {f.options.slice(0, 4).map((o, i) => (
+            <Box key={`fo-${f.id}-${i}`} gap={1}>
+              <Text color={i === 0 ? C.claude : C.dim}>{i === 0 ? '●' : '○'}</Text>
+              <Box flexShrink={1}>{rich(ui, `fot-${f.id}-${i}`, i === 0 ? `${o} (recomendado)` : o)}</Box>
+            </Box>
+          ))}
         </Box>
       )}
       {pending ? (
@@ -795,11 +921,11 @@ function findingCard(ui: UI, v: ViewState, act: Actions, f: Finding, decided: st
           {options.map((o, i) => {
             const value = f.options.length ? o : i === 0 ? 'mantido' : 'descartado'
             const recommended = f.options.length ? i === 0 : (i === 1) === recommendsDrop
+            const name = f.options.length ? `(${letter(o) || i + 1})` : o
             return (
               <Button
                 key={`dec-${f.id}-${i}`}
-                label={`${marked === value ? '✓ ' : ''}${o}`}
-                variant={recommended || marked === value ? 'primary' : undefined}
+                label={`${marked === value ? '✓ ' : ''}${name}${recommended && !f.options.length ? ' (recomendado)' : ''}`}
                 onPress={() => act.decide(`${file}:${f.id}`, value)}
               />
             )
@@ -823,42 +949,38 @@ export function reviewDecisionText(s: Snapshot, decisions: Record<string, string
 
 // --- Diffs -----------------------------------------------------------------------------------------------------
 
-function Diffs(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Select, Code, Button } = ui
-  const s = v.snap
-  const sources = [
-    ...s.repos.map(r => ({ value: `repo:${r.path}`, label: `${r.name}${r.pr ? ` · PR ${r.pr}` : ''}` })),
+/** De onde vem o diff: cada worktree da demanda e cada .patch da pasta. */
+export function diffSources(s: Snapshot): { value: string; label: string }[] {
+  return [
+    ...s.repos.map(r => ({ value: `repo:${r.path}`, label: r.pr ? `PR ${r.pr} · ${r.name}` : r.name })),
     ...s.patches.map(p => ({ value: `patch:${p}`, label: p })),
   ]
-  if (!sources.length) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Diffs')}
-        <Text color={C.dim}>Sem worktree nem patch nesta demanda.</Text>
-      </Box>
-    )
-  }
-  const d = v.diff
+}
+
+function Diffs(ui: UI, v: ViewState, act: Actions) {
+  const { Box, Text, Code, Button } = ui
+  const s = v.snap
+  const sources = diffSources(s)
+  if (!sources.length) return <Text color={C.dim}>Sem worktree nem patch nesta demanda.</Text>
+  // o diff guardado pode ser de outra demanda: só vale se a fonte é desta (o register carrega a primeira)
+  const d = v.diff && sources.some(x => x.value === v.diff?.source) ? v.diff : null
   const repo = d?.source.startsWith('repo:') ? s.repos.find(r => `repo:${r.path}` === d.source) : undefined
   const fileFindings = (path: string) =>
     s.findings.filter(f => f.severity !== 'ELOGIO' && !isFixed(f) && f.where && path.endsWith(f.where.replace(/:\d.*$/, '').split('/').pop() ?? '#'))
   const notes = d ? fileFindings(d.selected) : []
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Diffs')}
-      <Box justifyContent="space-between" alignItems="center">
-        <Box flexDirection="column">
-          <Select key="diff-source" value={d?.source ?? ''} options={sources} onSelect={value => act.diffSource(value)} />
-          {d && !d.error && (
-            <Text color={C.dim}>
-              {repo ? `${repo.branch || '?'} contra ${repo.base || 'a base'} · ` : ''}
-              {d.summary}
-            </Text>
-          )}
-        </Box>
-        {repo && v.canAppDiff && <Button key="app-diff" label="Abrir no painel de diff do app ↗" plain onPress={() => act.appDiff(repo.name)} />}
+      <Box justifyContent="space-between" alignItems="center" gap={2}>
+        {choices(ui, 'diff-source', sources, d?.source ?? sources[0]?.value ?? '', value => act.diffSource(value))}
+        {repo && v.canAppDiff && <Button key="app-diff" label="Abrir no app ↗" plain dimColor onPress={() => act.appDiff(repo.name)} />}
       </Box>
-      {!d && <Text color={C.dim}>Escolha de onde vem o diff.</Text>}
+      {d && !d.error && (
+        <Text color={C.dim}>
+          {repo ? `${repo.pr ? 'só leitura' : repo.branch || '?'} · contra ${repo.base ? repo.base.slice(0, 12) : 'a base'} · ` : ''}
+          {d.summary}
+        </Text>
+      )}
+      {!d && <Text color={C.dim}>Carregando o diff…</Text>}
       {d?.error && <Text color={C.red}>{d.error}</Text>}
       {d && !d.error && (
         <Box gap={2} alignItems="flex-start">
@@ -890,11 +1012,7 @@ function Diffs(ui: UI, v: ViewState, act: Actions) {
               <Box key={`dn-${f.id}`} gap={1} borderStyle="round" borderColor={C.line} paddingX={1}>
                 {chip(ui, `dns-${f.id}`, SEV[f.severity ?? '']?.label ?? '', SEV[f.severity ?? '']?.color ?? C.dim)}
                 <Box flexShrink={1}>
-                  <Text>
-                    <Text bold>{f.id}</Text>
-                    <Text color={C.dim}> {f.where} · </Text>
-                    {f.title}
-                  </Text>
+                  {rich(ui, `dnt-${f.id}`, `**${f.id}** · ${f.title}`)}
                 </Box>
                 <Button key={`dnl-${f.id}`} label="ver na Revisão" plain onPress={() => act.tab('revisao')} />
               </Box>
@@ -913,14 +1031,7 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
   const { Box, Text, Input, Button } = ui
   const s = v.snap
   const all = s.manual.filter(m => !m.removed)
-  if (!all.length) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Teste manual')}
-        <Text color={C.dim}>Sem roteiro de teste manual (o QA grava roteiro-testes-&lt;id&gt;.md quando há passo manual).</Text>
-      </Box>
-    )
-  }
+  if (!all.length) return <Text color={C.dim}>Sem roteiro de teste manual (o QA grava roteiro-testes-&lt;id&gt;.md quando há passo manual).</Text>
   const prep = all.filter(m => /prepara/i.test(m.section))
   const tests = all.filter(m => !/prepara/i.test(m.section))
   const removed = s.manual.filter(m => m.removed)
@@ -931,11 +1042,10 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
   const key = next ? `evidencia-${next.id}` : ''
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Teste manual', s.roteiro)}
       {card(
         ui,
         'mt-prog',
-        '',
+        'Roteiro',
         <Box flexDirection="column">
           <Box justifyContent="space-between">
             <Text>
@@ -957,6 +1067,7 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
             {prep.length ? ` · preparação à parte (${prep.filter(m => m.result).length} de ${prep.length})` : ''}
           </Text>
         </Box>,
+        s.roteiro,
       )}
       {next && (
         <Box key="mt-now" flexDirection="column" borderStyle="round" borderColor={C.claude} paddingX={2} paddingY={1} gap={1}>
@@ -1103,23 +1214,27 @@ function hbars(ui: UI, key: string, label: string, groups: Group[]) {
     key,
     label,
     <Box flexDirection="column">
-      {groups.map(g => (
-        <Box key={`${key}-${g.key}`} gap={2} alignItems="center">
-          <Box width={18}>
-            <Text>{g.key}</Text>
+      {groups.map(g => {
+        // o orquestrador (seconds < 0): conta turnos, não chamadas, e não tem tempo (o chat fica aberto)
+        const chat = g.seconds < 0
+        return (
+          <Box key={`${key}-${g.key}`} gap={2} alignItems="center">
+            <Box width={18}>
+              <Text>{g.key}</Text>
+            </Box>
+            <Box flexGrow={1}>{meter(ui, `${key}-${g.key}-m`, pct(g.tokens, max), chat ? C.claude : C.bar, 260)}</Box>
+            <Box width={7} justifyContent="flex-end">
+              <Text color={C.text}>{compact(g.tokens)}</Text>
+            </Box>
+            <Box width={10} justifyContent="flex-end">
+              <Text color={C.dim}>{chat ? `${g.n} turno${g.n === 1 ? '' : 's'}` : String(g.n)}</Text>
+            </Box>
+            <Box width={7} justifyContent="flex-end">
+              <Text color={C.faint}>{chat ? '—' : secs(g.seconds)}</Text>
+            </Box>
           </Box>
-          <Box flexGrow={1}>{meter(ui, `${key}-${g.key}-m`, pct(g.tokens, max), C.bar, 260)}</Box>
-          <Box width={7} justifyContent="flex-end">
-            <Text color={C.text}>{compact(g.tokens)}</Text>
-          </Box>
-          <Box width={4} justifyContent="flex-end">
-            <Text color={C.dim}>{g.n}</Text>
-          </Box>
-          <Box width={7} justifyContent="flex-end">
-            <Text color={C.dim}>{secs(g.seconds)}</Text>
-          </Box>
-        </Box>
-      ))}
+        )
+      })}
     </Box>,
     'tokens · chamadas · tempo',
   )
@@ -1134,14 +1249,12 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   const priced = d.filter(x => x.cost !== null)
   const rounds = new Set(s.findings.filter(f => f.source !== 'bugs' && f.source !== 'segurança').map(f => f.file)).size
   const period = d.length ? `${ddmm(d[0]?.date ?? '')} a ${ddmm(d.at(-1)?.date ?? '')}` : ''
-  const kpi = (key: string, n: string, label: string) => (
-    <Box key={key} flexDirection="column" flexGrow={1} borderStyle="round" borderColor={C.line} paddingX={2}>
-      <Text bold color={C.strong}>
-        {n}
-      </Text>
-      <Text color={C.dim}>{label}</Text>
-    </Box>
-  )
+  const days = groupBy(d, x => x.date)
+  const agents = groupBy(d, x => x.agent)
+  if (o.rows.length) agents.push({ key: 'orquestrador', n: o.turns, tokens: o.tokens, seconds: -1, cost: o.cost ?? 0 })
+  const cacheRead = o.rows.reduce((n, r) => n + r.cacheRead, 0)
+  const cacheWrite = o.rows.reduce((n, r) => n + r.cacheWrite, 0)
+  const output = o.rows.reduce((n, r) => n + r.output, 0)
   const results = groupBy(d, x => stateLabel(x.state)).sort((a, b) => b.n - a.n)
   const back = s.timeline.filter(t => t.visits > 1)
   const recent = [...d].reverse().slice(0, v.expanded.delegations ? d.length : 8)
@@ -1149,21 +1262,33 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   const files = artifacts.reduce((n, [, f]) => n + f.length, 0)
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Métricas', period)}
-      <Box gap={1}>
-        {kpi('k-del', String(d.length), 'delegações')}
-        {kpi('k-tok', compact(s.tokens), 'tokens dos agentes')}
-        {kpi('k-orc', compact(o.tokens), 'tokens do orquestrador')}
-        {kpi('k-tim', secs(seconds), 'de agentes trabalhando')}
-        {kpi('k-rnd', String(rounds), 'rodadas de revisão')}
-      </Box>
-      {priced.length > 0 && <Text color={C.dim}>Custo: US$ {priced.reduce((n, x) => n + (x.cost ?? 0), 0).toFixed(2)} em {priced.length} de {d.length} delegações</Text>}
+      {card(
+        ui,
+        'resumo',
+        'Resumo',
+        <Box flexDirection="column">
+          {stat(ui, 'k-del', 'Delegações', String(d.length))}
+          {rounds > 0 && stat(ui, 'k-rnd', 'Rodadas de revisão', String(rounds))}
+          {stat(ui, 'k-tok', 'Tokens dos agentes', compact(s.tokens))}
+          {o.rows.length
+            ? stat(ui, 'k-orc', 'Tokens do orquestrador', compact(o.tokens))
+            : stat(ui, 'k-orc', 'Tokens do orquestrador', 'sem registro', { missing: true })}
+          {stat(ui, 'k-tim', 'Agentes trabalhando', secs(seconds))}
+          {priced.length > 0 && stat(ui, 'k-usd', `Custo (${priced.length} de ${d.length} delegações)`, `US$ ${priced.reduce((n, x) => n + (x.cost ?? 0), 0).toFixed(2)}`)}
+        </Box>,
+        period,
+      )}
+      {agents.length > 0 && hbars(ui, 'ag', 'Por agente', agents.sort((a, b) => b.tokens - a.tokens))}
       {o.rows.length > 0 &&
         card(
           ui,
           'orc',
-          'Orquestrador (chat principal)',
+          'Orquestrador',
           <Box flexDirection="column">
+            {stat(ui, 'o-cr', 'Cache lido', compact(cacheRead))}
+            {stat(ui, 'o-cw', 'Cache escrito', compact(cacheWrite))}
+            {stat(ui, 'o-out', 'Saída', compact(output))}
+            {stat(ui, 'o-share', 'Parte do orquestrador no total', `${pct(o.tokens, o.tokens + s.tokens)}%`, { meter: pct(o.tokens, o.tokens + s.tokens), color: C.claude })}
             {o.rows.map((r, i) => (
               <Box key={`or-${i}`} gap={2}>
                 <Box width={10}>
@@ -1192,10 +1317,9 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
               </Text>
             )}
           </Box>,
-          'uma linha por sessão e modelo',
+          'chat principal · uma linha por sessão e modelo',
         )}
-      {d.length > 0 && card(ui, 'dias', 'Tokens por dia', dayChart(ui, groupBy(d, x => x.date)), ui.Svg ? 'passe o mouse para ver chamadas e tempo' : '')}
-      {d.length > 0 && hbars(ui, 'ag', 'Por agente', groupBy(d, x => x.agent).sort((a, b) => b.tokens - a.tokens))}
+      {days.length > 1 && card(ui, 'dias', 'Tokens por dia', dayChart(ui, days), ui.Svg ? 'passe o mouse para ver chamadas e tempo' : '')}
       {d.length > 0 && hbars(ui, 'md', 'Por modelo e effort', groupBy(d, x => `${modelName(x.model)} · ${x.effort}`).sort((a, b) => b.tokens - a.tokens))}
       {d.length > 0 &&
         card(
@@ -1282,22 +1406,20 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   )
 }
 
-// --- Revisão de PR · Achados e voto ----------------------------------------------------------------------------
+// --- Revisão de PR sem triagem no formato triagem-pr (demandas antigas): achados e um voto ---------------------
+
+/** Os achados da última rodada de uma revisão de PR (sem plano nem elogio). */
+function prList(s: Snapshot): Finding[] {
+  const list = s.findings.filter(f => f.source !== 'plano' && f.severity !== 'ELOGIO')
+  const round = Math.max(0, ...list.map(f => f.round))
+  return list.filter(f => f.round === round)
+}
 
 function PrFindings(ui: UI, v: ViewState, act: Actions) {
   const { Box, Text, Button, Input } = ui
   const s = v.snap
-  const list = s.findings.filter(f => f.source !== 'plano' && f.severity !== 'ELOGIO')
-  const round = Math.max(0, ...list.map(f => f.round))
-  const inRound = list.filter(f => f.round === round)
-  if (!inRound.length) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Achados e voto')}
-        <Text color={C.dim}>A revisão ainda não terminou.</Text>
-      </Box>
-    )
-  }
+  const inRound = prList(s)
+  if (!inRound.length) return <Text color={C.dim}>A revisão ainda não terminou.</Text>
   const choice = (f: Finding) => v.publish[f.id]
   const tabs = [
     { id: 'decidir', label: 'A decidir', has: (f: Finding) => !f.published && choice(f) === undefined },
@@ -1311,17 +1433,14 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
   const suggested = VOTES.find(o => o.value === v.vote)
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Achados e voto', [...new Set(s.repos.filter(r => r.pr).map(r => `PR ${r.pr} (${r.name})`))].join(' e '))}
-      <Box gap={2}>
-        {tabs.map(t => (
-          <Button
-            key={`pt-${t.id}`}
-            label={`${t.label} ${inRound.filter(f => t.has(f)).length}`}
-            plain={t.id === tab?.id ? undefined : true}
-            variant={t.id === tab?.id ? 'secondary' : undefined}
-            onPress={() => act.decisionTab(t.id)}
-          />
-        ))}
+      <Box gap={1} flexWrap="wrap">
+        {tabs.map(t =>
+          t.id === tab?.id ? (
+            <Button key={`pt-${t.id}`} label={`${t.label} ${inRound.filter(f => t.has(f)).length}`} onPress={() => act.decisionTab(t.id)} />
+          ) : (
+            <Button key={`pt-${t.id}`} label={`${t.label} ${inRound.filter(f => t.has(f)).length}`} plain dimColor onPress={() => act.decisionTab(t.id)} />
+          ),
+        )}
       </Box>
       {shown.length === 0 && <Text color={C.dim}>Nada aqui.</Text>}
       {shown.map(f => {
@@ -1338,7 +1457,7 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
               <Text color={C.dim}>{f.id}</Text>
               <Text color={C.dim}>{f.where}</Text>
             </Box>
-            <Text color={C.text}>{f.title}</Text>
+            {rich(ui, `pt-${f.id}`, f.title)}
             {codeBlock(ui, `pcode-${f.id}`, f)}
             {f.comment && (
               <Box flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={1}>
@@ -1362,27 +1481,21 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
               </Box>
             )}
             {f.recommendation && (
-              <Box gap={1}>
-                <Text color={C.claude} bold>
-                  Recomendação do AiDW
-                </Text>
-                <Box flexShrink={1}>
-                  <Text>{f.recommendation}</Text>
-                </Box>
+              <Box flexDirection="column">
+                <Text color={C.dim}>Recomendação do AiDW</Text>
+                {rich(ui, `pr-${f.id}`, f.recommendation)}
               </Box>
             )}
             {!f.published && (
               <Box gap={1}>
                 <Button
                   key={`pp-${f.id}`}
-                  label={`${choice(f) === true ? '✓ ' : ''}Publicar`}
-                  variant={recommendsPublish || choice(f) === true ? 'primary' : undefined}
+                  label={`${choice(f) === true ? '✓ ' : ''}Publicar${recommendsPublish ? ' (recomendado)' : ''}`}
                   onPress={() => act.togglePublish(f.id, true)}
                 />
                 <Button
                   key={`pn-${f.id}`}
-                  label={`${choice(f) === false ? '✓ ' : ''}${doubt ? 'Perguntar ao time' : 'Não publicar'}`}
-                  variant={!recommendsPublish || choice(f) === false ? 'primary' : undefined}
+                  label={`${choice(f) === false ? '✓ ' : ''}${doubt ? 'Perguntar ao time' : 'Não publicar'}${recommendsPublish ? '' : ' (recomendado)'}`}
                   onPress={() => act.togglePublish(f.id, false)}
                 />
               </Box>
@@ -1396,14 +1509,13 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
         'Voto',
         <Box flexDirection="column" gap={1}>
           <Box gap={1}>
-            {VOTES.map(o => (
-              <Button
-                key={`vote-${o.value}`}
-                label={`${o.value === v.vote ? '● ' : ''}${o.label}`}
-                variant={o.value === v.vote ? 'primary' : undefined}
-                onPress={() => act.vote(o.value)}
-              />
-            ))}
+            {VOTES.map(o =>
+              o.value === v.vote ? (
+                <Button key={`vote-${o.value}`} label={`● ${o.label}`} onPress={() => act.vote(o.value)} />
+              ) : (
+                <Button key={`vote-${o.value}`} label={o.label} plain dimColor onPress={() => act.vote(o.value)} />
+              ),
+            )}
           </Box>
           {s.vote && (
             <Text>
@@ -1417,11 +1529,231 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
       )}
       <Box justifyContent="space-between" alignItems="center">
         <Text color={C.dim}>
-          {toPublish} comentário(s) para publicar · voto: {suggested?.label ?? '—'} · nada sai até você enviar
+          {toPublish} comentário(s) para publicar · voto: {suggested?.label ?? 'escolha um'} · nada sai até você enviar
         </Text>
         <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />
       </Box>
     </Box>
+  )
+}
+
+// --- Revisão de PR · Comentários (triagem no formato triagem-pr) ----------------------------------------------
+
+const PR_SEV: Record<string, { label: string; color: string }> = {
+  ...SEV,
+  DUVIDA: { label: 'Pergunta', color: C.purple },
+  PENDENCIA: { label: 'Pendências QA', color: C.dim },
+}
+
+/** O voto de uma PR: o escolhido; sem escolha, a sugestão do AiDW, senão a do revisor; sem nenhuma, vazio. */
+export function prVoteOf(s: Snapshot, chosen: Record<string, string>, pr: string): string {
+  if (chosen[pr] !== undefined) return chosen[pr] ?? ''
+  const v = s.prTriage?.votes.find(x => x.pr === pr)
+  return v ? voteIn(v.aidw, s.votes) || voteIn(v.reviewer, s.votes) : ''
+}
+
+const voteLabel = (s: Snapshot, value: string) => (value === 'none' ? 'Sem voto' : s.votes.find(o => o.value === value)?.label ?? value)
+
+/** As PRs da demanda: as da triagem e as do demand.json, sem repetir. */
+function prsOf(s: Snapshot): { pr: string; repo: string }[] {
+  const out = new Map<string, string>()
+  for (const r of s.repos) if (r.pr) out.set(r.pr, r.name)
+  for (const c of s.prTriage?.comments ?? []) if (c.pr && !out.has(c.pr)) out.set(c.pr, '')
+  for (const v of s.prTriage?.votes ?? []) if (v.pr && !out.has(v.pr)) out.set(v.pr, '')
+  return [...out].map(([pr, repo]) => ({ pr, repo }))
+}
+
+function PrComments(ui: UI, v: ViewState, act: Actions) {
+  const { Box, Text, Button, Input } = ui
+  const s = v.snap
+  const tri = s.prTriage
+  if (!tri) return <Text color={C.dim}>A revisão ainda não terminou.</Text>
+  const choice = (id: string) => v.publish[id]
+  const filters = [
+    { id: 'decidir', label: 'A decidir', has: (c: PrComment) => !c.published && choice(c.id) === undefined && !c.declined },
+    { id: 'publicados', label: 'Publicados', has: (c: PrComment) => c.published },
+    { id: 'todos', label: 'Todos', has: () => true },
+  ]
+  const pending = tri.comments.filter(c => filters[0]?.has(c)).length
+  const filter = filters.find(f => f.id === v.decisionTab) ?? (pending ? filters[0] : filters[2])
+  const prs = prsOf(s)
+  const missingVote = prs.filter(p => !prVoteOf(s, v.votes, p.pr))
+  const toPublish = tri.comments.filter(c => !c.published && (choice(c.id) ?? false))
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Box justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
+        <Text color={C.dim}>rodada {tri.round}</Text>
+        <Box gap={1}>
+          {filters.map(f =>
+            f.id === filter?.id ? (
+              <Button key={`pt-${f.id}`} label={`${f.label} ${tri.comments.filter(c => f.has(c)).length}`} onPress={() => act.decisionTab(f.id)} />
+            ) : (
+              <Button key={`pt-${f.id}`} label={`${f.label} ${tri.comments.filter(c => f.has(c)).length}`} plain dimColor onPress={() => act.decisionTab(f.id)} />
+            ),
+          )}
+        </Box>
+      </Box>
+      {prs.map(({ pr, repo }) => {
+        const list = tri.comments.filter(c => c.pr === pr && filter?.has(c))
+        const all = tri.comments.filter(c => c.pr === pr).length
+        return (
+          <Box key={`prg-${pr}`} flexDirection="column" gap={1}>
+            <Box gap={2}>
+              <Text bold color={C.strong}>
+                PR {pr}
+              </Text>
+              <Text color={C.dim}>
+                {[repo, `${all} comentário${all === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
+              </Text>
+            </Box>
+            {list.map(c => prCommentCard(ui, v, act, c))}
+            {prVoteCard(ui, v, act, pr)}
+          </Box>
+        )
+      })}
+      {tri.comments.some(c => !c.pr) && (
+        <Box flexDirection="column" gap={1}>
+          <Text bold color={C.strong}>
+            Sem PR na triagem
+          </Text>
+          {tri.comments.filter(c => !c.pr && filter?.has(c)).map(c => prCommentCard(ui, v, act, c))}
+        </Box>
+      )}
+      {tri.outside &&
+        card(
+          ui,
+          'fora',
+          'Fora das PRs',
+          v.expanded.outside ? (
+            <Box flexDirection="column">
+              {ui.Markdown ? <ui.Markdown key="fora-md" text={tri.outside} /> : <Text>{tri.outside}</Text>}
+              <Button key="fora-less" label="Mostrar menos" plain dimColor onPress={() => act.expand('outside')} />
+            </Box>
+          ) : (
+            <Button key="fora-more" label="Mostrar" plain dimColor onPress={() => act.expand('outside')} />
+          ),
+          `${tri.outside.split('\n').filter(l => /^\s*-\s/.test(l) && !/^\s{2,}/.test(l)).length} · não viram comentário`,
+        )}
+      <Box justifyContent="space-between" alignItems="center" gap={2}>
+        <Box flexShrink={1}>
+          <Text color={missingVote.length ? C.amber : C.dim}>
+            {missingVote.length
+              ? `Escolha o voto da PR ${missingVote.map(p => p.pr).join(' e da PR ')}.`
+              : `${prs.map(p => `${p.pr}: ${voteLabel(s, prVoteOf(s, v.votes, p.pr)).toLowerCase()}`).join(' · ')} · ${toPublish.length} comentário(s) para publicar · nada sai até você enviar`}
+          </Text>
+        </Box>
+        {!missingVote.length && <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />}
+      </Box>
+    </Box>
+  )
+}
+
+function prCommentCard(ui: UI, v: ViewState, act: Actions, c: PrComment) {
+  const { Box, Text, Button, Input } = ui
+  const sev = PR_SEV[c.severity] ?? { label: c.severity || '—', color: C.dim }
+  const key = `comentario-${c.id}`
+  const editing = v.expanded[`edit:${c.id}`]
+  const open = v.expanded[`c:${c.id}`] ?? (!c.published && !c.declined)
+  const text = v.drafts[key] ?? c.draft
+  const chosen = v.publish[c.id]
+  const recommendsPublish = /^\W*publicar/i.test(c.recommendation)
+  const status = c.published ? { text: c.situation || 'publicado', color: C.green } : c.declined ? { text: c.situation, color: C.faint } : { text: 'a decidir', color: C.amber }
+  return (
+    <Box key={`pc-${c.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
+      <Box gap={1} flexWrap="wrap">
+        {chip(ui, `pcs-${c.id}`, sev.label, sev.color)}
+        <Text color={C.dim}>{c.id}</Text>
+        <Box flexGrow={1} flexShrink={1}>
+          <Text color={C.dim}>{c.where}</Text>
+        </Box>
+        <Text color={status.color}>{status.text}</Text>
+      </Box>
+      {rich(ui, `pct-${c.id}`, c.title || c.id)}
+      {c.origins.length > 0 && <Text color={C.faint}>junta {c.origins.join(' · ')}</Text>}
+      {!open && (
+        <Button key={`pco-${c.id}`} label="Ver comentário" plain dimColor onPress={() => act.expand(`c:${c.id}`)} />
+      )}
+      {open && text && (
+        <Box flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={1}>
+          <Box justifyContent="space-between" gap={1}>
+            <Text color={C.dim}>Comentário na PR {c.pr}</Text>
+            {!c.published && (
+              <Box gap={1}>
+                <Button key={`pe-${c.id}`} label={editing ? 'pronto' : 'editar'} plain dimColor onPress={() => act.expand(`edit:${c.id}`)} />
+                <Button
+                  key={`pa-${c.id}`}
+                  label="ajustar no chat ↗"
+                  plain
+                  dimColor
+                  onPress={() => act.adjustInChat(`Ajuste o comentário ${c.id} (PR ${c.pr}) antes de publicar. Texto atual:\n\n${text}\n\nO que mudar: `)}
+                />
+              </Box>
+            )}
+          </Box>
+          {editing ? <Input key={key} value={text} onInput={value => act.draft(key, value)} onSubmit={value => act.draft(key, value)} /> : rich(ui, `pcd-${c.id}`, text)}
+        </Box>
+      )}
+      {open && c.recommendation && !c.published && (
+        <Box flexDirection="column">
+          <Text color={C.dim}>Recomendação do AiDW</Text>
+          {rich(ui, `pcr-${c.id}`, c.recommendation)}
+        </Box>
+      )}
+      {!c.published && (
+        <Box gap={1}>
+          <Button
+            key={`pp-${c.id}`}
+            label={`${chosen === true ? '✓ ' : ''}${c.severity === 'DUVIDA' ? 'Perguntar ao time' : 'Publicar'}${recommendsPublish ? ' (recomendado)' : ''}`}
+            onPress={() => act.togglePublish(c.id, true)}
+          />
+          <Button
+            key={`pn-${c.id}`}
+            label={`${chosen === false || (chosen === undefined && c.declined) ? '✓ ' : ''}Não publicar${recommendsPublish ? '' : ' (recomendado)'}`}
+            onPress={() => act.togglePublish(c.id, false)}
+          />
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+function prVoteCard(ui: UI, v: ViewState, act: Actions, pr: string) {
+  const { Box, Text, Button } = ui
+  const s = v.snap
+  const sug = s.prTriage?.votes.find(x => x.pr === pr)
+  const reviewer = sug ? voteIn(sug.reviewer, s.votes) : ''
+  const aidw = sug ? voteIn(sug.aidw, s.votes) : ''
+  const current = prVoteOf(s, v.votes, pr)
+  const more = v.expanded[`more:${pr}`] || s.votes.some(o => o.more && o.value === current)
+  const options = [...s.votes.filter(o => !o.more || more), { value: 'none', label: 'Sem voto' }]
+  const tag = (value: string) => [aidw === value && 'AiDW', reviewer === value && 'revisor'].filter(Boolean).join(' e ')
+  return card(
+    ui,
+    `pv-${pr}`,
+    `Voto na PR ${pr}`,
+    <Box flexDirection="column" gap={1}>
+      {sug ? (
+        <Text color={C.dim}>
+          {[reviewer && `Revisor: ${voteLabel(s, reviewer)}`, aidw && `AiDW: ${voteLabel(s, aidw)}`, sug.why].filter(Boolean).join(' · ')}
+        </Text>
+      ) : (
+        <Text color={C.amber}>A triagem não sugere voto para esta PR: escolha um.</Text>
+      )}
+      <Box gap={1} flexWrap="wrap">
+        {options.map(o => {
+          const t = tag(o.value)
+          const label = `${o.value === current ? '● ' : ''}${o.label}${t ? ` (${t})` : ''}`
+          return o.value === current ? (
+            <Button key={`vote-${pr}-${o.value}`} label={label} onPress={() => act.votePr(pr, o.value)} />
+          ) : (
+            <Button key={`vote-${pr}-${o.value}`} label={label} plain dimColor onPress={() => act.votePr(pr, o.value)} />
+          )
+        })}
+        {!more && s.votes.some(o => o.more) && (
+          <Button key={`vote-more-${pr}`} label="Mais opções" plain dimColor onPress={() => act.expand(`more:${pr}`)} />
+        )}
+      </Box>
+    </Box>,
   )
 }
 
@@ -1434,48 +1766,41 @@ const SITUATION: Record<string, string> = {
   'nada a reaproveitar': C.dim,
 }
 
-function CardCode(ui: UI, v: ViewState) {
-  const { Box, Text } = ui
+function CardCode(ui: UI, v: ViewState, act: Actions) {
+  const { Box, Text, Button } = ui
   const s = v.snap
   const pts = s.cardPoints
   const counts = Object.entries(pts.reduce<Record<string, number>>((acc, p) => ({ ...acc, [p.situation]: (acc[p.situation] ?? 0) + 1 }), {}))
+  const all = v.expanded.cardPoints
+  const shown = all ? pts : pts.slice(0, 5)
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Card × código', s.title)}
-      {s.cardAsk && card(ui, 'ask', 'O que o card pede', <Text>{s.cardAsk}</Text>)}
+      {s.cardAsk && card(ui, 'ask', 'O que o card pede', rich(ui, 'ask-t', s.cardAsk))}
       {pts.length === 0 && s.points.length === 0 && <Text color={C.dim}>Os pontos aparecem quando o explorador validar o card no código.</Text>}
       {pts.length > 0 &&
         card(
           ui,
           'pts',
           'Validado no código',
-          <Box flexDirection="column">
-            <Box gap={2}>
-              <Box width="42%">
-                <Text color={C.dim}>Hoje no código</Text>
-              </Box>
-              <Box width="42%">
-                <Text color={C.dim}>Para a demanda</Text>
-              </Box>
-              <Box width={20}>
-                <Text> </Text>
-              </Box>
-            </Box>
-            {pts.map((p, i) => (
-              <Box key={`pt-${i}`} gap={2}>
-                <Box width="42%" flexShrink={1}>
-                  <Text>{p.today}</Text>
+          <Box flexDirection="column" gap={1}>
+            {shown.map((p, i) => (
+              <Box key={`pt-${i}`} gap={2} alignItems="flex-start">
+                <Box width={20} flexShrink={0}>
+                  <Text color={SITUATION[p.situation] ?? C.dim} bold>
+                    {p.situation}
+                  </Text>
                 </Box>
-                <Box width="42%" flexShrink={1}>
-                  <Text color={C.mid}>{p.effect}</Text>
-                </Box>
-                <Box width={20} justifyContent="flex-end">
-                  {chip(ui, `pts-${i}`, p.situation, SITUATION[p.situation] ?? C.dim)}
+                <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                  {rich(ui, `ptt-${i}`, p.today)}
+                  {rich(ui, `pte-${i}`, p.effect, C.dim)}
                 </Box>
               </Box>
             ))}
+            {pts.length > 5 && (
+              <Button key="pts-more" label={all ? 'Mostrar menos' : `Mostrar mais ${pts.length - 5}`} plain dimColor onPress={() => act.expand('cardPoints')} />
+            )}
           </Box>,
-          `${pts.length} pontos · ${counts.map(([k, n]) => `${n} ${k}`).join(' · ')}`,
+          counts.map(([k, n]) => `${n} ${k}`).join(' · '),
         )}
       {pts.length === 0 &&
         s.points.length > 0 &&
@@ -1490,43 +1815,35 @@ function CardCode(ui: UI, v: ViewState) {
                   <Text color={C.dim}>{p.id}</Text>
                 </Box>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Text>{p.text}</Text>
+                  {rich(ui, `pot-${p.id}`, p.text)}
                 </Box>
                 <Text color={C.mid}>{p.verdict}</Text>
               </Box>
             ))}
           </Box>,
+          `${s.points.length} pontos`,
         )}
+      {s.touches && card(ui, 'touches', 'Onde a mudança toca', ui.Markdown ? <ui.Markdown key="touches-md" text={s.touches} /> : <Text>{s.touches}</Text>)}
     </Box>
   )
 }
 
 function EstimateView(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Input, Button } = ui
+  const { Box, Text, Button } = ui
   const s = v.snap
   const e = s.estimate
-  if (!e) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        {header(ui, s, 'Estimativa e dúvidas')}
-        <Text color={C.dim}>A estimativa aparece quando o levantamento-&lt;id&gt;.md for gravado.</Text>
-      </Box>
-    )
-  }
+  if (!e) return <Text color={C.dim}>A estimativa aparece quando o levantamento-&lt;id&gt;.md for gravado.</Text>
   const kpis = [
     [e.spCard || e.sp, e.spCard ? 'o card como está' : 'story points'],
     [e.spSplit, 'quebrado em itens'],
-    [e.devDays || e.hours, e.devDays ? 'de desenvolvimento' : 'horas'],
-    [e.qaDays ? `+${e.qaDays}` : '', 'de QA integrado'],
+    [e.devDays || e.hours, e.devDays ? 'desenvolvimento' : 'horas'],
+    [e.qaDays ? `+${e.qaDays}` : '', 'QA integrado'],
+    [[e.complexity, e.confidence].filter(Boolean).join(' · '), 'complexidade · confiança'],
   ].filter(([n]) => n)
   const maxDays = Math.max(1, ...s.effort.map(b => b.max))
-  const groups = [...new Set(s.doubts.map(d => d.group || 'Dúvidas'))]
-  const affecting = s.doubts.filter(d => d.affects).length
-  const firstGroup = groups[0]
   return (
     <Box flexDirection="column" gap={1}>
-      {header(ui, s, 'Estimativa e dúvidas', [e.level && `nível AiDW ${e.level}`, e.passes && `passadas extras: ${e.passes}`].filter(Boolean).join(' · '))}
-      <Box gap={1}>
+      <Box gap={1} flexWrap="wrap">
         {kpis.map(([n, label]) => (
           <Box key={`ek-${label}`} flexDirection="column" flexGrow={1} borderStyle="round" borderColor={C.line} paddingX={2}>
             <Text bold color={C.strong}>
@@ -1536,6 +1853,7 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
           </Box>
         ))}
       </Box>
+      {(e.level || e.passes) && <Text color={C.dim}>{[e.level && `nível AiDW ${e.level}`, e.passes && `passadas extras: ${e.passes}`].filter(Boolean).join(' · ')}</Text>}
       {s.effort.length > 0 &&
         card(
           ui,
@@ -1544,8 +1862,8 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
           <Box flexDirection="column">
             {s.effort.map(b => (
               <Box key={`eb-${b.name}`} gap={2} alignItems="center">
-                <Box width={36}>
-                  <Text>{b.name}</Text>
+                <Box width={36} flexShrink={1}>
+                  {rich(ui, `ebn-${b.name}`, b.name)}
                 </Box>
                 <Box flexGrow={1}>{rangeBar(ui, `ebr-${b.name}`, b.min / maxDays, b.max / maxDays)}</Box>
                 <Box width={7} justifyContent="flex-end">
@@ -1554,7 +1872,7 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
               </Box>
             ))}
           </Box>,
-          'desenvolvimento · mínimo a máximo',
+          'mínimo a máximo',
         )}
       {s.split.length > 0 &&
         card(
@@ -1566,7 +1884,7 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
               <Box key={`sp-${it.n}`} gap={2}>
                 <Text color={C.dim}>{it.n}</Text>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Text>{it.text}</Text>
+                  {rich(ui, `spt-${it.n}`, it.text)}
                 </Box>
                 <Text bold>{it.sp}</Text>
               </Box>
@@ -1574,68 +1892,103 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
           </Box>,
           e.spSplit,
         )}
-      {s.doubts.length > 0 && (
-        <Box justifyContent="space-between">
+      <Box justifyContent="space-between" alignItems="center" gap={2}>
+        <Text color={C.dim}>Comentar no card é ação travada: vai para o prompt e só vale quando você enviar.</Text>
+        <Button key="post-levantamento" label="Levar ao prompt: comentar no card" variant="primary" onPress={() => act.postLevantamento()} />
+      </Box>
+    </Box>
+  )
+}
+
+/** As dúvidas do levantamento: as abertas com o campo de resposta; as respondidas numa linha cada, recolhidas. */
+function Doubts(ui: UI, v: ViewState, act: Actions) {
+  const { Box, Text, Input, Button } = ui
+  const s = v.snap
+  const open = s.doubts.filter(d => !answered(d))
+  const done = s.doubts.filter(d => answered(d))
+  const groups = [...new Set(open.map(d => d.group || 'Dúvidas'))]
+  const doneGroups = [...new Set(done.map(d => d.group))]
+  const affecting = open.filter(d => d.affects).length
+  return (
+    <Box flexDirection="column" gap={1}>
+      {open.length === 0 && <Text color={C.dim}>Nenhuma dúvida aberta.</Text>}
+      {open.length > 0 && (
+        <Box justifyContent="space-between" gap={2}>
           <Text bold color={C.strong}>
-            Dúvidas
+            Abertas
           </Text>
           <Text color={C.dim}>
-            {s.doubts.length}
+            {open.length}
             {affecting ? ` · ${affecting} mudam a estimativa` : ''}
           </Text>
         </Box>
       )}
-      {groups.map(g => {
-        const items = s.doubts.filter(d => (d.group || 'Dúvidas') === g)
-        const open = v.expanded[`dg:${g}`] ?? g === firstGroup
-        return (
-          <Box key={`dg-${g}`} flexDirection="column" gap={1}>
-            <Box justifyContent="space-between">
-              <Text bold>{g}</Text>
-              <Button key={`dgb-${g}`} label={`${items.length} · ${items.map(d => d.id).join(', ')} ${open ? '⌃' : '⌄'}`} plain onPress={() => act.expand(`dg:${g}`)} />
-            </Box>
-            {open &&
-              items.map(d => {
-                const key = `duvida-${d.id}`
-                return (
-                  <Box key={`dq-${d.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1}>
-                    <Box gap={1}>
-                      <Text color={C.dim}>{d.id}</Text>
-                      <Box flexGrow={1} flexShrink={1}>
-                        <Text bold>{d.question}</Text>
-                      </Box>
-                      {d.affects && chip(ui, `da-${d.id}`, d.affects, C.amber)}
-                      {d.to && chip(ui, `dt-${d.id}`, `para ${d.to}`, C.dim)}
-                    </Box>
-                    {d.why && <Text color={C.dim}>{d.why}</Text>}
-                    <Box gap={1} alignItems="center">
-                      <Box flexGrow={1}>
-                        <Input
-                          key={key}
-                          placeholder="sua resposta, se já souber"
-                          value={v.drafts[key] ?? ''}
-                          onInput={value => act.draft(key, value)}
-                          onSubmit={() => act.answerDoubt(d.id)}
-                          submitLabel="Responder"
-                        />
-                      </Box>
-                      <Button
-                        key={`dc-${d.id}`}
-                        label="ajustar no chat ↗"
-                        plain
-                        onPress={() => act.adjustInChat(`Sobre a dúvida ${d.id} do levantamento ${s.id} ("${d.question}"): `)}
+      {groups.map(g => (
+        <Box key={`dg-${g}`} flexDirection="column" gap={1}>
+          {groups.length > 1 && <Text color={C.dim}>{g}</Text>}
+          {open
+            .filter(d => (d.group || 'Dúvidas') === g)
+            .map(d => {
+              const key = `duvida-${d.id}`
+              return (
+                <Box key={`dq-${d.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
+                  <Box gap={1} flexWrap="wrap">
+                    <Text color={C.dim}>{d.id}</Text>
+                    {d.to && <Text color={C.dim}>· para {d.to}</Text>}
+                    {d.affects && <Text color={C.amber}>· muda: {d.affects}</Text>}
+                  </Box>
+                  <Text bold>{d.question}</Text>
+                  {d.why && rich(ui, `dw-${d.id}`, d.why, C.dim)}
+                  <Box gap={1} alignItems="center">
+                    <Box flexGrow={1}>
+                      <Input
+                        key={key}
+                        placeholder="sua resposta, se já souber"
+                        value={v.drafts[key] ?? ''}
+                        onInput={value => act.draft(key, value)}
+                        onSubmit={() => act.answerDoubt(d.id)}
+                        submitLabel="Responder"
                       />
                     </Box>
+                    <Button
+                      key={`dc-${d.id}`}
+                      label="ajustar no chat ↗"
+                      plain
+                      dimColor
+                      onPress={() => act.adjustInChat(`Sobre a dúvida ${d.id} do levantamento ${s.id} ("${d.question}"): `)}
+                    />
                   </Box>
-                )
-              })}
-          </Box>
+                </Box>
+              )
+            })}
+        </Box>
+      ))}
+      {doneGroups.map(g => {
+        const items = done.filter(d => d.group === g)
+        const shown = v.expanded[`dg:${g}`]
+        return card(
+          ui,
+          `dd-${g}`,
+          g,
+          <Box flexDirection="column">
+            {(shown ? items : items.slice(0, 3)).map(d => (
+              <Box key={`dd-${d.id}`} gap={2}>
+                <Box width={5} flexShrink={0}>
+                  <Text color={C.dim}>{d.id}</Text>
+                </Box>
+                <Box flexGrow={1} flexShrink={1}>
+                  {rich(ui, `ddq-${d.id}`, d.question)}
+                </Box>
+                {d.to && <Text color={C.dim}>{d.to}</Text>}
+              </Box>
+            ))}
+            {items.length > 3 && (
+              <Button key={`ddm-${g}`} label={shown ? 'Mostrar menos' : `Mostrar mais ${items.length - 3}`} plain dimColor onPress={() => act.expand(`dg:${g}`)} />
+            )}
+          </Box>,
+          String(items.length),
         )
       })}
-      <Box justifyContent="space-between" alignItems="center">
-        <Text color={C.dim}>Comentar no card é ação travada: vai para o prompt e só vale quando você enviar.</Text>
-        <Button key="post-levantamento" label="Levar ao prompt: comentar no card" variant="primary" onPress={() => act.postLevantamento()} />
-      </Box>
     </Box>
   )
 }
@@ -1677,7 +2030,7 @@ export function prDecisionText(s: Snapshot, publish: Record<string, boolean>, vo
   const yes = shown.filter(f => publish[f.id] === true)
   const no = shown.filter(f => publish[f.id] === false).map(f => f.id)
   const edited = yes.filter(f => drafts[`comentario-${f.id}`] && drafts[`comentario-${f.id}`] !== f.comment)
-  const label = VOTES.find(o => o.value === vote)?.label ?? vote
+  const label = VOTES.find(o => o.value === vote)?.label ?? 'nenhum escolhido (não vote)'
   return [
     `Revisão final da PR (${s.id}, rodada ${round}):`,
     `- Publicar: ${yes.map(f => f.id).join(', ') || 'nenhum'} (com o texto dos rascunhos${edited.length ? ', exceto os editados abaixo' : ' como está'}).`,
@@ -1686,6 +2039,31 @@ export function prDecisionText(s: Snapshot, publish: Record<string, boolean>, vo
     `- Voto: ${label}.`,
     'Pode publicar e votar exatamente isso.',
   ].join('\n')
+}
+
+/** A decisão da revisão de PR, PR por PR: o que publicar (com os textos editados) e o voto. */
+export function prTriageDecisionText(s: Snapshot, publish: Record<string, boolean>, chosen: Record<string, string>, drafts: Record<string, string> = {}): string {
+  const tri = s.prTriage
+  if (!tri) return ''
+  const lines = [`Revisão final da PR (${s.id}, rodada ${tri.round}):`]
+  for (const { pr } of prsOf(s)) {
+    const open = tri.comments.filter(c => c.pr === pr && !c.published)
+    const yes = open.filter(c => publish[c.id] === true)
+    const no = open.filter(c => publish[c.id] === false || (publish[c.id] === undefined && c.declined)).map(c => c.id)
+    const undecided = open.filter(c => publish[c.id] === undefined && !c.declined).map(c => c.id)
+    const vote = prVoteOf(s, chosen, pr)
+    const voteText = vote === 'none' ? 'sem voto' : `${voteLabel(s, vote)} (${vote})`
+    lines.push(
+      `- PR ${pr}: publicar ${yes.map(c => c.id).join(', ') || 'nenhum'}; não publicar ${no.join(', ') || 'nenhum'}` +
+        `${undecided.length ? `; sem decisão, não publicar: ${undecided.join(', ')}` : ''}; voto: ${voteText}.`,
+    )
+    for (const c of yes) {
+      const text = drafts[`comentario-${c.id}`]
+      if (text && text !== c.draft) lines.push(`  - ${c.id}, texto editado: ${text}`)
+    }
+  }
+  lines.push('Publique e vote exatamente isso; depois atualize a Situação e o Publicado na triagem.')
+  return lines.join('\n')
 }
 
 export function levantamentoText(s: Snapshot): string {

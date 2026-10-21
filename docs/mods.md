@@ -15,15 +15,15 @@ Os mods do AiDW ficam ligados **só no modo orquestrador**:
 
 Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
 
-**O painel é por contexto.** Ele segue os artefatos de um jeito de trabalhar (cobertura de critérios, revisão em
-cartões, roteiro manual, levantamento) e só existe no contexto que o liga no `context.toml`:
+**O painel vale em todo contexto.** Ele mostra os artefatos do fluxo do AiDW (cobertura de critérios, revisão em
+cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto pode desligá-lo no `context.toml`:
 
 ```toml
 [mods]
-panel = true
+panel = false
 ```
 
-Sem isso, o painel não abre, o `/aidw-painel` não é registrado e a demanda fica só com a faixa acima do prompt
+Desligado, o painel não abre, o `/aidw-painel` não é registrado e a demanda fica só com a faixa acima do prompt
 (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
 segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
 
@@ -32,7 +32,7 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 | Mod | Para quê | Onde aparece |
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); só no contexto com `[mods] panel = true` | painel lateral (`/aidw-painel`) |
+| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); desligado só no contexto com `[mods] panel = false` | painel lateral (`/aidw-painel`) |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
 | [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |
@@ -55,15 +55,17 @@ que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em
 
 ## Painel do AiDW
 
-Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/aidw-painel [aba]`**; as teclas
-`1`…`6` trocam de aba e `r` atualiza. O que cada aba mostra, de onde vem cada dado e o que os agentes gravam para
+Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/aidw-painel [aba]`**; no
+terminal, as teclas `1`…`6` trocam de aba e `r` atualiza. O que cada aba mostra, de onde vem cada dado e o que os agentes gravam para
 isso está em **[painel.md](painel.md)**:
 
 | Uso | Abas |
 |---|---|
 | Desenvolvimento | Geral · Critérios e Regras · Revisão · Diffs · Teste manual · Métricas |
-| Revisão de PR | Geral · Achados e voto · Diffs · Métricas |
-| Levantamento | Geral · Card × código · Estimativa e dúvidas · Métricas |
+| Revisão de PR | Geral · Comentários · Diffs · Métricas |
+| Levantamento | Geral · Card × código · Estimativa · Dúvidas · Métricas |
+
+Aba sem dados fica oculta. No app, as abas são só clique; no terminal, as teclas aparecem e funcionam.
 
 Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e votar numa PR, comentar
 no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta

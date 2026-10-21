@@ -1115,6 +1115,19 @@ def context_external_steps(ctx: dict | None) -> list[dict]:
     return [s for s in steps if isinstance(s, dict) and s.get("step")]
 
 
+def context_votes(ctx: dict | None) -> list[dict]:
+    """A escala de voto de PR do contexto ([[mods.votes]]): value, label e `more` (fica em "Mais opções")."""
+    votes = (ctx.get("mods", {}).get("votes", []) if ctx else []) or []
+    return [{"value": str(v["value"]), "label": str(v["label"]), **({"more": True} if v.get("more") else {})}
+            for v in votes if isinstance(v, dict) and v.get("value") is not None and v.get("label")]
+
+
+def check_votes(ctx: dict | None, rep: Report) -> None:
+    for v in (ctx.get("mods", {}).get("votes", []) if ctx else []) or []:
+        if not isinstance(v, dict) or v.get("value") is None or not v.get("label"):
+            rep.error(f"contexto {ctx['name']}: [[mods.votes]] precisa de `value` e `label` (atual: {v!r})")
+
+
 def check_external_steps(ctx: dict | None, rep: Report) -> None:
     seen: set[str] = set()
     for s in (ctx.get("workflows", {}).get("external_steps", []) if ctx else []) or []:
@@ -1956,6 +1969,7 @@ def workflow_files(ctx: dict | None) -> dict[str, Path]:
 def check_workflows(resolved: dict, skills: dict, ctx: dict | None, rep: Report) -> None:
     files = workflow_files(ctx)
     check_external_steps(ctx, rep)
+    check_votes(ctx, rep)
     for kind, name in (ctx.get("workflows", {}).get("by_type", {}) if ctx else {}).items():
         if name not in files:
             rep.error(f"contexto {ctx['name']}: [workflows.by_type] {kind!r} aponta para o workflow inexistente {name!r}")
@@ -2125,11 +2139,14 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
         "max_retries": b["routing"].get("max_retries", 3),
         "max_retries_plan": b["routing"].get("max_retries_plan", b["routing"].get("max_retries", 3)),
-        # o painel lateral do mod segue os artefatos de um jeito de trabalhar: só o contexto que o liga ([mods] panel)
-        "panel": bool(ctx.get("mods", {}).get("panel", False)) if ctx else False,
+        # o painel lateral do mod: ligado, a não ser que o contexto o desligue ([mods] panel = false); sem os
+        # arquivos de um modelo, as abas dele somem
+        "panel": bool(ctx.get("mods", {}).get("panel", True)) if ctx else True,
         # etapas de fora do contexto, para a barra de progresso do painel
         "external_steps": [{k: s.get(k, "") for k in ("step", "name", "before", "who")}
                            for s in context_external_steps(ctx)],
+        # a escala de voto de PR do contexto ([[mods.votes]]); sem ela, o painel usa a do Azure DevOps
+        "votes": context_votes(ctx),
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}"

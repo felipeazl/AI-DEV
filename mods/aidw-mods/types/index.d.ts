@@ -125,7 +125,30 @@ export type Doubt = {
   group: string
   affects: string
 }
-export type Repo = { name: string; path: string; branch: string; base: string; pr: string; source: string }
+/** Um comentário da triagem de uma revisão de PR (`C1`…; referência *triagem-pr*). */
+export type PrComment = {
+  id: string
+  pr: string
+  severity: string
+  where: string
+  /** Os achados que ele junta (`R1-01`, `B1-02`…). */
+  origins: string[]
+  recommendation: string
+  /** Como a triagem diz que está: `a decidir`, `não publicado (r1)`, `publicado (thread 23720), resolvido na r2`… */
+  situation: string
+  published: boolean
+  /** Decidido não publicar numa rodada anterior. */
+  declined: boolean
+  title: string
+  draft: string
+}
+/** O voto de uma PR: o que o revisor e o AiDW sugerem (o valor da escala, ou `none` para sem voto). */
+export type PrVote = { pr: string; reviewer: string; aidw: string; why: string }
+export type PrTriage = { file: string; round: number; comments: PrComment[]; votes: PrVote[]; outside: string }
+/** Uma opção de voto do contexto (`[[mods.votes]]`); `more` fica em "Mais opções". */
+export type VoteOption = { value: string; label: string; more?: boolean }
+
+export type Repo ={ name: string; path: string; branch: string; base: string; pr: string; source: string }
 
 /** Tudo o que os painéis e a faixa mostram de uma demanda, relido do disco a cada mudança. */
 export type Snapshot = {
@@ -159,6 +182,10 @@ export type Snapshot = {
   budget: number
   findings: Finding[]
   vote: string
+  /** A triagem da última rodada de uma revisão de PR no formato *triagem-pr*; null sem ela (o painel cai nos achados). */
+  prTriage: PrTriage | null
+  /** A escala de voto do contexto (`runtime.json` → `votes`), ou a do Azure DevOps. */
+  votes: VoteOption[]
   criteria: Criterion[]
   coverage: CoverageItem[]
   /** Há `cobertura-<id>.md`: sem ele, tudo aparece como "falta" com um aviso. */
@@ -172,6 +199,8 @@ export type Snapshot = {
   split: SplitItem[]
   estimate: Estimate | null
   doubts: Doubt[]
+  /** A seção "Onde a mudança toca" do levantamento, em Markdown (sistemas, contratos, banco). */
+  touches: string
   levantamento: string
   /** Marcas AIDW-TESTE (ajustes temporários de teste) por repositório; null quando não foi conferido. */
   testMarks: Record<string, number> | null
@@ -207,6 +236,8 @@ declare module 'claude-code' {
       extraRounds: Record<string, number>
       publish: Record<string, boolean>
       vote: string
+      /** O voto escolhido por PR (revisão de PR com triagem *triagem-pr*). */
+      votes: Record<string, string>
       drafts: Record<string, string>
       diff: DiffView | null
       reviewRound: number
