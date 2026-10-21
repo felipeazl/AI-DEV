@@ -20,14 +20,25 @@ hoje, o safeweb), porque segue os artefatos daquele jeito de trabalhar ([mods.md
 
 ## Cores
 
-| Cor | Significado |
-|---|---|
-| laranja (do Claude) | o que está acontecendo agora: etapa atual, agente rodando, opção recomendada, sublinhado da aba de decisão |
-| azul | com o time ou a QA (fora do AiDW) |
-| amarelo | atenção: voltou do time ou da QA, perto do limite, implementado sem teste, precisa mudar |
-| verde | coberto, corrigido, passou, linha adicionada |
-| vermelho | falhou, linha removida |
-| cinza | feito, neutro |
+A faixa e o painel usam as cores do tema do Claude (`C` em `hooks/views.tsx`), que o app pinta no tema claro ou escuro;
+nenhuma cor é fixa. Não há cor de tema para fundo neutro, então cartão é só borda e nada leva fundo.
+
+| Cor | Chave do tema | Significado |
+|---|---|---|
+| laranja (do Claude) | `claude` | o que está acontecendo agora: etapa atual, agente rodando, opção recomendada |
+| azul | `suggestion` | com o time ou a QA (fora do AiDW); barras de tokens |
+| amarelo | `warning` | atenção: voltou do time ou da QA, perto do limite, implementado sem teste, precisa mudar |
+| verde | `success` | coberto, corrigido, passou, linha adicionada |
+| vermelho | `error` | falhou, linha removida |
+| roxo | `merged` | dúvida |
+| texto | `text` | o conteúdo |
+| cinza | `inactive` | rótulos e texto secundário |
+| cinza claro | `subtle` | feito, etapas de fora pendentes |
+| borda | `promptBorder` | cartões e trilhos das barras |
+
+O SVG (barras, progresso, gráfico por dia) é desenhado como imagem, fora do tema: `svgDoc` leva, para cada chave, a cor
+do tema escuro e a do claro, e o `prefers-color-scheme` do app escolhe. O tema do `/config` que o mod lê é o do CLI,
+não o do app, por isso não serve para escolher a paleta.
 
 ## Faixa acima do prompt
 

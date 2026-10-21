@@ -1,7 +1,7 @@
 // As telas da faixa e do painel (V2, docs/painel.md). Recebem a tabela de elementos da superfície (não o `$`), os
 // dados e as ações; o register.tsx monta as ações (que gravam o estado ou mandam a decisão do Felipe ao orquestrador).
 
-import type { Elements } from 'claude-code'
+import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, DiffView, Finding, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { CONTEXT_WARN, compact } from './aidw'
@@ -100,23 +100,55 @@ export function tabFor(kind: DemandKind, tab: string): string {
 // ---------------------------------------------------------------------------------------------------------------
 // Cores e peças comuns
 
-/** As cores da V2 (docs/painel.md › Cores). */
+/**
+ * As cores (docs/painel.md › Cores): chaves do tema do Claude, que o app pinta no tema claro ou escuro. Não há chave
+ * de fundo neutro, então cartão é só borda e nada leva fundo.
+ */
 export const C = {
-  text: '#e8e6e3',
-  strong: '#f0eee9',
-  mid: '#bdbbb5',
-  dim: '#8f8d87',
-  line: '#3a3937',
-  card: '#262624',
-  claude: '#d97757',
-  blue: '#8fb3f5',
-  amber: '#e5a54b',
-  green: '#8fd19e',
-  red: '#f0a49c',
-  purple: '#c4a8e8',
-  done: '#7d7b75',
-  bar: '#7a9bd1',
-} as const
+  text: 'text',
+  strong: 'text',
+  mid: 'text',
+  dim: 'inactive',
+  faint: 'subtle',
+  line: 'promptBorder',
+  claude: 'claude',
+  blue: 'suggestion',
+  amber: 'warning',
+  green: 'success',
+  red: 'error',
+  purple: 'merged',
+  done: 'subtle',
+  bar: 'suggestion',
+} as const satisfies Record<string, ThemeKey>
+
+/**
+ * O SVG é desenhado como imagem, fora do tema: cada chave usada nele ganha a cor do tema escuro e a do claro, e o
+ * `prefers-color-scheme` do app escolhe (`[escuro, claro]`).
+ */
+const SVG_PAINT: Partial<Record<ThemeKey, [string, string]>> = {
+  text: ['#e8e6e3', '#1f1e1d'],
+  inactive: ['#8f8d87', '#6b6a64'],
+  subtle: ['#6f6d68', '#b5b2a7'],
+  promptBorder: ['#3a3937', '#e4e2da'],
+  claude: ['#d97757', '#c15f3c'],
+  suggestion: ['#7a9bd1', '#5b84c9'],
+  warning: ['#e5a54b', '#a86400'],
+  success: ['#8fd19e', '#2f7d45'],
+  error: ['#f0a49c', '#b8402e'],
+  merged: ['#c4a8e8', '#7a4fb5'],
+}
+
+const paintRules = (i: 0 | 1) =>
+  Object.entries(SVG_PAINT)
+    .map(([k, c]) => `.f-${k}{fill:${c[i]}}.s-${k}{stroke:${c[i]}}`)
+    .join('')
+const SVG_STYLE = `<style>${paintRules(1)}@media (prefers-color-scheme: dark){${paintRules(0)}}</style>`
+
+/** Um documento SVG com as cores do tema; nos elementos, `fill(chave)` e `stroke(chave)`. */
+export const svgDoc = (width: number, height: number, body: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${SVG_STYLE}${body}</svg>`
+const fill = (key: string) => `class="f-${key}"`
+const stroke = (key: string) => `class="s-${key}" fill="none"`
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 100) : 0)
 const secs = (s: number) =>
@@ -148,7 +180,7 @@ function meter(ui: UI, key: string, percent: number, color: string, width = 64) 
         alt={`${p}%`}
         width={width}
         height={6}
-        source={`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="6"><rect width="${width}" height="6" rx="3" fill="${C.line}"/><rect width="${w}" height="6" rx="3" fill="${color}"/></svg>`}
+        source={svgDoc(width, 6, `<rect width="${width}" height="6" rx="3" ${fill(C.line)}/><rect width="${w}" height="6" rx="3" ${fill(color)}/>`)}
       />
     )
   }
@@ -211,7 +243,7 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
   const { Box, Text } = ui
   const parts: unknown[] = []
   const add = (key: string, label: string, percent: number, text: string, warn = WARN) => {
-    const color = percent >= warn ? C.amber : C.mid
+    const color = percent >= warn ? C.amber : C.dim
     parts.push(
       <Box key={key} gap={1} alignItems="center">
         <Text color={percent >= warn ? C.amber : C.dim}> · {label}</Text>
@@ -318,13 +350,13 @@ function progressBar(ui: UI, s: Snapshot) {
     const rects: string[] = []
     const labels: string[] = []
     for (const g of groups) {
-      labels.push(`<text x="${x}" y="9" font-size="10" fill="${C.dim}" font-family="system-ui,sans-serif">${g.name}</text>`)
+      labels.push(`<text x="${x}" y="9" font-size="10" ${fill(C.dim)} font-family="system-ui,sans-serif">${g.name}</text>`)
       for (const st of g.stages) {
         const dashed = g.name !== 'AiDW' && st.state === 'pendente'
         rects.push(
           dashed
-            ? `<rect x="${x + 0.5}" y="15.5" width="${seg - 1}" height="5" rx="2.5" fill="none" stroke="#5f5d58" stroke-dasharray="3 2"><title>${st.name}</title></rect>`
-            : `<rect x="${x}" y="15" width="${seg}" height="6" rx="3" fill="${STAGE_COLOR[st.state] ?? C.line}"><title>${st.name}</title></rect>`,
+            ? `<rect x="${x + 0.5}" y="15.5" width="${seg - 1}" height="5" rx="2.5" ${stroke(C.faint)} stroke-dasharray="3 2"><title>${st.name}</title></rect>`
+            : `<rect x="${x}" y="15" width="${seg}" height="6" rx="3" ${fill(STAGE_COLOR[st.state] ?? C.line)}><title>${st.name}</title></rect>`,
         )
         x += seg + gap
       }
@@ -338,7 +370,7 @@ function progressBar(ui: UI, s: Snapshot) {
         width={width}
         height={22}
         isInteractive
-        source={`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="22">${labels.join('')}${rects.join('')}</svg>`}
+        source={svgDoc(width, 22, `${labels.join('')}${rects.join('')}`)}
       />
     )
   }
@@ -837,9 +869,9 @@ function Diffs(ui: UI, v: ViewState, act: Actions) {
               const dir = f.path.slice(0, f.path.length - name.length).replace(/\/$/, '')
               const n = fileFindings(f.path).length
               return (
-                <Box key={`df-${f.path}`} flexDirection="column" paddingX={1} backgroundColor={on ? C.card : undefined}>
+                <Box key={`df-${f.path}`} flexDirection="column" paddingX={1}>
                   <Box justifyContent="space-between">
-                    <Button key={`dfb-${f.path}`} label={name} plain onPress={() => act.diffFile(f.path)} />
+                    <Button key={`dfb-${f.path}`} label={on ? `› ${name}` : name} plain dimColor={!on} onPress={() => act.diffFile(f.path)} />
                     <Text>
                       <Text color={C.green}>+{f.added}</Text>
                       {f.removed ? <Text color={C.red}> −{f.removed}</Text> : ''}
@@ -994,7 +1026,7 @@ function stepRow(ui: UI, m: Snapshot['manual'][number], current: boolean) {
   const { Box, Text } = ui
   const mark = m.result === '✅' ? <Text color={C.green}>✓</Text> : m.result === '❌' ? <Text color={C.red}>✕</Text> : <Text color={current ? C.claude : C.dim}>{current ? '●' : '○'}</Text>
   return (
-    <Box key={`step-${m.section}-${m.id}`} gap={2} paddingX={1} backgroundColor={current ? C.card : undefined}>
+    <Box key={`step-${m.section}-${m.id}`} gap={2} paddingX={1}>
       {mark}
       <Box width={5}>
         <Text color={C.dim}>{m.id}</Text>
@@ -1036,9 +1068,9 @@ function dayChart(ui: UI, days: Group[]) {
       const y = height - 18 - bh
       return (
         `<g><title>${ddmm(d.key)}: ${d.n} chamada(s), ${compact(d.tokens)} tokens, ${secs(d.seconds)}</title>` +
-        `<rect x="${x}" y="${y}" width="${colW}" height="${bh}" rx="4" fill="${C.bar}"/>` +
-        `<text x="${x + colW / 2}" y="${y - 5}" text-anchor="middle" font-size="11" fill="${C.mid}" font-family="system-ui,sans-serif">${compact(d.tokens)}</text>` +
-        `<text x="${x + colW / 2}" y="${height - 3}" text-anchor="middle" font-size="11" fill="${C.dim}" font-family="system-ui,sans-serif">${ddmm(d.key)}</text></g>`
+        `<rect x="${x}" y="${y}" width="${colW}" height="${bh}" rx="4" ${fill(C.bar)}/>` +
+        `<text x="${x + colW / 2}" y="${y - 5}" text-anchor="middle" font-size="11" ${fill(C.mid)} font-family="system-ui,sans-serif">${compact(d.tokens)}</text>` +
+        `<text x="${x + colW / 2}" y="${height - 3}" text-anchor="middle" font-size="11" ${fill(C.dim)} font-family="system-ui,sans-serif">${ddmm(d.key)}</text></g>`
       )
     })
     return (
@@ -1048,7 +1080,7 @@ function dayChart(ui: UI, days: Group[]) {
         width={width}
         height={height}
         isInteractive
-        source={`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><line x1="0" y1="${height - 18}" x2="${width}" y2="${height - 18}" stroke="${C.line}"/>${bars.join('')}</svg>`}
+        source={svgDoc(width, height, `<line x1="0" y1="${height - 18}" x2="${width}" y2="${height - 18}" ${stroke(C.line)}/>${bars.join('')}`)}
       />
     )
   }
@@ -1620,7 +1652,7 @@ function rangeBar(ui: UI, key: string, from: number, to: number) {
         alt={`${Math.round(from * 100)}–${Math.round(to * 100)}%`}
         width={width}
         height={8}
-        source={`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="8"><rect width="${width}" height="8" rx="4" fill="${C.line}"/><rect x="${Math.min(x, width - w)}" width="${w}" height="8" rx="4" fill="${C.bar}"/></svg>`}
+        source={svgDoc(width, 8, `<rect width="${width}" height="8" rx="4" ${fill(C.line)}/><rect x="${Math.min(x, width - w)}" width="${w}" height="8" rx="4" ${fill(C.bar)}/>`)}
       />
     )
   }
