@@ -90,7 +90,10 @@ const norm = (path: string) => path.replace(/\\/g, '/')
 const PROPS_BAND = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 160, scroll: { offset: 0, bodyRows: 4 }, view: {} }
 const PROPS_PANE = { title: 'AiDW', isFocused: true, bodyColumns: 160, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 
-type Fake = { runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; opens: number; clock: ReturnType<typeof mock.clock> }
+type Fake = {
+  runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; opens: number; clock: ReturnType<typeof mock.clock>
+  files: Record<string, string>
+}
 
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
@@ -104,7 +107,7 @@ function fake(
   for (const [id, entries] of Object.entries(DEMANDS)) {
     for (const [name, text] of Object.entries(entries)) files[`${STATE}/${id}/${name}`] = text
   }
-  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], opens: 0, clock: mock.clock(on) }
+  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], opens: 0, clock: mock.clock(on), files }
   on('ui.toast', ($, e) => {
     out.toasts.push(e.text)
     return { value: undefined }
@@ -409,6 +412,30 @@ test('fim de turno com contexto alto fora de espera: sugere /compact uma vez, se
   expect(f.toasts.filter(t => t.includes('/compact')).length).toBe(1)
   expect(f.toasts.find(t => t.includes('/compact'))).toContain('300k tokens')
   expect(compactions).toEqual([])
+})
+
+test('troca de etapa com contexto alto: compacta uma vez entre turnos', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', contextTokens: 300_000 })
+  const compactions: string[] = []
+  on('session.compact', ($, e) => {
+    compactions.push(e.instructions ?? '')
+    return { messages: [{ role: 'user', text: 'resumo da conversa', toolUses: [] }] as never, tokensBefore: 300_000, tokensAfter: 40_000 }
+  })
+  await $.session.start(START('us-1'))
+  await $.turn.complete(TURN(290_000)) // CODER_FIX: a primeira etapa vista não é troca
+  await f.clock.advance(1_000)
+  expect(compactions).toEqual([])
+  const file = `${STATE}/us-1/demand.json`
+  f.files[file] = JSON.stringify({ ...JSON.parse(f.files[file] ?? '{}'), step: 'REVIEW' })
+  await $.turn.complete(TURN(295_000))
+  await f.clock.advance(1_000)
+  expect(compactions.length).toBe(1)
+  expect(compactions[0]).toContain('troca de etapa')
+  expect(compactions[0]).toContain('REVIEW')
+  expect(f.toasts.some(t => t.includes('compactado na troca de etapa (REVIEW)'))).toBe(true)
+  await $.turn.complete(TURN(296_000))
+  await f.clock.advance(1_000)
+  expect(compactions.length).toBe(1) // a mesma etapa não compacta de novo
 })
 
 test('filtro de segredos nas linhas da conversa', async ($, on) => {
