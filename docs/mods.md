@@ -36,7 +36,7 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
 | [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |
-| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho antes de uma espera longa; sugere `/compact` a partir de 250k tokens | fim do turno |
+| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho antes de uma espera longa e na troca de etapa (a partir de 150k tokens); sugere `/compact` a partir de 250k na mesma etapa | fim do turno |
 | [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
 | [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
 | [Notas no prompt](#notas-da-base-de-conhecimento) | `[[nota]]` numa mensagem leva a nota junto | contexto da mensagem |
@@ -122,8 +122,11 @@ cheio. Por isso o mod mede o contexto em tokens no fim de cada turno:
   sozinho, logo depois do turno, uma vez por espera, pedindo ao resumo que guarde o que está com você (a pergunta, a
   aprovação ou o pacote) e as decisões não gravadas; o estado da demanda volta em seguida (*Estado depois da
   compactação*). Se você responder antes, a compactação não roda. O teste manual não conta: é passo a passo.
-- **Fora de espera**, a partir de 250k tokens: um toast sugere `/compact` na próxima virada de etapa. Depois que o
-  contexto cai abaixo de 150k, o aviso pode voltar.
+- **Troca de etapa** (a etapa gravada no fim do turno é outra que a do turno anterior) com 150k tokens ou mais:
+  compacta sozinho, logo depois do turno, uma vez por etapa. Pede ao resumo que guarde a próxima ação, os agentes em
+  andamento e as decisões não gravadas. Como na espera, se você responder antes, não roda.
+- **Na mesma etapa por muito tempo** (um laço longo), a partir de 250k tokens: um toast sugere `/compact`. Depois que
+  o contexto cai abaixo de 150k, o aviso pode voltar.
 - Os limites ficam em `hooks/aidw.ts` (`CONTEXT_WARN`, `CONTEXT_COMPACT`, `LONG_WAIT`).
 
 ## Economia do orquestrador
