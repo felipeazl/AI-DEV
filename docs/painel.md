@@ -67,6 +67,9 @@ Abas por uso:
 | Revisão de PR | Geral · Comentários · Diffs · Métricas |
 | Levantamento | Geral · Card × código · Estimativa · Dúvidas · Métricas |
 
+O uso vem dos arquivos da demanda. Uma demanda que fechou o levantamento (`DONE` depois do `ESTIMATE`) e seguiu para
+outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado.
+
 - **Cabeçalho único**, acima das abas: tipo e número (`IT 101662 · Desenvolvimento`), a situação
   (`● Revisão final · espera você`) e o título do card. As abas não repetem o cabeçalho.
 - **Abas em texto:** a ativa com moldura, as outras apagadas; ao lado do nome, em laranja, o que espera você
