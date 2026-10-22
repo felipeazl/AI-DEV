@@ -246,6 +246,8 @@ declare module 'claude-code' {
       usage: Usage | null
       codeReads: number
       warned: Record<string, boolean>
+      /** A etapa de cada demanda no fim do turno anterior: a troca de etapa dispara a compactação. */
+      lastStep: Record<string, string>
       /** Revisão V2: a rodada (arquivo do review), a aba de decisão, os filtros e as decisões marcadas. */
       reviewFile: string
       decisionTab: string

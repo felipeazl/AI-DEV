@@ -44,6 +44,7 @@ const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
 const warned = atom({ plugin: 'aidw-mods', key: 'warned' } as const, {})
+const lastStep = atom({ plugin: 'aidw-mods', key: 'lastStep' } as const, {})
 const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
 const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
 const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], open: false }
@@ -305,22 +306,27 @@ async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: num
 }
 
 /**
- * Compacta a conversa antes de uma espera longa por você: na volta, depois de 1h, o cache expirou e o contexto inteiro
- * seria regravado. Roda logo depois do turno (entre turnos); se você já mandou outra mensagem, não compacta.
+ * Compacta a conversa entre turnos: antes de uma espera longa por você (na volta, depois de 1h, o cache expirou e o
+ * contexto inteiro seria regravado) ou na troca de etapa (cada ação relê a conversa inteira; o que passou está nos
+ * arquivos). Se você já mandou outra mensagem, não compacta.
  */
-async function compactForWait($: EngineInterface, id: string, step: string, before: number): Promise<void> {
+async function compactBetweenTurns($: EngineInterface, id: string, step: string, before: number, wait: boolean): Promise<void> {
   try {
     const r = await $.session.compact({
-      instructions:
-        `Compactação do AiDW antes de esperar o usuário na etapa ${step} da demanda ${id}. Mantenha o que está com ele ` +
-        '(a pergunta, a aprovação ou o pacote, com as opções e a recomendação) e as decisões ainda não gravadas; o resto ' +
-        'está nos arquivos da pasta da demanda.',
+      instructions: wait
+        ? `Compactação do AiDW antes de esperar o usuário na etapa ${step} da demanda ${id}. Mantenha o que está com ele ` +
+          '(a pergunta, a aprovação ou o pacote, com as opções e a recomendação) e as decisões ainda não gravadas; o resto ' +
+          'está nos arquivos da pasta da demanda.'
+        : `Compactação do AiDW na troca de etapa da demanda ${id} (agora ${step}). Mantenha a próxima ação, os agentes ` +
+          'em andamento (o que cada um faz e o arquivo da tarefa) e as decisões ainda não gravadas; o resto está nos ' +
+          'arquivos da pasta da demanda.',
     })
     if (r.skip !== undefined) return
     const after = r.tokensAfter ? ` → ${compact(r.tokensAfter)}` : ''
-    $.ui.toast(`AiDW: contexto compactado antes de esperar você (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
+    const why = wait ? 'antes de esperar você' : `na troca de etapa (${step})`
+    $.ui.toast(`AiDW: contexto compactado ${why} (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
   } catch {
-    // um turno começou antes: a compactação fica para a próxima espera
+    // um turno começou antes: a compactação fica para a próxima espera ou troca de etapa
   }
 }
 
@@ -335,15 +341,19 @@ async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs:
   const s = await read($, snap)
   const tokens = await measure($)
   if (!s) return
+  const previous = (await read($, lastStep))[s.id]
+  if (previous !== s.step) await update($, lastStep, m => ({ ...m, [s.id]: s.step }))
+  const stepChanged = previous !== undefined && previous !== s.step
   if (tokens !== null) {
     const key = `ctx:${s.id}`
+    const wait = LONG_WAIT.has(s.step) || s.progress.stages.some(x => x.state === 'com-time')
     if (tokens < CONTEXT_COMPACT) {
       if ((await read($, warned))[key]) await update($, warned, w => ({ ...w, [key]: false })) // compactou: avisa de novo
-    } else if (LONG_WAIT.has(s.step) || s.progress.stages.some(x => x.state === 'com-time')) {
-      const once = `compact:${s.id}:${s.step}:${s.delegations.length}` // uma vez por espera
+    } else if (wait || stepChanged) {
+      const once = `compact:${s.id}:${s.step}:${s.delegations.length}` // uma vez por espera ou troca de etapa
       if (!(await read($, warned))[once]) {
         await update($, warned, w => ({ ...w, [once]: true }))
-        $.clock.after(1_000, () => void compactForWait($, s.id, s.step, tokens))
+        $.clock.after(1_000, () => void compactBetweenTurns($, s.id, s.step, tokens, wait))
       }
     } else if (tokens >= CONTEXT_WARN) {
       await warnOnce(
