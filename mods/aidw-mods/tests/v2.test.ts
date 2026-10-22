@@ -19,7 +19,7 @@ import {
   voteIn,
 } from '../hooks/artifacts'
 import { buildSnapshot, stateLabel } from '../hooks/snapshot'
-import { C, reviewRounds, roundName, svgDoc, visibleTabs } from '../hooks/views'
+import { C, diffSources, patchLabel, reviewRounds, roundName, svgDoc, visibleTabs } from '../hooks/views'
 
 const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ step, at: '' })) })
 
@@ -295,5 +295,28 @@ describe('painel v3', () => {
   test('abas sem dados ficam ocultas; a Geral fica sempre', async () => {
     const s = buildSnapshot({ dir: 'C:/x/us-1', demand: { id: 'us-1', step: 'IMPLEMENT' }, files: [], texts: {}, maxRetries: 3 })
     expect(visibleTabs(s).map(([id]) => id)).toEqual(['geral'])
+  })
+
+  test('riscos da estimativa: subtópicos, na linha ou a seção antiga', async () => {
+    const lines = (...l: string[]) => l.join('\n')
+    const lev = lines('- **Confiança:** média.', '- **Riscos:**', '  - **Texto como contrato:** testes.', '  - **UX:** sem desenho.', '', '### Fora')
+    expect(parseEstimate(lev).risks).toBe(lines('- **Texto como contrato:** testes.', '- **UX:** sem desenho.'))
+    expect(parseEstimate(lines('- **Riscos:** legado sem teste.', '- **Outro:** x')).risks).toBe('legado sem teste.')
+    expect(parseEstimate(lines('## 5. Riscos', '- ambiente de QA', '## 6. Fontes')).risks).toBe('- ambiente de QA')
+    expect(parseEstimate(lines('## Estimativa', '- **Story points:** 3')).risks).toBe('')
+  })
+
+  test('diffs: nomes legíveis e o patch inteiro da PR com worktree sai', async () => {
+    expect(patchLabel('diff-pr8197-GedarAC-r2.patch')).toBe('PR 8197 · só a rodada 2')
+    expect(patchLabel('diff-pr8208-Emissao.patch')).toBe('PR 8208 · Emissao')
+    expect(patchLabel('diff-131192-01-r1-para-r2.patch')).toBe('131192-01 · r1 → r2')
+    expect(patchLabel('diff-145145-api-r1.patch')).toBe('145145-api · rodada 1')
+    expect(patchLabel('ambiente-teste-bug-146134-gedarac.patch')).toBe('ajustes de teste · bug-146134-gedarac')
+    expect(patchLabel('diff-131192-final.patch')).toBe('131192-final')
+    const s = {
+      repos: [{ name: 'GedarAC', path: 'C:/wt/a', pr: '8197' }, { name: 'Emissao', path: 'C:/wt/b', pr: '8208' }],
+      patches: ['diff-pr8197-GedarAC-r2.patch', 'diff-pr8197-GedarAC.patch', 'diff-pr8208-Emissao.patch', 'diff-pr9-Hope.patch'],
+    } as unknown as Parameters<typeof diffSources>[0]
+    expect(diffSources(s).map(x => x.label)).toEqual(['PR 8197 · GedarAC', 'PR 8197 · só a rodada 2', 'PR 8208 · Emissao', 'PR 9 · Hope'])
   })
 })

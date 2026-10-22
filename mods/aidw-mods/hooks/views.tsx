@@ -949,11 +949,32 @@ export function reviewDecisionText(s: Snapshot, decisions: Record<string, string
 
 // --- Diffs -----------------------------------------------------------------------------------------------------
 
-/** De onde vem o diff: cada worktree da demanda e cada .patch da pasta. */
+/** O nome legível de um .patch da pasta: `diff-pr8197-GedarAC-r2.patch` → "PR 8197 · só a rodada 2". */
+export function patchLabel(name: string): string {
+  const base = name.replace(/\.patch$/, '')
+  const pr = /^diff-pr(\d+)-(.+?)(?:-r(\d+))?$/.exec(base)
+  if (pr) return pr[3] ? `PR ${pr[1]} · só a rodada ${pr[3]}` : `PR ${pr[1]} · ${pr[2]}`
+  if (base.startsWith('ambiente-teste')) return `ajustes de teste${base.slice('ambiente-teste'.length).replace(/^-/, ' · ')}`
+  const round = /^diff-(.+?)-r(\d+)(?:-(?:para-)?r(\d+))?$/.exec(base)
+  if (round) return round[3] ? `${round[1]} · r${round[2]} → r${round[3]}` : `${round[1]} · rodada ${round[2]}`
+  return base.replace(/^diff-/, '')
+}
+
+/**
+ * De onde vem o diff: cada worktree da demanda, seguido dos .patch da sua PR, e os outros .patch da pasta. O patch
+ * inteiro de uma PR que tem worktree sai: é o mesmo diff (o `worktree create --pr` o regrava a cada versão).
+ */
 export function diffSources(s: Snapshot): { value: string; label: string }[] {
+  const prOf = (p: string) => /^diff-pr(\d+)-/.exec(p)?.[1] ?? ''
+  const withTree = new Set(s.repos.map(r => String(r.pr ?? '')).filter(Boolean))
+  const patches = s.patches.filter(p => !(withTree.has(prOf(p)) && !/-r\d+\.patch$/.test(p)))
+  const patch = (p: string) => ({ value: `patch:${p}`, label: patchLabel(p) })
   return [
-    ...s.repos.map(r => ({ value: `repo:${r.path}`, label: r.pr ? `PR ${r.pr} · ${r.name}` : r.name })),
-    ...s.patches.map(p => ({ value: `patch:${p}`, label: p })),
+    ...s.repos.flatMap(r => [
+      { value: `repo:${r.path}`, label: r.pr ? `PR ${r.pr} · ${r.name}` : r.name },
+      ...(r.pr ? patches.filter(p => prOf(p) === String(r.pr)).map(patch) : []),
+    ]),
+    ...patches.filter(p => !withTree.has(prOf(p))).map(patch),
   ]
 }
 
@@ -1892,6 +1913,7 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
           </Box>,
           e.spSplit,
         )}
+      {e.risks && card(ui, 'risks', 'Riscos', ui.Markdown ? <ui.Markdown key="risks-md" text={e.risks} /> : <Text>{e.risks}</Text>)}
       <Box justifyContent="space-between" alignItems="center" gap={2}>
         <Text color={C.dim}>Comentar no card é ação travada: vai para o prompt e só vale quando você enviar.</Text>
         <Button key="post-levantamento" label="Levar ao prompt: comentar no card" variant="primary" onPress={() => act.postLevantamento()} />

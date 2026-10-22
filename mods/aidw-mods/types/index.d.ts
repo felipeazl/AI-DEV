@@ -114,6 +114,8 @@ export type Estimate = {
   qaDays: string
   level: string
   passes: string
+  /** O tópico `**Riscos:**` da estimativa (ou a seção `## Riscos` do modelo antigo), em Markdown. */
+  risks: string
 }
 export type Doubt = {
   n: number

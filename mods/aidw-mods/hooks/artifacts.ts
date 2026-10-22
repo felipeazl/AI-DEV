@@ -632,7 +632,20 @@ export function parseEstimate(text: string): Estimate {
     qaDays: clean(qa.replace(/≈\s*/, '')),
     level: pick(/N[íi]vel AiDW:\**\s*\**([a-zçã]+)/i),
     passes: cut(pick(/Passadas extras:\**\s*([^\n]+)/i), 160),
+    risks: parseRisks(text),
   }
+}
+
+/** `- **Riscos:**` com o texto na linha e/ou os subtópicos recuados; no modelo antigo, a seção `## Riscos`. */
+function parseRisks(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const head = /^\s*[-*]\s*\*\*Riscos:?\*\*:?\s*/i
+  const i = lines.findIndex(l => head.test(l))
+  if (i < 0) return parseSection(text, /^##\s+(?:\d+\.\s*)?Riscos/i)
+  const sub: string[] = []
+  for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j] ?? ''); j++) sub.push(lines[j] ?? '')
+  const indent = Math.min(...sub.map(l => /^\s*/.exec(l)?.[0].length ?? 0))
+  return [(lines[i] ?? '').replace(head, '').trim(), ...sub.map(l => l.slice(indent))].filter(Boolean).join('\n')
 }
 
 /** "1,5–2" → [1.5, 2]; "3" → [3, 3]. */

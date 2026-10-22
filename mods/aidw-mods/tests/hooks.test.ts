@@ -46,7 +46,7 @@ const DEMANDS: Record<string, Record<string, string>> = {
       id: 'pr-7', step: 'FINAL_REVIEW',
       repos: [{ repo: 'C:/p/Hope', path: 'C:/wt/pr-7/Hope', branch: 'pr/7', base: 'abc', pr: '7', source: 'def' }],
     }),
-    'diff-pr7-Hope.patch': 'diff --git a/x.cs b/x.cs\n--- a/x.cs\n+++ b/x.cs\n@@ -1 +1 @@\n-a\n+b\n',
+    'diff-pr7-Hope-r2.patch': 'diff --git a/x.cs b/x.cs\n--- a/x.cs\n+++ b/x.cs\n@@ -1 +1 @@\n-a\n+b\n',
     'review-pr-7-r1.md': [
       '### R1-01 — IMPORTANTE — `x.cs:1`', '**O quê:** troca o contrato', '**Rascunho do comentário de PR (7):**', '> Isto quebra o contrato.', '',
       '### R1-02 — SUGESTAO — `x.cs:2`', '**O quê:** nome', '', 'Voto sugerido: aguardar autor (`-5`).',
@@ -291,7 +291,7 @@ test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, o
   expect(f.fills.at(-1)).toContain('Publicar: R1-01, R1-02')
   expect(f.fills.at(-1)).toContain('Voto: Aprovar com sugestões (5)')
   await pane.press({ key: 'tab-diffs' })
-  await pane.press({ key: 'diff-source-patch:diff-pr7-Hope.patch' })
+  await pane.press({ key: 'diff-source-patch:diff-pr7-Hope-r2.patch' })
   await has(pane, /1 arquivo · \+1 −1/)
   await pane.unmount()
 })

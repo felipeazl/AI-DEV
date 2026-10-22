@@ -153,7 +153,7 @@ resumo-<id>.md · pontos-<id>.md · exploracao-levantamento.md
 ```
 
 O painel do AiDW (abas *Card × código*, *Estimativa* e *Dúvidas*) lê exatamente essas tabelas e marcações: mantenha os
-cabeçalhos, as colunas e os rótulos `*Para:*` e `*Muda a estimativa:*` como estão.
+cabeçalhos, as colunas e os rótulos `**Riscos:**`, `*Para:*` e `*Muda a estimativa:*` como estão.
 
 ## 7. Fechar
 
