@@ -150,7 +150,9 @@ Abas por uso:
 ### Diffs
 
 - A fonte em botões (worktrees da demanda e os `.patch`), e o diff da primeira **já abre carregado**; embaixo, a branch
-  contra a base, os arquivos e o `+N −M`. O arquivo escolhido ganha "›"; os outros ficam apagados.
+  contra a base, os arquivos e o `+N −M`. Cada `.patch` tem nome legível ("PR 8197 · só a rodada 2", "131192-01 · r1 →
+  r2", "ajustes de teste · front") e vem logo depois do worktree da sua PR; o patch inteiro de uma PR que tem worktree
+  sai, porque é o mesmo diff. O arquivo escolhido ganha "›"; os outros ficam apagados.
 - Duas colunas: a lista de arquivos (nome, pasta, `+/−`, etiqueta "N achados") e o diff do arquivo, com os números
   de linha de antes e de depois.
 - Os achados da revisão aparecem abaixo da linha que apontam, com "ver na Revisão".
@@ -208,6 +210,7 @@ Abas por uso:
     extras;
   - esforço por bloco em barras de intervalo (mínimo a máximo);
   - a recomendação de quebra em itens, com SP;
+  - **Riscos** (o tópico `**Riscos:**` da estimativa, com os subtópicos);
   - rodapé: **Levar ao prompt: comentar no card**.
 - **Dúvidas:** as abertas por tema, cada uma com para quem é, o que muda na estimativa, o campo de resposta e
   **ajustar no chat**; as de um grupo "Respondidas …" ficam numa linha cada, 3 à vista e "Mostrar mais".
