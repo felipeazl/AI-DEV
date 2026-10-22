@@ -103,8 +103,9 @@ export function parseDelegations(text: string): MetricsRow[] {
 
 /**
  * O contexto do orquestrador em tokens: cada ação relê a conversa inteira, então o que pesa é o tamanho, não a
- * fração da janela (1M). A partir de CONTEXT_WARN o mod sugere /compact; numa espera longa por você, a partir de
- * CONTEXT_COMPACT ele compacta sozinho (a volta depois de 1h regravaria o contexto inteiro no cache).
+ * fração da janela (1M). A partir de CONTEXT_COMPACT ele compacta sozinho numa espera longa por você (a volta depois
+ * de 1h regravaria o contexto inteiro no cache) e na troca de etapa; a partir de CONTEXT_WARN, sem nenhuma das duas,
+ * sugere /compact.
  */
 export const CONTEXT_WARN = 250_000
 export const CONTEXT_COMPACT = 150_000
