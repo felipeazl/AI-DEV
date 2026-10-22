@@ -13,10 +13,14 @@ import type {
   Finding,
   ManualStep,
   Point,
+  PrComment,
+  PrTriage,
+  PrVote,
   Progress,
   ProgressStage,
   SplitItem,
   TimelineItem,
+  VoteOption,
 } from '../types'
 
 export type { CardPoint, CoverageItem, Criterion, Doubt, EffortBlock, Estimate, Finding, ManualStep, Point, Progress, SplitItem, TimelineItem }
@@ -96,7 +100,7 @@ export function timeline(kind: DemandKind, demand: DemandFile): TimelineItem[] {
   }))
 }
 
-/** A demanda espera o Felipe: aprovação, dúvida, teste manual ou revisão final. */
+/** A demanda espera o usuário: aprovação, dúvida, teste manual ou revisão final. */
 export function waitingFor(step: string | undefined): string | null {
   switch (step) {
     case 'HUMAN_APPROVAL':
@@ -270,7 +274,7 @@ export function parseFindings(text: string, round: number, source: Finding['sour
       published: false,
       before: fenced(bodyText, /\*\*Antes:?\*\*:?/i),
       after: fenced(bodyText, /\*\*Depois:?\*\*:?/i),
-      options: [...bodyText.matchAll(/^\s*-?\s*\(([a-z])\)\s+(.+)$/gm)].slice(0, 4).map(o => `(${o[1]}) ${cut(clean(o[2] ?? ''), 80)}`),
+      options: [...bodyText.matchAll(/^\s*-?\s*\(([a-z])\)\s+(.+)$/gm)].slice(0, 4).map(o => `(${o[1]}) ${cut(clean(o[2] ?? ''), 400)}`),
       recommendation: cut(
         clean(/\*\*Recomenda[çc][aã]o:\*\*\s*([^\n]+)/i.exec(bodyText)?.[1] ?? /\*\*Corre[çc][aã]o sugerida:\*\*\s*([^\n]+)/i.exec(bodyText)?.[1] ?? ''),
         240,
@@ -289,10 +293,10 @@ function fenced(body: string, label: RegExp): string {
   return m ? (m[1] ?? '').replace(/\n$/, '') : ''
 }
 
-/** A decisão que a triagem registrou: mantido, descartado ou com você (pendente, inclusive "vai ao Felipe"). */
+/** A decisão que a triagem registrou: mantido, descartado ou com você (pendente, inclusive "vai ao usuário"; "Felipe" fica pelas triagens antigas do safeweb). */
 export function decisionOf(triage: string): Finding['decision'] {
   const t = triage.toLowerCase()
-  if (!t || /felipe|pergunta|com voc[eê]|pendente|aguarda/.test(t)) return 'pendente'
+  if (!t || /felipe|usu[aá]rio|pergunta|com voc[eê]|pendente|aguarda/.test(t)) return 'pendente'
   if (/^\W*(descart|cai\b|n[aã]o corrig|recusad|refutad|n[aã]o public|fora do escopo)/.test(t)) return 'descartado'
   if (/^\W*(corrig|mantid|aceit|publica|sim\b|aplica)/.test(t)) return 'mantido'
   return 'pendente'
@@ -333,21 +337,99 @@ export function parseVote(text: string): string {
   return clean(/Voto sugerido:\s*([^\n]+)/i.exec(text)?.[1] ?? /\*\*Veredito[^\n]*\n((?:-[^\n]*\n?)+)/i.exec(text)?.[1] ?? '')
 }
 
+/** O voto único das revisões de PR sem triagem no formato *triagem-pr* (demandas antigas). */
 export const VOTES = [
   { value: 'approve', label: 'Aprovar (10)' },
   { value: 'approve_with_suggestions', label: 'Aprovar com sugestões (5)' },
   { value: 'wait_for_author', label: 'Aguardar o autor (−5)' },
   { value: 'reject', label: 'Rejeitar (−10)' },
+  { value: 'none', label: 'Sem voto' },
 ] as const
 
-/** O voto sugerido como valor do Select. */
+/** O voto sugerido como valor; vazio quando o revisor não sugeriu: nada vem marcado sem sugestão. */
 export function voteValue(suggested: string): string {
   const s = suggested.toLowerCase()
+  if (/sem voto/.test(s)) return 'none'
   if (/rejeit|-10/.test(s)) return 'reject'
   if (/aguard|-5|wait/.test(s)) return 'wait_for_author'
   if (/sugest|ajuste|\b5\b/.test(s)) return 'approve_with_suggestions'
   if (/aprov|approve|10/.test(s)) return 'approve'
-  return 'wait_for_author'
+  return ''
+}
+
+/** A escala de voto do Azure DevOps, quando o contexto não declara outra (`[[mods.votes]]`). */
+export const DEFAULT_VOTES: VoteOption[] = [
+  { value: '10', label: 'Aprovar' },
+  { value: '5', label: 'Aprovar com sugestões' },
+  { value: '-5', label: 'Aguardar o autor' },
+  { value: '-10', label: 'Rejeitar', more: true },
+]
+
+/** Uma célula de voto da triagem ("5", "-5 (aguardar o autor)", "Aprovar", "sem voto") como valor da escala. */
+export function voteIn(cell: string, votes: VoteOption[]): string {
+  const c = clean(cell).toLowerCase().replace(/[−–]/g, '-')
+  if (!c || /^[-—]$/.test(c)) return ''
+  if (/sem voto|n[aã]o votar|nenhum/.test(c)) return 'none'
+  const n = /^[+]?(-?\d+)\b/.exec(c)?.[1]
+  const byValue = votes.find(v => v.value.toLowerCase() === (n ?? c))
+  if (byValue) return byValue.value
+  // pela palavra: o rótulo mais longo que aparece (Aprovar com sugestões antes de Aprovar)
+  return [...votes].sort((a, b) => b.label.length - a.label.length).find(v => c.includes(v.label.toLowerCase()))?.value ?? ''
+}
+
+/** As linhas de uma tabela Markdown, cada uma como {coluna: célula} pelo cabeçalho (em minúsculas). */
+function tableRows(section: string): Record<string, string>[] {
+  const rows = section.split('\n').filter(l => l.trim().startsWith('|'))
+  const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim())
+  const head = rows[0] ? cells(rows[0]).map(h => clean(h).toLowerCase()) : []
+  return rows.slice(2).map(r => Object.fromEntries(cells(r).map((c, i) => [head[i] ?? String(i), c])))
+}
+const col = (row: Record<string, string>, re: RegExp) => Object.entries(row).find(([k]) => re.test(k))?.[1] ?? ''
+
+const PR_SEVERITY: [RegExp, string][] = [
+  [/cr[ií]tic/i, 'CRITICO'],
+  [/importante/i, 'IMPORTANTE'],
+  [/sugest/i, 'SUGESTAO'],
+  [/d[uú]vida|pergunta/i, 'DUVIDA'],
+  [/pend[eê]ncia/i, 'PENDENCIA'],
+]
+
+/** A triagem de uma revisão de PR no formato da referência *triagem-pr*; null sem a tabela de comentários. */
+export function parsePrTriage(text: string, file = '', round = 0): PrTriage | null {
+  const t = text.replace(/\r\n/g, '\n')
+  const rows = tableRows(parseSection(t, /Coment[aá]rios/i)).filter(r => /^C\d+$/.test(clean(col(r, /^c$/))))
+  if (!rows.length) return null
+  const published = parseSection(t, /^##\s+Publicad/i)
+  const comments: PrComment[] = rows.map(r => {
+    const id = clean(col(r, /^c$/))
+    const situation = clean(col(r, /situa/))
+    // o rascunho: `### C1 — título` seguido do bloco `> …`
+    const at = t.search(new RegExp(`^###\\s+${id}\\b`, 'm'))
+    const lines = at < 0 ? [] : t.slice(at).split('\n')
+    const heading = lines[0] ?? ''
+    const body = lines.slice(1)
+    const end = body.findIndex(l => /^#{1,3}\s/.test(l))
+    const quote = (end < 0 ? body : body.slice(0, end)).filter(l => l.startsWith('>')).map(l => l.replace(/^>\s?/, ''))
+    const sev = col(r, /^sev/)
+    const declined = /n[aã]o publica/i.test(situation)
+    return {
+      id,
+      pr: clean(col(r, /^pr$/)),
+      severity: PR_SEVERITY.find(([re]) => re.test(sev))?.[1] ?? clean(sev).toUpperCase(),
+      where: clean(col(r, /arquivo/)).replace(/`/g, ''),
+      origins: clean(col(r, /origem/)).split(/\s*(?:,|\+| e )\s*/).filter(Boolean),
+      recommendation: clean(col(r, /recomenda/)),
+      situation,
+      published: (!declined && /publicad/i.test(situation)) || new RegExp(`(^|\\W)${id}:`, 'm').test(published),
+      declined,
+      title: clean(heading.replace(new RegExp(`^###\\s+${id}\\s*[—–-]?\\s*`), '')),
+      draft: quote.join('\n').trim(),
+    }
+  })
+  const votes: PrVote[] = tableRows(parseSection(t, /^##\s+Votos/i))
+    .filter(r => clean(col(r, /^pr$/)))
+    .map(r => ({ pr: clean(col(r, /^pr$/)), reviewer: clean(col(r, /revisor/)), aidw: clean(col(r, /aidw|orquestrador/)), why: clean(col(r, /por qu/)) }))
+  return { file, round, comments, votes, outside: parseSection(t, /Fora das PRs/i) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -550,7 +632,20 @@ export function parseEstimate(text: string): Estimate {
     qaDays: clean(qa.replace(/≈\s*/, '')),
     level: pick(/N[íi]vel AiDW:\**\s*\**([a-zçã]+)/i),
     passes: cut(pick(/Passadas extras:\**\s*([^\n]+)/i), 160),
+    risks: parseRisks(text),
   }
+}
+
+/** `- **Riscos:**` com o texto na linha e/ou os subtópicos recuados; no modelo antigo, a seção `## Riscos`. */
+function parseRisks(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const head = /^\s*[-*]\s*\*\*Riscos:?\*\*:?\s*/i
+  const i = lines.findIndex(l => head.test(l))
+  if (i < 0) return parseSection(text, /^##\s+(?:\d+\.\s*)?Riscos/i)
+  const sub: string[] = []
+  for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j] ?? ''); j++) sub.push(lines[j] ?? '')
+  const indent = Math.min(...sub.map(l => /^\s*/.exec(l)?.[0].length ?? 0))
+  return [(lines[i] ?? '').replace(head, '').trim(), ...sub.map(l => l.slice(indent))].filter(Boolean).join('\n')
 }
 
 /** "1,5–2" → [1.5, 2]; "3" → [3, 3]. */
@@ -558,6 +653,15 @@ function range(s: string): [number, number] | null {
   const nums = [...s.matchAll(/\d+(?:,\d+)?/g)].map(m => Number((m[0] ?? '').replace(',', '.')))
   if (!nums.length) return null
   return [nums[0] ?? 0, nums.at(-1) ?? 0]
+}
+
+/** O corpo de uma seção `## <título>` até a próxima de mesmo nível ou acima, sem linhas vazias nas pontas. */
+export function parseSection(text: string, title: RegExp): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const start = lines.findIndex(l => /^##\s/.test(l) && title.test(l))
+  if (start < 0) return ''
+  const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l))
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n').trim()
 }
 
 /** O que o card pede: o parágrafo do `**Card:**` do levantamento. */

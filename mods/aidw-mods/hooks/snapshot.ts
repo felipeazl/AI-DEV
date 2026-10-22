@@ -1,9 +1,10 @@
 // O retrato da demanda que os painéis e a faixa mostram, montado a partir dos arquivos da pasta. Puro: `wanted` diz
 // quais arquivos ler, o register.tsx lê e entrega os textos, `buildSnapshot` monta.
 
-import type { CoverageItem, Finding, Repo, Snapshot } from '../types'
+import type { CoverageItem, Finding, PrTriage, Repo, Snapshot, VoteOption } from '../types'
 import { budgetFor, parseDelegations, parseOrchestrator, roundFor } from './aidw'
 import {
+  DEFAULT_VOTES,
   decisionOf,
   groupArtifacts,
   kindOf,
@@ -19,7 +20,9 @@ import {
   parseItems,
   parsePlanMeta,
   parsePoints,
+  parsePrTriage,
   parseRoteiro,
+  parseSection,
   parseSplit,
   parseTestMatrix,
   parseTriage,
@@ -82,6 +85,19 @@ export type SnapshotInput = {
   maxRetriesPlan?: number
   /** Etapas de fora do contexto (`runtime.json` → `external_steps`). */
   externalSteps?: ExternalStep[]
+  /** A escala de voto do contexto (`runtime.json` → `votes`); sem ela, a do Azure DevOps. */
+  votes?: VoteOption[]
+}
+
+/** A triagem da última rodada de uma revisão de PR, quando segue a referência *triagem-pr*. */
+function prTriageOf(kind: string, files: string[], text: (f: string) => string): PrTriage | null {
+  if (kind !== 'pr-review') return null
+  const last = files
+    .map(f => ({ f, n: Number(TRIAGE.exec(f)?.[1] ?? NaN) }))
+    .filter(x => !Number.isNaN(x.n))
+    .sort((a, b) => a.n - b.n)
+    .at(-1)
+  return last ? parsePrTriage(text(last.f), last.f, last.n) : null
 }
 
 export function buildSnapshot(input: SnapshotInput): Snapshot {
@@ -204,6 +220,8 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     budget: budgetFor(level),
     findings,
     vote: parseVote(text(reviews.at(-1))),
+    prTriage: prTriageOf(kind, files, f => text(f)),
+    votes: input.votes?.length ? input.votes : DEFAULT_VOTES,
     criteria,
     coverage,
     coverageRecorded: !!coverageFile,
@@ -216,6 +234,7 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     split: parseSplit(lev),
     estimate: lev ? parseEstimate(lev) : null,
     doubts: parseDoubts(lev),
+    touches: parseSection(lev, /Onde a mudan[çc]a toca/i),
     levantamento,
     testMarks: null,
   }
@@ -262,7 +281,7 @@ export function nextStep(s: Snapshot, limit: number): { you: boolean; text: stri
         you: true,
         text:
           s.kind === 'pr-review'
-            ? 'Escolha o que publicar e o voto na aba Achados e voto.'
+            ? 'Escolha o que publicar e o voto de cada PR na aba Comentários.'
             : s.kind === 'levantamento'
               ? 'Confira a estimativa e as dúvidas e diga se publica o comentário no card.'
               : 'Confira a entrega (abas Critérios e Diffs) e diga no chat se aprova; depois, `/aidw:done` fecha a demanda.',
@@ -276,6 +295,7 @@ export function nextStep(s: Snapshot, limit: number): { you: boolean; text: stri
 export function stateLabel(state: string): string {
   const s = state.toLowerCase()
   if (!s || s === '—') return '—'
+  if (s === 'missing_state') return 'sem state'
   if (/changes_requested|findings/.test(s)) return /audit/.test(s) ? 'achou problemas' : 'pediu mudanças'
   if (/approved/.test(s)) return 'aprovado'
   if (/clean/.test(s)) return 'nada encontrado'
@@ -291,7 +311,7 @@ export function stateNote(s: Snapshot): string {
   const open = s.findings.filter(f => f.round === s.round && /CRITICO|IMPORTANTE/.test(f.severity ?? '') && !/corrig|resolv|fixed/.test(f.status))
   return [
     `AiDW (mod aidw-mods): estado da demanda ${s.id} relido do disco depois da compactação.`,
-    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o Felipe: ${s.waiting})` : ''}; nível: ${s.level ?? '?'}; modo: ${s.mode}.`,
+    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}; nível: ${s.level ?? '?'}; modo: ${s.mode}.`,
     `- Pasta da demanda: ${s.dir}${s.repos.length ? `; worktrees: ${s.repos.map(r => `${r.name} → ${r.path}`).join(', ')}` : ''}.`,
     s.roundKind ? `- Laço de ${s.roundKind}: rodada ${s.round} de ${s.maxRetries}.` : '',
     open.length ? `- Achados abertos da última rodada: ${open.map(f => `${f.id} ${f.severity}`).join(', ')}.` : '',

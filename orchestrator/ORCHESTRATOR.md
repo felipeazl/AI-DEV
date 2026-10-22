@@ -190,12 +190,13 @@ fixes). Name the demand after its work item (or `pr-<n>` without one); one deman
 - `PREPARE_REVIEW` as usual, then `REVIEW`: one {{agent:reviewer}} task with every PR of the demand, in PR mode
   (summary, PR data, diffs, worktree paths with `base`/`source`, build output, checklist); specialist passes only on
   their triggers, in parallel. `pr_review_done` → triage as in a code review (skill `verificar-premissa` before dropping
-  a finding), but nothing goes to a {{agent:coder}} → `FINAL_REVIEW`.
-- **Final review:** one table per PR — ID, severity, `file:line`, the draft comment, your triage and whether you
-  recommend publishing it — and the suggested vote. The user picks the comments, edits their text and chooses the
-  vote. Commenting, voting and completing the PR are locked actions: only with their explicit OK, exactly what they
-  approved, as the active context says; never touch the work item's state. Record what was published (thread ids) in
-  the triage.
+  a finding), but nothing goes to a {{agent:coder}} → `FINAL_REVIEW`. The triage follows the reference *triagem-pr*:
+  findings that say the same thing become one comment (`C1`…), with a vote per PR; the panel reads it.
+- **Final review:** per PR, its comments — ID, severity, `file:line`, the draft text, your recommendation — and its
+  vote (the reviewer's and yours, or no vote). The user picks the comments, edits their text and chooses each vote.
+  Commenting, voting and completing the PR are locked actions: only with their explicit OK, exactly what they
+  approved, as the active context says; never touch the work item's state. Record what was published (thread ids)
+  and each vote in the triage.
 - **The author updated the PR:** run the same `worktree create --pr <n>` again: it moves the worktree to the new
   version (it refuses local changes) and writes `diff-pr<n>-<repo>-r<N>.patch` with only what changed since the
   reviewed version. A fresh {{agent:reviewer}} one level down gets the previous review and that diff (round N, same IDs).

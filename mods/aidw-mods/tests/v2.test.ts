@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
+  DEFAULT_VOTES,
   decisionOf,
   parseCardAsk,
   parseCardPoints,
@@ -10,12 +11,15 @@ import {
   parseEstimate,
   parseFindings,
   parseItems,
+  parsePrTriage,
   parseRoteiro,
+  parseSection,
   parseSplit,
   progress,
+  voteIn,
 } from '../hooks/artifacts'
-import { buildSnapshot } from '../hooks/snapshot'
-import { reviewRounds, roundName } from '../hooks/views'
+import { buildSnapshot, stateLabel } from '../hooks/snapshot'
+import { C, diffSources, patchLabel, reviewRounds, roundName, svgDoc, visibleTabs } from '../hooks/views'
 
 const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ step, at: '' })) })
 
@@ -236,5 +240,83 @@ describe('levantamento V2', () => {
       ['D14', 'Regras', '', ''],
     ])
     expect(d[0]?.why).toBe('O título fala em A3, e a Feature em SafeID.')
+  })
+})
+
+describe('cores', () => {
+  test('o painel usa chaves do tema; o SVG leva a paleta clara e a escura', async () => {
+    for (const v of Object.values(C)) expect(v).toMatch(/^[a-z][A-Za-z]+$/)
+    const doc = svgDoc(10, 6, '<rect class="f-promptBorder"/>')
+    expect(doc).toContain('.f-promptBorder{fill:#e4e2da}')
+    expect(doc).toContain('@media (prefers-color-scheme: dark){')
+    expect(doc).toContain('.f-promptBorder{fill:#3a3937}')
+    for (const v of new Set(Object.values(C))) expect(doc).toContain(`.f-${v}{`)
+  })
+})
+
+describe('painel v3', () => {
+  test('seção do levantamento até a próxima seção', async () => {
+    const text = ['# L', '', '## Onde a mudança toca', '- **Hope**: lê as frases', '  - teste', '', '## Estimativa', 'x'].join('\n')
+    expect(parseSection(text, /Onde a mudan[çc]a toca/i)).toBe('- **Hope**: lê as frases\n  - teste')
+    expect(parseSection(text, /Riscos/)).toBe('')
+  })
+
+  test('voto da triagem pela escala: número, rótulo ou sem voto', async () => {
+    expect(voteIn('5', DEFAULT_VOTES)).toBe('5')
+    expect(voteIn('-5 (aguardar o autor)', DEFAULT_VOTES)).toBe('-5')
+    expect(voteIn('−10', DEFAULT_VOTES)).toBe('-10')
+    expect(voteIn('Aprovar com sugestões', DEFAULT_VOTES)).toBe('5')
+    expect(voteIn('sem voto', DEFAULT_VOTES)).toBe('none')
+    expect(voteIn('', DEFAULT_VOTES)).toBe('')
+  })
+
+  test('triagem de PR: comentários, publicados pela seção Publicado e votos', async () => {
+    const t = parsePrTriage(
+      [
+        '## Comentários propostos', '| C | Origem | Sev. | PR | Arquivo:linha | Recomendação |', '|---|---|---|---|---|---|',
+        '| C1 | R1-01 + B1-01 | IMPORTANTE | 8197 | `x.cs:5183` | publicar |', '| C5 | R1 pendências | pendências QA | 8197 | geral | publicar |', '',
+        '## Publicado', '- C1: PR 8197, thread 23720, `/x.cs:5183`.',
+      ].join('\n'),
+      'triagem-us-1-r1.md',
+      1,
+    )
+    expect(t?.comments.map(c => [c.id, c.pr, c.severity, c.where, c.origins.join(','), c.published])).toEqual([
+      ['C1', '8197', 'IMPORTANTE', 'x.cs:5183', 'R1-01,B1-01', true],
+      ['C5', '8197', 'PENDENCIA', 'geral', 'R1 pendências', false],
+    ])
+    expect(t?.votes).toEqual([])
+    expect(parsePrTriage('## Votos sugeridos\n- 8197: -5')).toBeNull()
+  })
+
+  test('missing_state vira "sem state"', async () => {
+    expect(stateLabel('missing_state')).toBe('sem state')
+  })
+
+  test('abas sem dados ficam ocultas; a Geral fica sempre', async () => {
+    const s = buildSnapshot({ dir: 'C:/x/us-1', demand: { id: 'us-1', step: 'IMPLEMENT' }, files: [], texts: {}, maxRetries: 3 })
+    expect(visibleTabs(s).map(([id]) => id)).toEqual(['geral'])
+  })
+
+  test('riscos da estimativa: subtópicos, na linha ou a seção antiga', async () => {
+    const lines = (...l: string[]) => l.join('\n')
+    const lev = lines('- **Confiança:** média.', '- **Riscos:**', '  - **Texto como contrato:** testes.', '  - **UX:** sem desenho.', '', '### Fora')
+    expect(parseEstimate(lev).risks).toBe(lines('- **Texto como contrato:** testes.', '- **UX:** sem desenho.'))
+    expect(parseEstimate(lines('- **Riscos:** legado sem teste.', '- **Outro:** x')).risks).toBe('legado sem teste.')
+    expect(parseEstimate(lines('## 5. Riscos', '- ambiente de QA', '## 6. Fontes')).risks).toBe('- ambiente de QA')
+    expect(parseEstimate(lines('## Estimativa', '- **Story points:** 3')).risks).toBe('')
+  })
+
+  test('diffs: nomes legíveis e o patch inteiro da PR com worktree sai', async () => {
+    expect(patchLabel('diff-pr8197-GedarAC-r2.patch')).toBe('PR 8197 · só a rodada 2')
+    expect(patchLabel('diff-pr8208-Emissao.patch')).toBe('PR 8208 · Emissao')
+    expect(patchLabel('diff-131192-01-r1-para-r2.patch')).toBe('131192-01 · r1 → r2')
+    expect(patchLabel('diff-145145-api-r1.patch')).toBe('145145-api · rodada 1')
+    expect(patchLabel('ambiente-teste-bug-146134-gedarac.patch')).toBe('ajustes de teste · bug-146134-gedarac')
+    expect(patchLabel('diff-131192-final.patch')).toBe('131192-final')
+    const s = {
+      repos: [{ name: 'GedarAC', path: 'C:/wt/a', pr: '8197' }, { name: 'Emissao', path: 'C:/wt/b', pr: '8208' }],
+      patches: ['diff-pr8197-GedarAC-r2.patch', 'diff-pr8197-GedarAC.patch', 'diff-pr8208-Emissao.patch', 'diff-pr9-Hope.patch'],
+    } as unknown as Parameters<typeof diffSources>[0]
+    expect(diffSources(s).map(x => x.label)).toEqual(['PR 8197 · GedarAC', 'PR 8197 · só a rodada 2', 'PR 8208 · Emissao', 'PR 9 · Hope'])
   })
 })
