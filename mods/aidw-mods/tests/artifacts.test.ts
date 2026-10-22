@@ -27,6 +27,15 @@ describe('tipo de uso e linha do tempo', () => {
     expect(kindOf({ repos: [{ pr: '7' }] }, ['plano-1.md'])).toBe('desenvolvimento')
   })
 
+  test('levantamento concluído e implementação iniciada vira desenvolvimento antes do plano', async () => {
+    const files = ['levantamento-m-1.md', 'pontos-m-1.md']
+    const h = (...steps: string[]) => ({ history: steps.map(step => ({ step, at: '' })) })
+    expect(kindOf(h('UNDERSTAND', 'ESTIMATE'), files)).toBe('levantamento')
+    expect(kindOf(h('ESTIMATE', 'DONE'), files)).toBe('levantamento')
+    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE'), files)).toBe('desenvolvimento')
+    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE', 'ESTIMATE'), files)).toBe('levantamento')
+  })
+
   test('fase atual pela etapa; HUMAN_APPROVAL fica na fase anterior', async () => {
     const t = timeline('desenvolvimento', {
       step: 'HUMAN_APPROVAL',

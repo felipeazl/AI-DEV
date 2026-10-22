@@ -40,9 +40,18 @@ export type DemandFile = { id?: string; title?: string; step?: string; status?: 
 export function kindOf(demand: DemandFile, files: string[]): DemandKind {
   const plan = files.some(f => /^plano-.*\.md$/.test(f) && !/^plano-testes-/.test(f))
   if ((demand.repos ?? []).some(r => r.pr) || files.some(f => /^diff-pr\d+-/.test(f))) return plan ? 'desenvolvimento' : 'pr-review'
-  if (!plan && (files.some(f => /^(levantamento|pontos)-.*\.md$/.test(f)) || /\(levantamento\)\s*$/i.test(demand.title ?? '') ||
+  if (!plan && !implementingAfterEstimate(demand.history ?? []) &&
+    (files.some(f => /^(levantamento|pontos)-.*\.md$/.test(f)) || /\(levantamento\)\s*$/i.test(demand.title ?? '') ||
     (demand.history ?? []).some(h => h.step === 'ESTIMATE'))) return 'levantamento'
   return 'desenvolvimento'
+}
+
+/** O levantamento terminou (DONE depois do último ESTIMATE) e a demanda seguiu para a implementação, ainda sem plano. */
+function implementingAfterEstimate(history: { step: string }[]): boolean {
+  const estimate = history.map(h => h.step).lastIndexOf('ESTIMATE')
+  if (estimate < 0) return false
+  const done = history.findIndex((h, i) => i > estimate && h.step === 'DONE')
+  return done > 0 && history.slice(done + 1).some(h => h.step !== 'DONE')
 }
 
 export const KIND_LABEL: Record<DemandKind, string> = {
