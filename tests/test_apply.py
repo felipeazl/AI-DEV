@@ -1120,6 +1120,13 @@ class ContextTest(unittest.TestCase):
                 {"step": "SEM_NOME", "before": "QA_TEST", "when": "b"}]}}, rep)
             self.assertEqual(len(rep.errors), 4, rep.errors)
 
+            # a escala de voto de PR do contexto vai para o runtime.json; sem `value` ou `label` é erro
+            ctx = {"name": "x", "mods": {"votes": [{"value": 10, "label": "Aprovar"}, {"value": "-10", "label": "Rejeitar", "more": True}]}}
+            self.assertEqual(aidw.context_votes(ctx), [{"value": "10", "label": "Aprovar"}, {"value": "-10", "label": "Rejeitar", "more": True}])
+            rep = aidw.Report(quiet=True)
+            aidw.check_votes({"name": "x", "mods": {"votes": [{"value": "1"}, {"label": "a"}]}}, rep)
+            self.assertEqual(len(rep.errors), 2, rep.errors)
+
     def test_pasta_da_demanda_exclui_o_claude_md_da_raiz(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
