@@ -98,8 +98,9 @@ user asks is a fix, not a new demand: the short path of the reference *caminho-c
   something from a note.
 - **During the demand:** the agents write what they learn in their own reports (`## Base de conhecimento`). You keep
   `aprendizados-<id>.md` only for what is born in this chat — a decision of the user or the business, an environment
-  block you solved — one line each, with its source and the note it belongs to. Never a secret or personal data.
-- **End:** the user runs `/aidw:done`.
+  block you solved, a coder's `Base de conhecimento:` note (it comes only in the result) — one line each, with its
+  source and the note it belongs to. Never a secret or personal data.
+- **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
 **Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
 current and nothing else. Messages from the panel are the user's own words: `Decisões da revisão (…)` — record and act;

@@ -25,11 +25,14 @@ se houver, está na mensagem que chamou esta skill.
   pasta é `<contexto>/<dir>`; convenções no `README.md` dela). Sem `[knowledge]`, tudo vai para o `context.toml`
   e o `reference/`, como na tabela da seção 2.
 - **Fontes, da mais barata para a mais cara:**
-  1. `aprendizados-<id>.md` na pasta da demanda (o orquestrador anota ali durante a demanda) e esta conversa;
-  2. na pasta da demanda: as seções *Base de conhecimento* dos `exploracao-*.md`, `resumo-*.md` (o que o card
-     pediu, as decisões com autor e data), `plano-*.md` (premissas verificadas, decisões), `triagem-*`, `review-*`,
-     `levantamento-*.md`, `revisao-final.md` e `estado.md`;
+  1. `python "{{root}}/aidw.py" kb collect <id>` — grava `collect-<id>.md` na pasta da demanda com o que ela já
+     separou para a base: as seções *Base de conhecimento* dos relatórios dos agentes, o `aprendizados-<id>.md` (o que
+     nasceu no chat), as notas que o resumo citou e as decisões do plano. **Comece por ele** e esta conversa;
+  2. um artefato inteiro (`exploracao-*`, `plano-*`, `review-*`, `levantamento-*`) só quando um fato do collect
+     precisar de mais contexto;
   3. o diff do worktree (`git -C <worktree> diff <base>...HEAD --stat`, e o diff só dos trechos que importam).
+- **Notas existentes:** `kb show <nota> --brief` para ler a nota sem a lista de quem a cita; a versão completa só
+  quando precisar dos backlinks.
 
 ## 2. O que vale guardar
 

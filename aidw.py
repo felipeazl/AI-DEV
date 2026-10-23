@@ -4279,6 +4279,57 @@ def kb_search(notes: dict[str, dict], term: str, limit: int = 15) -> list[dict]:
     return sorted(hits, key=lambda h: -h["score"])[:limit]
 
 
+KB_SECTION_RE = re.compile(r"^##\s+(?:Base de conhecimento|Conhecimento)\s*$", re.M | re.I)
+DECISIONS_RE = re.compile(r"^##\s+(?:Decis(?:ões|oes) tomadas|Decisions taken)\s*$", re.M | re.I)
+
+
+def md_section(text: str, heading: re.Pattern) -> str:
+    """O corpo da seção `## …` que casa com `heading`, até o próximo `## ` (ou o fim)."""
+    m = heading.search(text)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(r"^##\s", rest, re.M)
+    return (rest[:nxt.start()] if nxt else rest).strip()
+
+
+def kb_collect(ctx: dict | None, demand: str, out) -> int:
+    """Junta num arquivo só o que a demanda aprendeu, para o /aidw:done partir dele em vez de reler todos os artefatos:
+    as seções *Base de conhecimento* dos relatórios dos agentes, o `aprendizados-<id>.md` (o que nasceu no chat), as
+    notas que o resumo citou e as decisões do plano. Grava `collect-<id>.md` na pasta da demanda."""
+    folder = state_dir(ctx) / demand
+    if not folder.is_dir():
+        return out({"ok": False, "errors": [f"pasta da demanda não existe: {folder.as_posix()}"]},
+                   [f"[erro]  pasta da demanda não existe: {folder.as_posix()}"])
+    files = sorted(f for f in folder.glob("*.md") if not f.name.startswith(("collect-", "metricas")))
+    parts: list[str] = []
+    sources: list[str] = []
+    for f in files:
+        text = f.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+        if f.name.startswith("aprendizados-"):
+            body = text.strip()
+        elif f.name.startswith("resumo-"):
+            body = md_section(text, KB_SECTION_RE)
+            body = f"(notas que o resumo citou)\n{body}" if body else ""
+        elif re.match(r"plano-(?!testes-).*\.md$", f.name) and not re.search(r"-v\d+\.md$", f.name):
+            found = [x for x in (md_section(text, DECISIONS_RE), md_section(text, KB_SECTION_RE)) if x]
+            body = "\n\n".join(found)
+        else:
+            body = md_section(text, KB_SECTION_RE)
+        if body:
+            parts += [f"## {f.name}", "", body, ""]
+            sources.append(f.name)
+    target = folder / f"collect-{demand}.md"
+    header = [f"# O que a demanda {demand} aprendeu", "",
+              "Gerado por `aidw.py kb collect` para o `/aidw:done`: só as seções *Base de conhecimento* dos relatórios, o "
+              "`aprendizados`, as notas do resumo e as decisões do plano. Abra o artefato inteiro só quando um fato "
+              "precisar de mais contexto.", ""]
+    target.write_text("\n".join(header + (parts or ["Nada registrado nos artefatos da demanda.", ""])),
+                      encoding="utf-8", newline="\n")
+    return out({"ok": True, "path": target.as_posix(), "sources": sources},
+               [f"[ok]    {target.as_posix()} — {len(sources)} fonte(s): {', '.join(sources) or 'nenhuma'}"])
+
+
 def kb_command(cfg: dict, args: argparse.Namespace) -> int:
     ctx = load_context(cfg, Report(quiet=True))
     base = kb_dir(ctx)
@@ -4291,6 +4342,8 @@ def kb_command(cfg: dict, args: argparse.Namespace) -> int:
             print("\n".join(text))
         return 0 if result.get("ok", True) else 1
 
+    if action == "collect":
+        return kb_collect(ctx, args.demand, out)
     if base is None or not base.is_dir():
         why = ("sem contexto ativo" if not ctx else
                f"o contexto {ctx['name']} não tem [knowledge] dir" if base is None else f"{rel(base)} não existe")
@@ -4339,6 +4392,10 @@ def kb_command(cfg: dict, args: argparse.Namespace) -> int:
             resumo = b["resumo"] if len(b["resumo"]) <= 110 else b["resumo"][:107].rstrip() + "…"
             return f"- [[{b['key']}]] ({b['tipo'] or '—'}) {resumo} — `{notes[b['key']]['rel']}`"
         body = note["path"].read_text(encoding="utf-8").replace("\r\n", "\n").rstrip()
+        if args.brief:  # só a nota: os links já estão no texto dela; quem a cita, só a contagem
+            print("\n".join([f"<!-- {note['path'].as_posix()} -->", body, "",
+                              f"(citada por {len(back)} nota(s): `kb show {note['key']}` lista)"]))
+            return 0
         text = [f"<!-- {note['path'].as_posix()} (caminhos abaixo relativos a {base.as_posix()}) -->", body, "",
                 f"## Links desta nota ({len(links)})"]
         text += [item(l) for l in links] or ["- nenhum"]
@@ -5370,15 +5427,18 @@ def main() -> int:
     d_list.add_argument("--active", action="store_true", help="só as não concluídas")
     for d in dm.choices.values():
         d.add_argument("--json", action="store_true", help="saída em JSON")
-    p_kb = sub.add_parser("kb", help="base de conhecimento do contexto: show, search, check, index")
+    p_kb = sub.add_parser("kb", help="base de conhecimento do contexto: show, search, check, index, collect")
     kb = p_kb.add_subparsers(dest="kb_action", required=True)
     k_show = kb.add_parser("show", help="uma nota com os links dela e quem a cita")
     k_show.add_argument("name", help="nome da nota, chave do sistema, alias ou título")
+    k_show.add_argument("--brief", action="store_true", help="só a nota, sem a lista de links e de quem a cita")
     k_search = kb.add_parser("search", help="notas com todas as palavras (sem acento nem caixa)")
     k_search.add_argument("term", nargs="+")
     k_search.add_argument("--limit", type=int, default=15)
     kb.add_parser("check", help="links quebrados, nomes repetidos, frontmatter, órfãs e segredos")
     kb.add_parser("index", help="regenera o index.md (notas por tipo e glossário)")
+    k_collect = kb.add_parser("collect", help="junta o que a demanda aprendeu em collect-<id>.md (para o /aidw:done)")
+    k_collect.add_argument("demand", help="id da demanda (a pasta em state_dir)")
     for k in kb.choices.values():
         k.add_argument("--json", action="store_true", help="saída em JSON")
     p_proj = sub.add_parser("project", help="projeto da pasta: repositório, sistema, contexto e demanda")
