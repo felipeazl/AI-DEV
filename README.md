@@ -106,7 +106,6 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 
 ```text
 /aidw:orquestrar 1234                 ← id do card, link ou uma descrição do que fazer
-/aidw:orquestrar 1234 interativo      ← pede o seu OK antes de cada delegação
 /aidw:orquestrar 1234 pr 7639         ← revisa a PR de outra pessoa (sem implementar)
 /aidw:levantamento 1234               ← levantamento: valida o card no código e estima (sem implementar)
 /aidw:orquestrar                      ← sem argumento: retoma a demanda desta pasta
@@ -115,15 +114,8 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, leva o chat
 para ele e conduz o fluxo até a PR.
 
-### Modos da sessão
-
-| Modo | Comportamento |
-|---|---|
-| `auto` (padrão) | Segue sozinho entre os seus pontos fixos (plano, achados, sua revisão de código, passos manuais, PR), as ações travadas, as dúvidas reais e o que sair do plano. |
-| `interativo` | Também para antes de cada delegação (agente, effort, etapa, arquivos, build). Você responde *aprovar*, *ajustar* ou *pular*. |
-
-Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na retomada; para trocar no meio, diga
-"modo automático" ou "modo interativo".
+Ele segue sozinho entre os seus pontos fixos (plano, achados da revisão, sua revisão de código, passos manuais,
+PR), as ações travadas, as dúvidas reais e o que sair do plano. Não há modo a escolher: as paradas são essas.
 
 ### Comandos do chat
 
