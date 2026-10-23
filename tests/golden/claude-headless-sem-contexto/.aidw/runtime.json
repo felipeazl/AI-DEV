@@ -24,9 +24,9 @@
       "name": "planejador",
       "display": "Planejador",
       "enabled": true,
-      "model": "opus",
-      "model_id": "opus",
-      "effort": "medium",
+      "model": "sonnet",
+      "model_id": "sonnet",
+      "effort": "high",
       "skills": [
         "to-spec",
         "verificar-premissa"
@@ -48,7 +48,9 @@
       "model": "haiku",
       "model_id": "haiku",
       "effort": "",
-      "skills": [],
+      "skills": [
+        "database-safe"
+      ],
       "preload": [],
       "tools": {
         "mcp": [
@@ -61,9 +63,9 @@
       "name": "codificador",
       "display": "Codificador",
       "enabled": true,
-      "model": "opus",
-      "model_id": "opus",
-      "effort": "medium",
+      "model": "sonnet",
+      "model_id": "sonnet",
+      "effort": "high",
       "skills": [
         "preparar-worktree"
       ],
@@ -82,9 +84,9 @@
       "name": "revisor",
       "display": "Revisor",
       "enabled": true,
-      "model": "opus",
-      "model_id": "opus",
-      "effort": "medium",
+      "model": "sonnet",
+      "model_id": "sonnet",
+      "effort": "high",
       "skills": [
         "code-review",
         "verificar-premissa"
@@ -101,24 +103,6 @@
         "deny_tools": []
       }
     },
-    "api-db": {
-      "name": "api",
-      "display": "API",
-      "enabled": true,
-      "model": "sonnet",
-      "model_id": "sonnet",
-      "effort": "medium",
-      "skills": [
-        "database-safe"
-      ],
-      "preload": [],
-      "tools": {
-        "mcp": [
-          "context7"
-        ],
-        "deny_tools": []
-      }
-    },
     "qa": {
       "name": "qa",
       "display": "QA",
@@ -126,7 +110,9 @@
       "model": "sonnet",
       "model_id": "sonnet",
       "effort": "medium",
-      "skills": [],
+      "skills": [
+        "database-safe"
+      ],
       "preload": [],
       "tools": {
         "mcp": [
@@ -151,50 +137,6 @@
         "mcp": [
           "context7",
           "figma"
-        ],
-        "deny_tools": []
-      }
-    },
-    "bug-hunter": {
-      "name": "bugs",
-      "display": "Bugs",
-      "enabled": true,
-      "model": "sonnet",
-      "model_id": "sonnet",
-      "effort": "high",
-      "skills": [
-        "bug-hunt",
-        "verificar-premissa"
-      ],
-      "preload": [
-        "bug-hunt"
-      ],
-      "tools": {
-        "mcp": [
-          "chrome-devtools",
-          "context7",
-          "playwright"
-        ],
-        "deny_tools": []
-      }
-    },
-    "security": {
-      "name": "seguranca",
-      "display": "Seguranca",
-      "enabled": true,
-      "model": "sonnet",
-      "model_id": "sonnet",
-      "effort": "high",
-      "skills": [
-        "security-audit",
-        "verificar-premissa"
-      ],
-      "preload": [
-        "security-audit"
-      ],
-      "tools": {
-        "mcp": [
-          "context7"
         ],
         "deny_tools": []
       }
@@ -295,66 +237,34 @@
     ],
     "env": {}
   },
-  "levels": {
-    "trivial": {
-      "planejador": null,
-      "explorador": "explorador",
-      "codificador": "codificador-sonnet-low",
-      "revisor": "revisor-sonnet-low",
-      "api": "api-haiku",
-      "qa": "qa-low",
-      "documentador": "documentador",
-      "bugs": "bugs-low",
-      "seguranca": "seguranca-low"
-    },
-    "simples": {
-      "planejador": "planejador-sonnet-medium",
-      "explorador": "explorador",
-      "codificador": "codificador-sonnet-medium",
-      "revisor": "revisor-sonnet-medium",
-      "api": "api-low",
-      "qa": "qa-low",
-      "documentador": "documentador",
-      "bugs": "bugs-medium",
-      "seguranca": "seguranca-medium"
-    },
-    "padrao": {
-      "planejador": "planejador-sonnet-medium",
-      "explorador": "explorador",
-      "codificador": "codificador-sonnet-medium",
-      "revisor": "revisor-sonnet-medium",
-      "api": "api",
-      "qa": "qa",
-      "documentador": "documentador",
-      "bugs": "bugs",
-      "seguranca": "seguranca"
-    },
-    "complexa": {
-      "planejador": "planejador-sonnet-high",
-      "explorador": "explorador-sonnet-medium",
-      "codificador": "codificador-sonnet-high",
-      "revisor": "revisor-sonnet-high",
-      "api": "api-high",
-      "qa": "qa-high",
-      "documentador": "documentador-sonnet-medium",
-      "bugs": "bugs",
-      "seguranca": "seguranca"
-    },
-    "critica": {
-      "planejador": "planejador-high",
-      "explorador": "explorador-sonnet-high",
-      "codificador": "codificador-high",
-      "revisor": "revisor-high",
-      "api": "api-high",
-      "qa": "qa-high",
-      "documentador": "documentador-sonnet-medium",
-      "bugs": "bugs-opus-high",
-      "seguranca": "seguranca-opus-high"
-    }
+  "variants": {
+    "planejador": [
+      "planejador",
+      "planejador-medium"
+    ],
+    "explorador": [
+      "explorador",
+      "explorador-sonnet-medium",
+      "explorador-sonnet-high"
+    ],
+    "codificador": [
+      "codificador",
+      "codificador-medium"
+    ],
+    "revisor": [
+      "revisor",
+      "revisor-medium",
+      "revisor-low"
+    ],
+    "qa": [
+      "qa",
+      "qa-high"
+    ],
+    "documentador": [
+      "documentador"
+    ]
   },
-  "default_level": "padrao",
   "max_retries": 3,
-  "max_retries_plan": 2,
   "panel": true,
   "external_steps": [],
   "votes": []

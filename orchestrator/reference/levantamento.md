@@ -5,8 +5,20 @@ when: fazer o levantamento de uma demanda (workflow levantamento) — os pontos 
 # Levantamento de demanda
 
 Workflow `levantamento` (seção *Levantamento* do orquestrador): entender o card, validar cada ponto dele no código,
-mapear o fluxo de ponta a ponta e estimar. **Só leitura:** sem worktree, plano, tickets, build ou código; nada de
+mapear o fluxo de ponta a ponta e estimar. **Só leitura:** sem worktree, plano, build ou código; nada de
 escrita em ambiente nem no board sem o OK do usuário.
+
+## 0. O fluxo
+
+- **Understand:** `resumo-<id>.md`, then every point the card asks or asserts, numbered, in `pontos-<id>.md`.
+- **Explore** (`EXPLORE`): one {{agent:explorer}} task in levantamento mode with the levantamento exception of
+  *Agents and effort*: it validates each point, maps the flow end to end and returns the size signals in
+  `exploracao-levantamento.md`.
+- **Estimate** (`ESTIMATE`): apply the rubric and write `levantamento-<id>.md` in the reference's model exactly (the
+  panel reads its tables).
+- **End:** show the estimate and the doubts, offer the card comment (a locked action), then `DONE`. Never change the
+  card's state or fields. A demand whose folder has `levantamento-<id>.md` and no plan starts its development from
+  `EXPLORE`, reusing the summary, the points and the exploration; ask the explorer only what the plan still needs.
 
 ## 1. Os pontos do card
 
@@ -26,8 +38,8 @@ vira dúvida.
 
 ## 2. A tarefa do explorador
 
-`tarefa-explorador-levantamento.md`, para o {{agent:explorer}} na célula do nível `critica` (`Nível: critica —
-levantamento: a exploração do fluxo inteiro é a entrega`). Leva:
+`tarefa-explorador-levantamento.md`, para o {{agent:explorer}} na exceção do levantamento de *Agents and effort*
+(Sonnet high: a exploração do fluxo inteiro é a entrega). Leva:
 
 - os caminhos de `resumo-<id>.md` e `pontos-<id>.md` (não cole o conteúdo);
 - os sistemas prováveis e os repositórios de *Systems* (e os que eles consomem, de *Depends on*); se não souber
@@ -135,7 +147,6 @@ Na pasta da demanda:
 - **Story points:** <SP> — <por quê, pela régua>
 - **Complexidade:** <nível> — <os sinais que pesaram>
 - **Confiança:** <nível> — <o que a mudaria>
-- **Nível AiDW:** <trivial|simples|padrao|complexa|critica> · **Passadas extras:** <segurança, bugs, ou nenhuma>
 - **Riscos:** <...>
 
 <só acima de 13 SP: a quebra>
