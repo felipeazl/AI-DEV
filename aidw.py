@@ -129,6 +129,9 @@ DELEGATION_MODES = ("native", "headless")
 ACTIONS = {"EXPLORE", "PLAN", "PLAN_APPROVAL", "PLAN_FIX", "IMPLEMENT", "TEST_PLAN", "REVIEW", "TRIAGE", "CODER_FIX",
            "USER_REVIEW", "TEST", "TEST_ADJUST", "MANUAL_TEST", "PR", "ESTIMATE", "FINAL_REVIEW", "DONE",
            "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST"}
+# Etapas do fluxo antigo: o `demand set` ainda as aceita, para uma demanda aberta antes do fluxo v3 terminar no
+# plugin que ela começou (o painel as põe na fase equivalente).
+LEGACY_STEPS = {"SPEC", "PLAN_REVIEW", "TICKETS", "PREPARE_REVIEW", "ORCHESTRATOR_TEST", "DOCS"}
 # Etapas de fora do AiDW (o time revisa a PR, a QA testa): gravadas quando o usuário avisa; o painel as mostra à parte.
 # O contexto pode declarar outras ([[workflows.external_steps]]), cada uma antes de uma destas.
 EXTERNAL_STEPS = ("CODE_REVIEW", "QA_TEST")
@@ -3307,7 +3310,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     if not DEMAND_RE.match(demand):
         return {"ok": False, "error": f"id de demanda inválido {demand!r} (use letras minúsculas, números e -)"}
     outside = [s["step"] for s in context_external_steps(ctx)]
-    if step and step not in ACTIONS and step not in outside and step != "UNDERSTAND":
+    if step and step not in ACTIONS and step not in LEGACY_STEPS and step not in outside and step != "UNDERSTAND":
         return {"ok": False, "error": f"etapa desconhecida {step!r} (use UNDERSTAND, uma ação de NEXT ACTION ou uma "
                                       "etapa de fora do contexto)"}
     for item in extra_steps or []:
