@@ -50,6 +50,8 @@ MODELS_FILE = ROOT / "config" / "models.toml"
 MCP_CATALOG_FILE = ROOT / "config" / "mcp.toml"
 ROUTING_FILE = ROOT / "orchestrator" / "config" / "routing.toml"
 ORCHESTRATOR_MD = ROOT / "orchestrator" / "ORCHESTRATOR.md"
+SURVEY_MD = ROOT / "orchestrator" / "LEVANTAMENTO.md"  # o orquestrador só do levantamento (skill levantamento)
+SURVEY_REFS = ("levantamento", "regua-estimativa")    # entram inteiras no prompt do levantamento
 ORCH_REF_DIR = ROOT / "orchestrator" / "reference"   # lidas sob demanda pelo orquestrador
 POLICIES_DIR = ROOT / "orchestrator" / "policies"
 KB_README_TEMPLATE = ROOT / "orchestrator" / "templates" / "conhecimento-README.md"  # `context create`
@@ -1546,11 +1548,10 @@ def orchestrator_references(ctx: dict | None, tpl: Templater) -> dict[str, dict]
             tpl.rep.error(f"referência do orquestrador com nome repetido {path.stem!r}: {rel(refs[path.stem]['source'])} "
                           f"e {rel(path)} (renomeie uma delas)")
             continue
-        body = read_frontmatter(path)[1]
+        body = tpl.render(read_frontmatter(path)[1].strip(), path)
         header = (f"<!-- {GENERATED_MARK} {cmd} a partir de {rel(path)}; não edite: altere a fonte e rode "
                   f"`python aidw.py {cmd}`. -->")
-        refs[path.stem] = {"when": when, "source": path,
-                           "content": header + "\n\n" + tpl.render(body.strip(), path) + "\n"}
+        refs[path.stem] = {"when": when, "source": path, "body": body, "content": header + "\n\n" + body + "\n"}
     return refs
 
 
@@ -1566,8 +1567,19 @@ def orchestrator_reference_section(refs: dict[str, dict], ref_dir: Path = GEN_RE
 
 def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
                         skills: dict, routing: dict, refs: dict[str, dict] | None = None, ns: str = "",
-                        ref_dir: Path = GEN_REF_DIR) -> str:
+                        ref_dir: Path = GEN_REF_DIR, survey: bool = False) -> str:
+    """O CLAUDE.md/AGENTS.md (e a skill orquestrar); com `survey`, o prompt enxuto da skill levantamento: só o
+    explorador, sem os workflows, com o procedimento e a régua já dentro (nada a ler sob demanda)."""
     orch = resolved[ORCHESTRATOR]
+    refs = refs or {}
+    if survey:
+        resolved = {r: a for r, a in resolved.items() if r in (ORCHESTRATOR, "explorer")}
+        servers = {k: v for k, v in servers.items() if not v.get("agents") or "explorer" in v["agents"]}
+        policies = set(policy_files(ctx))
+        inline = [refs[n]["body"] for n in SURVEY_REFS if n in refs]
+        listed = {n: r for n, r in refs.items() if r["source"] in policies}
+    else:
+        inline, listed = [], refs
     provider, mode = cfg["provider"]["name"], cfg["delegation"]["mode"]
     codex_native = provider == "codex" and mode == "native"
     first_col = {"headless": "Agent (`--agent`)", "native": "Agent"}[mode]
@@ -1587,11 +1599,13 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
     cmd = "install" if ns else "apply"
     parts = [
-        f"<!-- {GENERATED_MARK} {cmd} — {'skill orquestrar' if ns else source_file + ' do orquestrador'}; "
-        "não edite. Fontes: orchestrator/ORCHESTRATOR.md, orchestrator/policies/ e o contexto ativo; rode "
+        f"<!-- {GENERATED_MARK} {cmd} — {('skill levantamento' if survey else 'skill orquestrar') if ns else source_file + ' do orquestrador'}; "
+        f"não edite. Fontes: orchestrator/{SURVEY_MD.name if survey else ORCHESTRATOR_MD.name}, orchestrator/policies/ "
+        "e o contexto ativo; rode "
         f"`python aidw.py {cmd}` após alterá-las. -->",
         CODEX_SUBAGENT_GUARD if codex_native else "",
-        tpl.include(ORCHESTRATOR_MD),
+        tpl.include(SURVEY_MD if survey else ORCHESTRATOR_MD),
+        *inline,
         "\n".join(["## Runtime", "",
                    f"- You are `{orch['name']}` — {orch['display']} (role `orchestrator`), the main chat.",
                    (f"- Your model: the one selected in this chat (recommended: {model_label(orch)})"
@@ -1603,13 +1617,13 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         "\n".join(["## Team", "", *team]),
         delegation_section(cfg, resolved, global_mode=bool(ns)),
         effort_table(resolved, routing, cfg, ns),
-        workflows_section(ctx),
+        "" if survey else workflows_section(ctx),
         skills_section(orch["skills"], skills, provider, ns=ns),
         mcp_orchestrator_section(servers, resolved),
         systems_section(ctx, detailed=False),
-        orchestrator_reference_section(refs or {}, ref_dir),
+        orchestrator_reference_section(listed, ref_dir),
         "# Policies",
-        *[tpl.include(p) for p in policy_files(ctx) if p not in {r["source"] for r in (refs or {}).values()}],
+        *[tpl.include(p) for p in policy_files(ctx) if p not in {r["source"] for r in refs.values()}],
     ]
     parts = [x for x in parts if x]
     if context_files(ctx, ORCHESTRATOR):
@@ -1978,10 +1992,11 @@ def build(cfg: dict, catalog: dict, rep: Report, ns: str = "", ref_dir: Path = G
             agents[role] = {"meta": meta, "prompt": prompt}
     refs = orchestrator_references(ctx, tpl)
     orchestrator_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir)
+    survey_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir, survey=True)
     if rep.errors:
         return None
     return {"ctx": ctx, "skills": skills, "resolved": resolved, "routing": routing, "servers": servers,
-            "agents": agents, "orchestrator_md": orchestrator_md, "orchestrator_refs": refs}
+            "agents": agents, "orchestrator_md": orchestrator_md, "survey_md": survey_md, "orchestrator_refs": refs}
 
 
 def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
@@ -2166,18 +2181,18 @@ def guard_skill(text: str) -> str:
 
 def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
                        provider: str = "claude", survey: bool = False) -> str:
-    """`orquestrar`, ou `levantamento` (survey): o mesmo orquestrador, já no workflow levantamento."""
+    """`orquestrar`, ou `levantamento` (survey): o orquestrador só do levantamento (`orchestrator_md` enxuto)."""
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-sair" if codex else f"/{plugin}:sair"
     name = "levantamento" if survey else "orquestrar"
     request = "o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"
-    workspace = ("7. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
+    workspace = "" if survey else ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
                  "do Codex deixa só leitura: peça aprovação (escalada) para esse comando e para qualquer escrita fora da "
                  "pasta da sessão (no Codex o AiDW não instala perfil nem regras). Depois de criar o worktree, peça ao "
                  f"usuário para reabrir com `{aidw} open --provider codex --demand <id>`." if codex else
-                 "7. **Código:** worktree da demanda (seção *Workspace*); todos ficam na pasta da demanda "
+                 "6. **Código:** worktree da demanda (seção *Workspace*); todos ficam na pasta da demanda "
                  "(`<raiz dos worktrees>/<id>/<repositório>`). Se a sessão abriu nessa pasta ou num worktree dela "
                  "(`demand` no `project detect`, ex.: `aidw open --demand`), fique onde está. Senão, no app desktop, "
                  "`mcp__ccd_directory__change_directory` para o worktree (um repositório) ou a pasta da demanda (mais "
@@ -2195,12 +2210,13 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                    f"{PLUGIN_GUARD} Assume esta sessão como orquestrador do AiDW e conduz uma demanda de "
                    "ponta a ponta: spec, tickets, agentes, revisão e revisão final.")
     survey_intro = [
-        "**Levantamento:** esta chamada é o workflow `levantamento` (seção *Levantamento*; procedimento, régua e "
-        "formato na referência *levantamento*). O pedido é o card (id ou link) ou o texto da demanda (sem card, a "
-        "demanda é `lev-<slug>`, um slug curto do texto); sem pedido, pergunte qual. Só leitura: sem worktree, plano, tickets nem código, e sem a pergunta de modo (vale `auto`). "
+        "**Levantamento:** esta chamada é o workflow `levantamento` (o procedimento, a régua e o formato estão "
+        "abaixo: não há referência a ler). O pedido é o card (id ou link) ou o texto da demanda (sem card, a "
+        "demanda é `lev-<slug>`, um slug curto do texto); sem pedido, pergunte qual. Só leitura: sem worktree, plano nem código. "
         "Demanda que já existe: se está em andamento (tem plano), faça o levantamento sem mudar `step` nem `status` "
         "dela; se já tem `levantamento-<id>.md`, refaça-o sobre o card atual, reaproveitando a exploração no que não "
-        "mudou. Terminado, o modo orquestrador acaba junto, salvo se o usuário pedir para implementar.", ""] if survey else []
+        "mudou. Terminado, o modo orquestrador acaba junto; para implementar, o usuário chama "
+        f"`{'$aidw-orquestrar' if codex else '/' + plugin + ':orquestrar'} <id>`.", ""] if survey else []
     return "\n".join([
         "---", f"name: {CODEX_NS + name if codex else name}",
         f"description: {json.dumps(description, ensure_ascii=False)}",
@@ -2217,6 +2233,10 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "2. **Qual demanda:** a do pedido, se ele citar uma (ex.: `1234` → `us-1234`, `bug-5678`); senão "
         "a da pasta (`demand`, quando o chat está num worktree); senão a única ativa deste repositório. Mais de "
         "uma candidata, ou nenhuma e sem pedido: pergunte ao usuário, com as opções.",
+        *(["3. **Retomar:** se a demanda já tem `levantamento-<id>.md`, leia só ele e o que mudou no card; o que "
+           "a exploração já respondeu não volta ao explorador.",
+           f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
+           "os passos (*STEPS*)."] if survey else [
         "3. **Retomar:** se a demanda já tem `demand.json`, **não recomece** — leia a pasta dela (plano, triagens, "
         "reviews, `estado.md`) e continue da etapa gravada (`step`). Exceção: a que só teve levantamento "
         "(`levantamento-<id>.md` e nenhum plano), chamada para implementar, começa o workflow dela pelo `EXPLORE` "
@@ -2225,25 +2245,9 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "o fluxo. Pedido para revisar a PR de outra pessoa (`pr <n>`, um link de PR, \"revisar a PR\"): workflow "
         "`pr-review` (seção *PR review*), sem plano nem implementação. Pedido de levantamento ou estimativa "
         "(`levantamento <id>`, \"estimar\", \"quantos pontos\"): workflow `levantamento` (seção *Levantamento*).",
-        "5. **Modo da sessão:** `interativo` ou `auto` (o padrão, como sempre foi). Vale o que o pedido disser "
-        "(`interativo`, `auto`, `automático`); senão o `mode` do `demand.json`, numa retomada; senão pergunte "
-        + ("em texto, com as duas opções, e espere a resposta. " if codex else
-           "com `AskUserQuestion`, opções *Automático* e *Interativo*. ")
-        + f"Grave com `{aidw} demand set <id> --mode <auto|interativo>` e diga o modo na primeira resposta. O "
-        "usuário troca quando quiser (\"modo automático\", \"modo interativo\"): grave de novo.",
-        f"6. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
-        "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda.",
-        workspace, "",
-        "## Modo interativo", "",
-        "Só acrescenta paradas às do fluxo (plano, achados da revisão, a revisão de código, os passos manuais e a "
-        "PR param nos dois modos); as ações travadas das policies pedem OK nos dois modos, e ler código, rodar "
-        "`record`, build e git local continuam sem pergunta.",
-        "- **Cada delegação:** antes de chamar o agente, escreva o arquivo da tarefa e mostre, em até 6 linhas: "
-        "agente e effort (o padrão ou a exceção da tabela *Agents and effort*), etapa, arquivos em escopo, comando de build/teste, MCP e o "
-        "caminho da tarefa. Espere *aprovar*, *ajustar* (refaça a tarefa e mostre de novo) ou *pular*. Delegações "
-        "paralelas vão numa aprovação só.",
-        "- Depois de cada resultado, mostre o `header` e o `resumo` e a próxima ação que você pretende; a "
-        "delegação seguinte passa pela mesma aprovação.", "",
+        f"5. **A cada etapa** (cada ação de *NEXT ACTION*): `{aidw} demand set <id> --step <AÇÃO>`; no fim, "
+        "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda."]),
+        *([workspace] if workspace else []), "",
         orchestrator_md.strip(), "",
     ])
 
@@ -2352,7 +2356,7 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     put(f"{base}/skills/orquestrar/SKILL.md",
         orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "orquestrar" / "SKILL.md"))
     put(f"{base}/skills/levantamento/SKILL.md",
-        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "levantamento" / "SKILL.md",
+        orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "levantamento" / "SKILL.md",
                            survey=True))
     put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin))
@@ -3299,11 +3303,10 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 DEMAND_STATUS = ("active", "paused", "done")
-DEMAND_MODES = ("auto", "interativo")  # interativo: o orquestrador pede OK antes de cada delegação
 
 
 def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
-               mode: str = "", summary: str = "", prs: list[str] | None = None,
+               summary: str = "", prs: list[str] | None = None,
                tasks: list[str] | None = None, loop: str | None = None, extra_steps: list[str] | None = None) -> dict:
     ctx = load_context(cfg, Report(quiet=True))
     demand = demand.strip().lower()
@@ -3319,8 +3322,6 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
                                           f"({', '.join(outside) or 'o contexto não declara nenhuma'})"}
     if status and status not in DEMAND_STATUS:
         return {"ok": False, "error": f"status inválido {status!r} (use {', '.join(DEMAND_STATUS)})"}
-    if mode and mode not in DEMAND_MODES:
-        return {"ok": False, "error": f"modo inválido {mode!r} (use {', '.join(DEMAND_MODES)})"}
     if summary and len(summary.splitlines()) > 4:
         return {"ok": False, "error": "o resumo tem no máximo 4 linhas"}
     pr_map: dict[str, str] = {}
@@ -3343,9 +3344,10 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     if step and step != data.get("step"):
         data.setdefault("history", []).append({"step": step, "at": now})
         data["step"] = step
-    for key, value in (("status", status), ("title", title), ("note", note), ("mode", mode), ("summary", summary.strip())):
+    for key, value in (("status", status), ("title", title), ("note", note), ("summary", summary.strip())):
         if value:
             data[key] = value
+    data.pop("mode", None)  # o modo da sessão (auto/interativo) saiu no fluxo v3
     for name, number in pr_map.items():
         repo = next((r for r in data.get("repos", []) if name in (
             Path(r.get("repo") or "").name.lower(), Path(r.get("path") or "").name.lower())), None)
@@ -3405,7 +3407,7 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
         if active_only and d.get("status") == "done":
             continue
         out.append({"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
-                    "title": d.get("title", ""), "note": d.get("note", ""), "mode": d.get("mode", "auto"),
+                    "title": d.get("title", ""), "note": d.get("note", ""),
                     "updated": d.get("updated"),
                     "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
     return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
@@ -3414,7 +3416,14 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
     if args.dm_action == "set":
         result = demand_set(cfg, args.id, args.step or "", args.status or "", args.title or "", args.note or "",
-                            args.mode or "", args.summary or "", args.pr, args.task, args.loop, args.extra_step)
+                            args.summary or "", args.pr, args.task, args.loop, args.extra_step)
+        if not args.json:  # uma linha: o demand.json inteiro (com o histórico) só pesaria no chat do orquestrador
+            if result["ok"]:
+                print(f"{result['id']}: {result.get('step') or '—'} ({result.get('status') or '—'})"
+                      + (f" — aviso: {result['warning']}" if result.get("warning") else ""))
+            else:
+                print(f"erro: {result['error']}")
+            return 0 if result["ok"] else 1
     elif args.dm_action == "show":
         ctx = load_context(cfg, Report(quiet=True))
         data, warning, _ = load_demand(ctx, args.id)
@@ -3536,7 +3545,7 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                                                  provider="codex").encode("utf-8")
     files[orq / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     lev = CODEX_SKILLS_HOME / f"{CODEX_NS}levantamento"
-    files[lev / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], lev / "SKILL.md",
+    files[lev / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["survey_md"], lev / "SKILL.md",
                                                  provider="codex", survey=True).encode("utf-8")
     files[lev / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     for name, r in b["orchestrator_refs"].items():
@@ -4510,8 +4519,25 @@ def append_metrics(demand: Path, row: dict) -> None:
         f.write_text("# Métricas da demanda\n\nConsumo real de cada delegação (gravado por "
                      "`aidw.py delegate` ou `aidw.py record`). No subagente nativo do Claude, a entrada "
                      "é o total de tokens e a saída fica —.\n\n" + head, encoding="utf-8", newline="\n")
+    elif not f.read_bytes().endswith(b"\n"):
+        line = "\n" + line  # arquivo editado à mão sem a quebra no fim
     with f.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(line)
+
+
+def recorded_by_mod(demand: Path, row: dict) -> dict | None:
+    """A delegação que o mod aidw-mods já gravou (com os números) entre as últimas linhas do metricas.md: o
+    `record` sem números repetiria a linha, vazia. Devolve turnos, duração e tokens dela."""
+    f = demand / "metricas.md"
+    if not f.exists():
+        return None
+    rows = [r for r in f.read_text(encoding="utf-8").splitlines() if r.startswith("| 2")][-3:]
+    for r in reversed(rows):
+        c = [x.strip() for x in r.strip().strip("|").split("|")]
+        if len(c) >= 10 and c[0] == row["date"] and c[1] == row["agent"] and c[5] == row["label"] and c[9] != "—":
+            num = lambda v: int(v.replace(",", "")) if v.replace(",", "").isdigit() else None
+            return {"turns": num(c[7]), "duration_s": num(c[8].rstrip("s")) or 0, "tokens_in": num(c[9])}
+    return None
 
 
 # Preço de API em US$ por milhão de tokens (entrada, saída, cache lido), por prefixo do id do modelo; o primeiro que
@@ -4666,7 +4692,12 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         row["limits"] = codex_limits()
     demand = Path(args.demand).resolve()
     demand.mkdir(parents=True, exist_ok=True)
-    append_metrics(demand, row)
+    known = recorded_by_mod(demand, row) if args.tokens is None and not args.codex_task else None
+    if known:
+        row.update(known)
+        rep.warn("o mod aidw-mods já registrou esta delegação: nada foi gravado")
+    else:
+        append_metrics(demand, row)
     real_id = row["model"] != model["model_id"]
     if real_id:  # a sessão do Codex rodou em outro modelo: o cabeçalho mostra o real
         real = next((m for m in catalog.values() if m["model_id"] == row["model"]), {})
@@ -5407,13 +5438,12 @@ def main() -> int:
         c.add_argument("--json", action="store_true", help="saída em JSON")
     p_dm = sub.add_parser("demand", help="estado da demanda para retomar: set, show, list")
     dm = p_dm.add_subparsers(dest="dm_action", required=True)
-    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota, modo)")
+    d_set = dm.add_parser("set", help="cria ou atualiza o demand.json (etapa, status, título, nota)")
     d_set.add_argument("id", help="id da demanda, ex.: us-1234")
     d_set.add_argument("--step", help="etapa atual: UNDERSTAND ou uma ação de NEXT ACTION")
     d_set.add_argument("--status", choices=("active", "paused", "done"))
     d_set.add_argument("--title")
     d_set.add_argument("--note", help="onde parou / próximo passo")
-    d_set.add_argument("--mode", choices=DEMAND_MODES, help="modo da sessão: auto (padrão) ou interativo")
     d_set.add_argument("--summary", help="o que a demanda trata, em até 4 linhas (o painel mostra no Mapa da demanda)")
     d_set.add_argument("--pr", action="append", metavar="REPO=N",
                        help="PR aberta de um repositório da demanda (repetível): AssistenteCertificado=7788")

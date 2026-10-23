@@ -165,11 +165,6 @@ enabled = true            # padrão: o qa testa a tela pelo Claude in Chrome ou 
 
 O Figma precisa de autenticação uma vez (Claude: `/mcp` → figma → Authenticate; Codex: `codex mcp login figma`).
 
-### Mais controle
-
-Não é configuração: chame `/aidw:orquestrar <demanda> interativo`. Além dos pontos fixos (plano, achados, sua revisão,
-passos manuais, PR), o orquestrador para antes de cada delegação.
-
 ### Nomes próprios
 
 ```toml

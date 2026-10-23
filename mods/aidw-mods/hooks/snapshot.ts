@@ -201,7 +201,6 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     kind,
     step,
     status: demand.status ?? 'active',
-    mode: demand.mode ?? 'auto',
     note: (demand.note ?? '').trim(),
     summary: (demand.summary ?? '').trim(),
     waiting: waitingFor(step),
@@ -349,7 +348,7 @@ export function stateNote(s: Snapshot): string {
   const open = s.findings.filter(f => f.round === s.round && /CRITICO|IMPORTANTE/.test(f.severity ?? '') && !/corrig|resolv|fixed/.test(f.status))
   return [
     `AiDW (mod aidw-mods): estado da demanda ${s.id} relido do disco depois da compactação.`,
-    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}; modo: ${s.mode}.`,
+    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}.`,
     `- Pasta da demanda: ${s.dir}${s.repos.length ? `; worktrees: ${s.repos.map(r => `${r.name} → ${r.path}`).join(', ')}` : ''}.`,
     s.roundKind ? `- Laço de ${s.roundKind}: rodada ${s.round} de ${s.maxRetries}.` : '',
     open.length ? `- Achados abertos da última rodada: ${open.map(f => `${f.id} ${f.severity}`).join(', ')}.` : '',

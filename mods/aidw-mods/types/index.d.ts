@@ -166,7 +166,6 @@ export type Snapshot = {
   kind: DemandKind
   step: string
   status: string
-  mode: string
   /** A nota do demand.json (o próximo passo que o orquestrador gravou). */
   note: string
   /** O resumo de até 4 linhas do demand.json (`demand set --summary`). */
