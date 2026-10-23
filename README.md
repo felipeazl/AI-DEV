@@ -3,22 +3,24 @@
 **AiDW** (AI Development Workflow) é um plugin de **desenvolvimento agêntico** para o **Claude Code**: um workflow, um time
 de agentes e um conjunto de skills.
 Você conversa com **um único chat**, o **orquestrador**, como conversaria com um tech lead. Ele entende o pedido,
-manda um agente barato ler o código, encomenda o plano, divide em tickets, delega cada ticket, revisa, corrige e só
-te chama quando importa: uma dúvida real, uma ação de risco (commit, push, SQL de escrita) e **uma revisão final**
-com tudo junto.
+manda um agente barato ler o código, encomenda um plano simples e autossuficiente, leva o plano à sua aprovação,
+delega o código, a revisão e os testes, e te chama nos pontos que são seus: o plano, os achados da revisão, a sua
+revisão de código, os passos manuais do teste e o OK da PR.
 
 ```text
  Você ─► /aidw:orquestrar 1234
             │
             ▼
-      orquestrador ── entende ─► explorador lê o código ─► planejador escreve o plano ─► revisor confere o plano
-            │                                                                                  │
-            │  ◄────────────────────────── tickets ◄── planejador ◄────────────────────────────┘
+      orquestrador ── entende ─► explorador lê o código ─► planejador escreve o plano ─► você aprova
+            │
             ▼
-      codificador implementa (num worktree isolado) ─► revisor ⇄ codificador até zero problema grave
-            │                                            (+ bugs / segurança quando vale o custo)
+      codificador implementa (worktree isolado)  ‖  documentador cria as Tasks  ‖  qa monta o roteiro e a massa
+            │
             ▼
-      documentador ─► revisão final (você) ─► pronto
+      revisor (qualidade, bugs, segurança) ─► você decide os achados ─► codificador corrige ⇄ revisor
+            │
+            ▼
+      sua revisão de código ─► qa testa (API, navegador) + você os passos manuais ─► PR com um OK ─► pronto
 ```
 
 > **Feito para o Claude Code.** É nele que o AiDW roda inteiro e onde nasce toda funcionalidade nova. **No Codex, o
@@ -31,8 +33,8 @@ com tudo junto.
 | Sem AiDW | Com AiDW |
 |---|---|
 | Um chat faz tudo: lê centenas de linhas, planeja, codifica e se revisa. O contexto enche e a qualidade cai no fim da sessão. | Cada etapa roda num **agente novo**, com só o que precisa. O chat do orquestrador fica pequeno a demanda inteira. |
-| O mesmo modelo caro para ler arquivo e para decidir arquitetura. | **Modelo e effort por etapa e por nível da demanda**: Haiku para ler código, Sonnet para planejar, codificar e revisar, Opus só no nível crítico, nada acima de `high`. |
-| Você revisa o que o modelo escreveu, sozinho. | Um **revisor** independente acha os problemas antes de você, com IDs, severidade e triagem por regra; você vê o pacote final. |
+| O mesmo modelo caro para ler arquivo e para decidir arquitetura. | **Modelo e effort por papel**: Haiku para ler código e escrever no board, Sonnet high para planejar, codificar e revisar, Sonnet medium para testar; nada acima de `high`, Opus só quando você pede. |
+| Você revisa o que o modelo escreveu, sozinho. | Um **revisor** independente cobre qualidade, bugs e segurança numa passada, com IDs, severidade e a recomendação de manter ou descartar; **você decide** cada achado. |
 | Regras do time repetidas a cada prompt. | Um **contexto** guarda sistemas, comandos de build, convenções e políticas; todo agente já recebe. |
 | O modelo decide o que é seguro. | **O modelo nunca é a última barreira**: permissões do CLI, hooks e validadores bloqueiam o que é de risco. |
 | Fechou o chat, perdeu o fio. | Cada demanda tem pasta, estado e métricas: dá para **retomar** de onde parou e saber quanto cada etapa custou. |
@@ -111,14 +113,14 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, leva o chat
-para ele e conduz o fluxo até a revisão final.
+para ele e conduz o fluxo até a PR.
 
 ### Modos da sessão
 
 | Modo | Comportamento |
 |---|---|
-| `auto` (padrão) | Segue sozinho. Para só em ação travada, dúvida real, algo fora do plano e na revisão final. |
-| `interativo` | Também para antes dos tickets (com o resumo do plano) e antes de cada delegação (agente, effort, nível, ticket, arquivos, build). Você responde *aprovar*, *ajustar* ou *pular*. |
+| `auto` (padrão) | Segue sozinho entre os seus pontos fixos (plano, achados, sua revisão de código, passos manuais, PR), as ações travadas, as dúvidas reais e o que sair do plano. |
+| `interativo` | Também para antes de cada delegação (agente, effort, etapa, arquivos, build). Você responde *aprovar*, *ajustar* ou *pular*. |
 
 Sem o modo no pedido, o orquestrador pergunta. O modo fica gravado e vale na retomada; para trocar no meio, diga
 "modo automático" ou "modo interativo".
@@ -166,7 +168,7 @@ Peça como pediria a um tech lead:
 |---|---|
 | Saber onde está | "Em que etapa estamos?" |
 | Outro modelo numa tarefa | "Use Sonnet no codificador para este ticket" |
-| Menos custo | "Esse ticket é simples, use effort low" |
+| Menos custo | "Essa correção é pequena, use o codificador medium" |
 | Ver o diff de outro repositório | "Mostra o diff do front" |
 | Só uma resposta, sem fluxo | "Só me responda, sem delegar" |
 | Mexer no próprio AiDW | "Manutenção do AiDW: …" |
@@ -174,16 +176,16 @@ Peça como pediria a um tech lead:
 Cada resultado de agente aparece com o cabeçalho e o resumo **medidos** (nunca estimados):
 
 ```text
-## Codificador - claude-opus Medium
-Codificador (padrao) | Claude Opus | effort medium | 67.448 tokens | 156 s
+## Codificador - claude-sonnet High
+Codificador (rota) | Claude Sonnet | effort high | 67.448 tokens | 156 s
 ```
 
 ### Onde as coisas ficam
 
 - **Worktrees:** `C:\wt\<demanda>\<repo>` — um por repositório, com branch própria. O seu working copy nunca é tocado.
   Uma demanda que mexe no back e no front tem os dois na mesma pasta, e o chat fica nela.
-- **Artefatos:** `<pasta de estado do contexto>\<demanda>\` — resumo do card, exploração, plano, tarefas, diffs,
-  revisões, triagens, `metricas.md` e `demand.json` (o estado para retomar).
+- **Artefatos:** `<pasta de estado do contexto>\<demanda>\` — resumo do card, exploração, plano, diffs, revisões,
+  as suas decisões, o roteiro de testes, o texto da PR, `metricas.md` e `demand.json` (o estado para retomar).
 
 ### Pelo terminal
 
@@ -202,27 +204,23 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
 
 | # | Etapa | Quem | Resultado |
 |---|---|---|---|
-| 1 | Entender | orquestrador | `resumo-<id>.md`: card, critérios de aceite, decisões dos comentários, trabalho existente |
-| 2 | Explorar | explorador | `exploracao-<assunto>.md`: respostas numeradas com `arquivo:linha` |
-| 3 | Planejar | planejador | `plano-<id>.md` versionado, com **nível** da demanda e passadas extras |
-| 4 | Plano de testes | qa | `plano-testes-<id>.md`: como provar cada critério (API, navegador, suíte ou manual), testes no código e ajustes de teste |
-| 5 | Revisar o plano | revisor ⇄ planejador | plano e plano de testes; só do nível `padrao` para cima |
-| 6 | Tickets | planejador | uma `tarefa-<agente>-<assunto>.md` autocontida por ticket |
-| 7 | Implementar | codificador | código, os testes que o ponta a ponta não pega, build e `diff-<ticket>-r<N>.patch`, no worktree |
-| 8 | Testar | qa (⇄ codificador nos ajustes de teste) | evidência de cada critério automático; roteiro do que é manual |
-| 9 | Revisar | revisor ⇄ codificador | achados `R1-01`… com severidade; triagem por regra até zero CRITICO/IMPORTANTE |
-| 10 | Teste manual | **você**, com o orquestrador | o roteiro um passo por vez: você executa e manda a evidência (só se houver passo manual) |
-| 11 | Documentar | documentador | docs do diff aprovado |
-| 12 | Revisão final | **você** | um pacote só, sem nenhum ajuste de teste no diff; com o seu OK, o orquestrador publica e executa o que foi aprovado |
+| 1 | Entender | orquestrador | `resumo-<id>.md`: card, critérios e regras com o texto do card, decisões dos comentários, trabalho existente |
+| 2 | Explorar | explorador | `exploracao-<assunto>.md`: respostas numeradas com `arquivo:linha`, contratos, ids e dados reais |
+| 3 | Plano | planejador | `plano-<id>.md`: spec-driven, curto e autossuficiente, com `CA`/`RN` e as entregas `E1…` |
+| 4 | Sua aprovação | **você** | o orquestrador lê o plano e aponta o que não fecha; nada vai para o código sem o seu OK |
+| 5 | Implementar | codificador ‖ documentador ‖ qa | o código no worktree; uma Task por entrega no board; `roteiro-testes-<id>.md` com a massa |
+| 6 | Revisão | revisor ⇄ codificador | achados `R1-01`… (qualidade, bugs, segurança) com a recomendação; **você decide** cada um, a cada rodada |
+| 7 | Sua revisão | **você** | a revisão do código; o que você pedir vira correção e revisão só dela |
+| 8 | Testes | qa, depois **você** | o qa roda API e navegador e marca o roteiro; os passos manuais você roda com o orquestrador |
+| 9 | PR | documentador, depois o orquestrador | `pr-<id>.md`; com **um OK**, commit, push, PR e o comentário de pendências para a QA |
 
-- **Cada agente termina com um `state`** (ex.: `implementation_complete`, `review_changes_requested`), e o
-  orquestrador aplica a regra fixa de `orchestrator/config/routing.toml`. Os agentes não escolhem o próximo passo.
-- **Nível da demanda** (`trivial`, `simples`, `padrao`, `complexa`, `critica`): define modelo e effort de cada
-  agente. Na dúvida, o menor; escala quando um agente falha duas vezes ou a revisão acha CRITICO.
-- **Passadas extras:** `bugs` e `seguranca` só entram quando um gatilho se aplica (concorrência, legado frágil,
-  autenticação, dados pessoais…), em paralelo com a 1ª revisão.
-- **Limite de voltas:** cada laço (explorar ⇄ planejar, revisar ⇄ corrigir) tem `max_retries`; esgotou, o
-  orquestrador para e pergunta.
+- **Cada agente termina com um `state`** (ex.: `plan_ready`, `review_findings`), e o orquestrador aplica a regra fixa
+  de `orchestrator/config/routing.toml`. Os agentes não escolhem o próximo passo.
+- **Sem níveis de demanda:** cada agente roda no seu padrão; as únicas exceções (descer na re-revisão, subir quando o
+  resultado não fez sentido) estão na tabela *Agents and effort*, com o motivo de cada uma.
+- **Cada agente roda uma vez por etapa:** uma nova rodada precisa de um motivo nomeado (o seu ajuste, um achado
+  mantido, um teste que falhou).
+- **Limite de voltas:** o laço revisar ⇄ corrigir tem `max_retries`; esgotou, o orquestrador para e pergunta.
 
 Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
 comentário e um voto sugerido, e você escolhe o que é publicado ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
@@ -238,24 +236,21 @@ repositórios: [docs/demandas-e-worktrees.md](docs/demandas-e-worktrees.md).
 
 ## 4. Agentes
 
-| Agente | Faz | Modelo (padrão → complexa; crítica) |
+| Agente | Faz | Modelo |
 |---|---|---|
-| `orquestrador` | O chat principal: conduz, escolhe o effort, delega, tria e monta a revisão final. Não lê código para planejar nem implementa | o modelo do chat (Opus · high recomendado) |
-| `explorador` | Lê código e responde perguntas numeradas com `arquivo:linha`. Não altera nada | Haiku → Sonnet |
-| `planejador` | Escreve o plano, corrige depois da revisão e corta os tickets | Sonnet medium → Sonnet high; Opus high só na crítica (não roda em trivial) |
-| `codificador` | Implementa um ticket por vez: código, testes, build | Sonnet medium → Sonnet high; Opus high só na crítica |
-| `revisor` | Revisa plano e diff contra spec, ticket e card; achados com severidade | Sonnet medium → Sonnet high; Opus high só na crítica |
-| `api` | Consulta APIs, banco (só leitura pelo validador) e logs; propõe escritas | Sonnet |
-| `documentador` | Docs do diff aprovado, redação de work items | Haiku → Sonnet |
-| `bugs` | **Sob demanda:** defeitos com cenário de falha concreto, causa-raiz | Sonnet; Opus high só na crítica |
-| `seguranca` | **Sob demanda:** vulnerabilidades com caminho de ataque | Sonnet; Opus high só na crítica |
-| `qa` | Plano de testes com o planejador e teste da entrega: web/API sozinho, desktop por roteiro passo a passo com você | Sonnet |
+| `orquestrador` | O chat principal: conduz, lê o plano, delega, leva os achados e os passos manuais a você e abre a PR com o seu OK. Não lê código para planejar nem implementa | o modelo do chat (Opus · medium recomendado) |
+| `explorador` | Lê código e o ambiente (SELECT pelo validador) e responde perguntas numeradas com `arquivo:linha`. Não altera nada | Haiku (Sonnet no levantamento e para refazer) |
+| `planejador` | Escreve o plano SDD com as entregas e ajusta quando você pede | Sonnet high |
+| `codificador` | Implementa uma entrega por vez: código, testes, build | Sonnet high (medium nas correções pequenas) |
+| `revisor` | Revisa o diff contra o plano: qualidade, bugs e segurança numa passada | Sonnet high (medium/low na re-revisão) |
+| `qa` | Roteiro e massa em paralelo com o código; depois, o teste: API e navegador sozinho, o resto com você | Sonnet medium |
+| `documentador` | As Tasks no board e o texto da PR; redação de US e Dívida | Haiku |
 
 Nenhum agente passa de effort `high`. No Codex (só agentes e skills) vale a mesma tabela pelo equivalente de cada modelo (Opus → top,
 Sonnet → intermediário, Haiku → leve). Nomes, modelos e efforts são configuráveis, e qualquer agente pode ser
 desligado.
 
-Tabela completa por nível, contrato de cada agente e como criar um: [docs/agentes.md](docs/agentes.md).
+Exceções de effort, contrato de cada agente e como criar um: [docs/agentes.md](docs/agentes.md).
 
 ---
 
@@ -267,12 +262,11 @@ Skills são procedimentos em Markdown que um agente carrega quando a etapa pede.
 |---|---|---|
 | `orquestrar` · `sair` · `diff` · `done` | você | Entrar e sair do modo orquestrador, trocar o diff, fechar a tarefa |
 | `contexto-listar` · `contexto-usar` · `contexto-criar` | você | Administrar contextos |
-| `to-spec` | planejador | Pedido → plano persistente → tickets autocontidos |
-| `verificar-premissa` | orquestrador, revisor, especialistas | Exige evidência antes de aceitar "não dá para corrigir aqui", "cobre todos os casos" |
+| `to-spec` | planejador | Pedido → plano spec-driven com as entregas, autossuficiente para o codificador |
+| `verificar-premissa` | orquestrador, revisor | Exige evidência antes de aceitar "não dá para corrigir aqui", "cobre todos os casos" |
 | `preparar-worktree` | orquestrador, codificador | Criar, conferir e remover o worktree da demanda |
-| `code-review` | revisor | Revisão com IDs estáveis e severidade |
-| `database-safe` | api | Leitura só pelo validador; escrita sempre proposta para aprovação |
-| `bug-hunt` · `security-audit` | bugs · seguranca | Caça de defeitos e auditoria de segurança |
+| `code-review` | revisor | Revisão numa passada (qualidade, bugs com cenário de falha, segurança com caminho de ataque), com IDs estáveis, severidade e recomendação |
+| `database-safe` | explorador, qa | Leitura só pelo validador; escrita sempre proposta para aprovação |
 
 O contexto pode trazer skills próprias (ler o board do time, anexar arquivo, plano de testes…). Como escrever uma
 skill: [docs/skills.md](docs/skills.md).
@@ -311,7 +305,7 @@ O AiDW tem três camadas. Cada uma sobrepõe a anterior:
 
 | Camada | Onde | Versionado | Quem muda |
 |---|---|---|---|
-| **Núcleo** | o repositório do AiDW: agentes, skills, fluxo, tabela de níveis, políticas genéricas | sim (AiDW) | quem mantém o AiDW |
+| **Núcleo** | o repositório do AiDW: agentes, skills, fluxo, tabela de agentes e effort, políticas genéricas | sim (AiDW) | quem mantém o AiDW |
 | **Contexto** | `contexts/<nome>/`: sistemas, regras do time, permissões, MCPs | sim (repo do time) | o time |
 | **Máquina** | `aidw.config.toml`: o **seu** perfil | não | você |
 
@@ -344,7 +338,7 @@ enabled = false                     # desligar um agente
 
 Rode `python aidw.py configure` para refazer pelo wizard, ou edite à mão e rode `python aidw.py apply` e
 `python aidw.py install`, e abra um chat novo. Exemplos de
-perfis (plano menor, só Codex, front-end, quem não quer passadas extras): [docs/configuracao.md](docs/configuracao.md).
+perfis (plano menor, só Codex, front-end): [docs/configuracao.md](docs/configuracao.md).
 
 ---
 
@@ -368,8 +362,8 @@ Detalhes: [docs/seguranca.md](docs/seguranca.md).
 
 | Documento | Conteúdo |
 |---|---|
-| [docs/fluxo.md](docs/fluxo.md) | O fluxo etapa por etapa, estados e regras, níveis e escalonamento, triagem, artefatos, métricas e retomada |
-| [docs/agentes.md](docs/agentes.md) | Cada agente, tabela de modelo e effort por nível, contrato de saída, variantes, como criar um |
+| [docs/fluxo.md](docs/fluxo.md) | O fluxo etapa por etapa, onde você decide, estados e regras, revisão e testes, artefatos, métricas e retomada |
+| [docs/agentes.md](docs/agentes.md) | Cada agente, modelo e effort com as exceções, contrato de saída, variantes, como criar um |
 | [docs/skills.md](docs/skills.md) | Cada skill, skills de uso direto × de fluxo, `preload`, skills do contexto, como escrever uma |
 | [docs/contextos.md](docs/contextos.md) | Estrutura de um contexto, `context.toml` campo a campo, `include` × `reference`, políticas, criar e validar |
 | [docs/configuracao.md](docs/configuracao.md) | `aidw.config.toml` campo a campo, perfis de exemplo, modelos, roteamento e MCPs |
