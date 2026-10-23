@@ -210,6 +210,9 @@ export type Snapshot = {
 
 export type RunningAgent = { key: string; agent: string; label: string; since: number }
 
+/** Uma delegação do AiDW à espera do registro no metricas.md (a de um agente em segundo plano, até ele terminar). */
+export type Pending = { agent: string; level: string | null; label: string; demand: string }
+
 export type DiffView = {
   source: string
   files: { path: string; change: string; added: number; removed: number }[]
@@ -232,6 +235,8 @@ declare module 'claude-code' {
       active: boolean
       snap: Snapshot | null
       running: RunningAgent[]
+      /** Agentes do AiDW em segundo plano, pelo agentId: o registro sai quando cada um termina. */
+      background: Record<string, Pending>
       hidden: boolean
       tab: string
       tick: number

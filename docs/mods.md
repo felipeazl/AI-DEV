@@ -83,7 +83,11 @@ ferramenta, duração e o `state` lido do JSON final do agente.
   `resumo` para mostrar. Com ela, o orquestrador **não** roda o `record`. Sem ela, ou se o mod disser que não
   conseguiu, ele roda à mão.
 - **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa e um
-  toast.
+  toast. Os números são os mesmos da notificação do agente (`subagent_tokens`, `tool_uses`): os tokens são o uso da
+  última resposta dele (o contexto no fim, como o `totalTokens` de um agente em primeiro plano), não a soma do turno,
+  que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
+  agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
+  caminho não perde o registro.
 - **O orquestrador:** no fim de cada turno do chat principal, o mod soma o uso do turno (entrada, cache escrito, cache
   lido e saída, como a API informou) no `metricas-orquestrador.md` da demanda, pelo `aidw.py record-orchestrator`: uma
   linha por sessão e modelo, com o custo equivalente em preço de API. É o que o `metricas.md` não mostra e costuma ser

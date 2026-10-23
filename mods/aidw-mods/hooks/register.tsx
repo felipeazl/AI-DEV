@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register, TurnUsage } from 'claude-code'
 
-import type { DiffView, ReviewFilter, Snapshot, VoteOption } from '../types'
+import type { DiffView, Pending, ReviewFilter, Snapshot, VoteOption } from '../types'
 import {
   CONTEXT_COMPACT,
   CONTEXT_WARN,
@@ -31,6 +31,9 @@ import type { Actions, UI } from './views'
 const active = atom({ plugin: 'aidw-mods', key: 'active' } as const, false)
 const snap = atom({ plugin: 'aidw-mods', key: 'snap' } as const, null)
 const running = atom({ plugin: 'aidw-mods', key: 'running' } as const, [])
+// Subagentes em segundo plano: a métrica chega no turn.complete deles, pelo agentId. Fica no estado, e não numa
+// variável do módulo, porque o agente costuma atravessar um `/reload-plugins` ou um `aidw.py install`.
+const background = atom({ plugin: 'aidw-mods', key: 'background' } as const, {})
 const hidden = atom({ plugin: 'aidw-mods', key: 'hidden' } as const, false)
 const tab = atom({ plugin: 'aidw-mods', key: 'tab' } as const, 'geral')
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
@@ -58,12 +61,11 @@ const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'ORCHESTRATOR_TEST', 'PREPARE
 const CODE_FILE = /\.(cs|ts|tsx|js|jsx|mjs|vue|py|java|kt|go|rs|cpp|c|h|vb|sql|xaml|cshtml|razor|html|scss|css)$/i
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 
-type Pending = { agent: string; level: string | null; label: string; demand: string; tools: number }
-
 let root = 'C:/AiDW'
 let python = 'python'
-// Subagentes em segundo plano: a métrica chega no turn.complete deles, pelo agentId.
-const background = new Map<string, Pending>()
+// O uso da última resposta de cada subagente (turn.step): é o tamanho do contexto no fim, o `totalTokens` do Agent e
+// o `subagent_tokens` da notificação. O `usage` do turn.complete soma todas as respostas (o cache relido a cada uma).
+const lastUsage = new Map<string, TurnUsage>()
 // As últimas mensagens do usuário (a trava de `model` confere se ele pediu outro modelo).
 const userPrompts: string[] = []
 // Diffs já calculados, por fonte (o estado guarda só o arquivo aberto).
@@ -263,6 +265,15 @@ async function record(
   } catch {
     return null
   }
+}
+
+/** Os quatro números de uma resposta somados: o contexto que ela leu mais o que escreveu. */
+const totalTokens = (u: TurnUsage) => u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens
+
+/** Quantas ferramentas o agente chamou: os tool_use do transcript dele, como o `tool_uses` da notificação. */
+async function toolUses($: EngineInterface, agentId: string): Promise<number> {
+  const found = await $.session.messages({ agentId }).catch(() => null)
+  return Array.isArray(found) ? found.reduce((n, m) => n + (m.role === 'assistant' ? m.toolUses.length : 0), 0) : 0
 }
 
 function notice(header: string | null, p: Pending): string {
@@ -539,7 +550,7 @@ export const register: Register = (on, options) => {
     }
     if (!d || !isOn) return next(e)
     const agent = e.subagent_type ?? 'general-purpose'
-    const p: Pending = { agent, level: d.level, label: labelFor(d.task, agent, e.description), demand: d.demand, tools: 0 }
+    const p: Pending = { agent, level: d.level, label: labelFor(d.task, agent, e.description), demand: d.demand }
     const key = e.tool_use_id
     const since = await $.clock.now()
     await update($, running, list => [...list, { key, agent: agent.split(':').pop() ?? agent, label: p.label, since }])
@@ -553,7 +564,7 @@ export const register: Register = (on, options) => {
     }
     if (result.status === 'async_launched') {
       const id = result.agentId
-      background.set(id, p)
+      await update($, background, b => ({ ...b, [id]: p }))
       await update($, running, list => list.map(r => (r.key === key ? { ...r, key: id } : r)))
       return ran
     }
@@ -565,11 +576,11 @@ export const register: Register = (on, options) => {
     return { ...ran, context: [...(ran.context ?? []), notice(header, p)] }
   })
 
-  // Ferramentas de um subagente em segundo plano, para a coluna de chamadas do metricas.md.
-  on('tool.call', async ($, e, next) => {
-    const p = e.agentId ? background.get(e.agentId) : undefined
-    if (p) p.tools += 1
-    return next(e)
+  // O uso de cada resposta de um subagente: o registro em segundo plano grava o da última.
+  on('turn.step', async function* ($, e, next) {
+    const r = yield* next(e)
+    if (e.agentId && r.usage) lastUsage.set(e.agentId, r.usage)
+    return r
   })
 
   // Economia: o orquestrador lendo código no próprio chat.
@@ -594,14 +605,16 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const id = e.agentId
-    const p = id ? background.get(id) : undefined
+    const last = id ? lastUsage.get(id) : undefined
+    if (id) lastUsage.delete(id)
+    const p = id ? (await read($, background))[id] : undefined
     if (id && p) {
-      background.delete(id)
+      await update($, background, b => Object.fromEntries(Object.entries(b).filter(([k]) => k !== id)))
       await update($, running, list => list.filter(r => r.key !== id))
-      const u = e.usage
-      const tokens = u ? u.input_tokens + u.output_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens : 0
       const state = parseState(e.answer)
-      const header = await record($, p, state, tokens, p.tools, e.durationMs)
+      const header = last
+        ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs)
+        : null
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: notice(header, p) }] } })
       $.ui.toast(`AiDW: ${p.agent.split(':').pop()} (${p.label}) terminou${state ? ` — ${state}` : ''}`, { timeoutMs: 8_000 })
     } else if (!id && (await read($, active))) {
