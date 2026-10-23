@@ -4,6 +4,10 @@ Um agente é um **papel** com uma definição (`agents/<papel>/AGENT.md`), um mo
 O orquestrador é o chat principal; os outros são **subagentes nativos** do provedor (a ferramenta `Agent` no Claude,
 `spawn_agent` no Codex), cada um num contexto novo a cada delegação.
 
+No fluxo v3 (2026-10-23) são sete: orquestrador, explorador, planejador, codificador, revisor, qa e documentador. Os
+antigos `api`, `bugs` e `seguranca` saíram: as consultas do api ficaram com o explorador e o qa, e o revisor cobre
+qualidade, bugs e segurança numa passada.
+
 ## Papel × nome
 
 O **papel** é fixo e é o que o AiDW usa internamente (`coder`, `reviewer`…). O **nome** é o que aparece para você
@@ -13,147 +17,118 @@ O **papel** é fixo e é o que o AiDW usa internamente (`coder`, `reviewer`…).
 | Nome padrão | Papel | Ferramentas | Escreve código? |
 |---|---|---|---|
 | `orquestrador` | `orchestrator` | as do chat | não (só quando você pede, ou em manutenção do AiDW) |
-| `explorador` | `explorer` | leitura, shell, grava o relatório | não |
-| `planejador` | `planner` | leitura, shell, grava o plano e as tarefas | não |
+| `explorador` | `explorer` | leitura, shell (SELECT pelo validador do contexto), grava o relatório | não |
+| `planejador` | `planner` | leitura, shell, grava o plano | não |
 | `codificador` | `coder` | leitura, edição, shell | **sim**, só no worktree |
 | `revisor` | `reviewer` | leitura, shell, grava a revisão | não |
-| `api` | `api-db` | leitura, shell (sem gravar arquivos) | não |
-| `documentador` | `documenter` | leitura, edição, shell | só documentação |
-| `bugs` | `bug-hunter` | leitura, shell, grava o relatório | não |
-| `seguranca` | `security` | leitura, shell, grava o relatório | não |
-| `qa` | `qa` | leitura, shell, navegador (Claude in Chrome ou `@Chrome` no Codex, Playwright), grava o plano de testes, o relatório e o roteiro | não (pede ajustes ao codificador) |
+| `qa` | `qa` | leitura, shell, navegador (Claude in Chrome, Playwright, Chrome DevTools; no Codex, `@Chrome`), grava o roteiro e o relatório | não (pede ajustes ao codificador) |
+| `documentador` | `documenter` | leitura, edição, shell, board | só texto (Tasks, PR) |
 
-Além disso, cada papel recebe os servidores MCP que `config/mcp.toml` libera para ele (Playwright para quem testa
-tela, Figma para quem implementa layout, Context7 para todos…) e as ferramentas que o contexto bloqueia saem da
-lista (`disallowed_tools`; por exemplo, só o orquestrador comenta no card, e só depois do seu OK).
+Cada papel recebe também os servidores MCP que `config/mcp.toml` libera para ele, e as ferramentas que o contexto
+bloqueia saem da lista (`disallowed_tools`; por exemplo, nenhum agente comenta no card).
 
 ## O que cada um faz
 
 ### Orquestrador
-Conduz a demanda de ponta a ponta: entende o card, encomenda a exploração e o plano, escolhe nível e effort de cada
-delegação, escreve as tarefas que não são do planejador, aplica as regras de `routing.toml`, tria as revisões,
-resolve sozinho o que pode e junta numa pergunta o que precisa de você. Monta a revisão final. Usa o modelo
-selecionado no chat (recomendado: Opus, effort high).
+Conduz a demanda de ponta a ponta: entende o card, encomenda a exploração e o plano, **lê o plano** e o leva à sua
+aprovação, dispara em paralelo o código, as Tasks e o roteiro de testes, leva os achados da revisão a você, pilota os
+passos manuais do teste e, com o seu OK, faz o commit, o push e abre a PR. Usa o modelo selecionado no chat
+(recomendado: Opus, effort medium). O contexto dele é o maior custo da demanda, então ele lê arquivo só quando precisa
+decidir algo dele.
 
 ### Explorador
 O "leitor barato". Recebe perguntas numeradas ("onde a validação do CPF acontece?", "qual o contrato do endpoint
-X?") e responde cada uma com `arquivo:linha`. Não desenha a solução nem altera código. O relatório
-`exploracao-<assunto>.md` fica na pasta da demanda e é reusado pelo plano, pelas tarefas e pelas correções: **uma
-exploração por assunto, nunca repetida**. Haiku na maioria dos níveis: ler e citar é barato e não precisa de um
-modelo grande.
+X?", "qual protocolo de QA está no status 2?") e responde com `arquivo:linha` ou com a consulta que prova. Faz as
+consultas de leitura que eram do api: ids, enums, dado real por SELECT pelo validador do contexto, chamada de API que
+não muda estado. Não desenha a solução, não altera código nem dado. O relatório `exploracao-<assunto>.md` é reusado
+pelo plano. Haiku; Sonnet só nas exceções (refazer quando o Haiku errou, o levantamento).
 
-No **modo levantamento** (workflow `levantamento`), recebe o resumo e os pontos numerados do card em vez de perguntas:
-valida cada ponto no código, mapeia o fluxo de ponta a ponta e devolve os sinais de tamanho e as dúvidas que o código
-não responde. Continua só levantando fatos: quem estima é o orquestrador.
+No **modo levantamento**, recebe o resumo e os pontos numerados do card: valida cada ponto no código, mapeia o fluxo
+de ponta a ponta e devolve os sinais de tamanho e as dúvidas que o código não responde.
 
 ### Planejador
-Três modos, sempre num agente novo:
-- **spec:** escreve o `plano-<id>.md` a partir do resumo e da exploração (skill `to-spec`, pré-carregada): comportamento
-  atual verificado, desejado, critérios de aceite, checklists, riscos, nível e passadas extras — e, no mesmo passo,
-  os tickets: tarefas autocontidas, uma por entrega técnica (nunca minúsculas: cada uma vira um work item), com
-  arquivos em escopo e `arquivo:linha`, o comando de build e as regras do projeto.
-- **fix:** recebe o plano e a revisão dele e grava a nova versão, acertando os tickets que a mudança toca.
-- **tickets:** só para recortar os tickets (ex.: o orquestrador achou que encheriam o board de entregas pequenas).
+Escreve o `plano-<id>.md` (skill `to-spec`, pré-carregada): um plano **spec-driven, simples e autossuficiente** —
+premissas verificadas, comportamento atual e desejado, os critérios de aceite e as regras de negócio do card (`CA1`,
+`RN1`, com o texto do card), e as **entregas** `E1`, `E2`… Cada entrega é o que um codificador termina numa passada
+e vira uma Task: os arquivos com `arquivo:linha` e o que muda em cada um, os critérios que cobre, os testes de código
+que precisa, a doc do repositório que fica desatualizada, o worktree e o build. O plano é a tarefa do codificador.
 
-Se precisa de código que não conhece, devolve `plan_needs_exploration` com as perguntas; o orquestrador manda ao
-explorador e chama um planejador novo. Sonnet (Opus só na crítica): o plano decide o custo de todas as etapas seguintes.
+No **modo fix**, aplica os ajustes que você pediu na aprovação e grava a versão nova. Se precisa de código que não
+conhece, devolve `plan_needs_exploration` com as perguntas. Sonnet high.
 
 ### Codificador
-Implementa **um ticket por vez** no worktree: entende, planeja dentro do escopo, implementa seguindo as convenções do
-projeto, roda **só** os comandos de build e teste que a tarefa dá, revisa o próprio diff e grava o patch. Num
-bloqueio de ambiente, reporta o comando e o erro exatos e para, sem gambiarra. Se o `qa` estiver desligado, o bloco
-`validation` do resultado é a etapa de teste.
+Implementa **uma entrega por vez** no worktree: lê o plano e os arquivos da entrega, implementa seguindo as convenções
+do projeto, atualiza a doc do repositório que a entrega cita, roda **só** os comandos de build e teste do plano,
+revisa o próprio diff e grava o patch. Num bloqueio de ambiente, reporta o comando e o erro exatos e para. Não faz
+commit: a entrega fica no worktree até a etapa PR. Sonnet high; medium nas correções pequenas.
 
-**Testes no código só onde o ponta a ponta não enxerga.** Um fluxo cuja falha aparece na tela ou na resposta da API
-não ganha teste unitário: o QA já pega. Ganha teste o passo interno que nunca chega ao cliente: um cálculo, um
-mapeamento, uma transição de estado, um retry/timer, um dado gravado e não exibido, um erro engolido no log. O plano
-de testes lista esses passos (*Testes no código*) e o ticket diz quais são dele.
+**Testes no código só onde o ponta a ponta não enxerga:** um cálculo, um mapeamento, uma transição de estado, um
+retry/timer, um dado gravado e não exibido, um erro engolido no log. O plano diz quais.
 
-**Ajuste de teste** (a pedido do QA): mudança temporária para testar, como pular uma validação, forçar uma flag,
-mockar uma dependência ou apontar o front para QA. Cada bloco leva a marca `AIDW-TESTE` e todos ficam num patch só,
-`ambiente-teste-<id>.patch`, registrado em `ambiente-teste-<id>.md`. O orquestrador aplica o patch para testar e o
-reverte ao fim de cada teste; a revisão e o commit nunca o veem.
+**Ajuste de teste** (a pedido do QA): mudança temporária para testar, marcada com `AIDW-TESTE`, num patch só
+(`ambiente-teste-<id>.patch`). O orquestrador aplica para testar e reverte depois; a revisão e o commit nunca o veem.
 
 ### Revisor
-Revisa o **plano** e o plano de testes (confere cada `arquivo:linha`, o comportamento atual e o card) e o **diff** (contra spec, ticket,
-checklist e as convenções do contexto). Devolve achados com IDs estáveis e severidade (CRITICO, IMPORTANTE,
-SUGESTAO). Não altera código. Usa a skill `code-review` (pré-carregada) e `verificar-premissa`.
+Revisa o **diff** de cada entrega contra o plano numa passada (skill `code-review`, pré-carregada):
+- **qualidade**: os padrões do time (no safeweb, o Guideline) e as convenções do repositório;
+- **bugs**: defeitos reais, cada um com o cenário de falha rastreável no código;
+- **segurança**: vulnerabilidades exploráveis, cada uma com o caminho de ataque.
 
-No **modo PR** (a PR de outra pessoa, workflow `pr-review`), cada achado que vale contar ao autor vem com o rascunho do
-comentário (arquivo, linha, lado do diff e texto de até ~5 linhas), e a revisão traz um voto sugerido. Ele nunca
-comenta, vota nem conclui a PR: isso é do orquestrador, com o seu OK.
+Cada achado tem ID estável, severidade, categoria, a correção mínima dentro do escopo, o código antes e depois e a
+**recomendação** (manter ou descartar, e por quê): você decide cada um. Na re-revisão, confere só os achados mantidos e
+as regressões. Não altera código. Sonnet high; medium/low na re-revisão.
 
-### API
-Opera os ambientes de desenvolvimento e qualidade: consulta APIs, banco (só leitura, pelo validador do contexto) e
-logs; gera ou ajusta dados de teste, descobre ids, investiga integrações. **Toda escrita é proposta** com o comando
-exato e só executa depois do seu OK (skill `database-safe`).
-
-### Documentador
-Documenta o que fica fora dos repositórios e redige work items (US, dívida técnica) para você confirmar. README,
-ARCHITECTURE e docs de API de cada repositório vêm no ticket do codificador, junto com o código. Com o `qa`
-desligado, também gera o plano de testes.
-
-### Bugs e Segurança (sob demanda)
-- **bugs:** procura defeitos de comportamento reais, cada um com um cenário de falha concreto, ou acha a causa-raiz de
-  um bug reportado (skill `bug-hunt`).
-- **seguranca:** procura vulnerabilidades exploráveis (injeção, autenticação/autorização, segredos, criptografia,
-  dados pessoais, dependências), cada uma com o caminho de ataque (skill `security-audit`).
-
-Só entram quando um gatilho se aplica, uma vez por demanda, em paralelo com a 1ª revisão ([fluxo.md](fluxo.md#passadas-extras)).
+No **modo PR** (a PR de outra pessoa), cada achado que vale contar ao autor vem com o rascunho do comentário, e a
+revisão traz um voto sugerido. Ele nunca comenta, vota nem conclui a PR.
 
 ### QA
-Entra **sempre que a demanda é testada**, em dois momentos:
+Entra em dois momentos:
 
-1. **Plano de testes** (modo `plan`, logo depois do plano do planejador): grava `plano-testes-<id>.md` com a forma
-   de provar cada critério de aceite:
-   - `auto-api`: chamadas na API local ou de DEV/QA;
-   - `auto-browser`: a tela de ponta a ponta, pelo seu Chrome já logado (Claude in Chrome; no Codex, `@Chrome`) ou pelo
-     Playwright;
-   - `auto-suite`: um teste que já existe;
-   - `manual`: o que não dá para rodar aqui, como desktop/WPF.
+1. **Roteiro e massa** (modo `plan`, em paralelo com o codificador, logo depois da sua aprovação do plano): grava
+   `roteiro-testes-<id>.md` com cada `CA`/`RN`, os passos, o resultado esperado, a evidência e como provar —
+   `auto-api`, `auto-browser` (Claude in Chrome para tela com login, Playwright para E2E sem sessão), `auto-suite` ou
+   `manual`. Levanta a massa: acha os registros que já existem e lista em *Aprovações* o que precisa ser criado ou
+   alterado, para você aprovar enquanto o código é escrito.
+2. **Teste da entrega** (modo `test`, depois da sua revisão de código): confere o roteiro contra o diff final, roda as
+   escritas aprovadas e os passos automáticos e marca ✅/❌ com a evidência no roteiro. Os passos manuais ficam para você
+   executar com o orquestrador; um passo que precisa de ajuste no código volta como `test_adjustment_needed`.
 
-   Ele lista também os **testes no código** (o que o ponta a ponta não pega) e os **ajustes de teste**. O revisor
-   confere o plano de testes junto com o plano, e o planejador usa os dois para cortar os tickets.
-2. **Teste da entrega** (modo `test`, depois da implementação):
-   - roda a suíte e os critérios automáticos com evidência;
-   - quando precisa de um ajuste no código, devolve `test_adjustment_needed` e o codificador aplica;
-   - se o subagente não consegue usar o navegador, ele devolve `orchestrator_test_needed`: o orquestrador executa
-     esses critérios no navegador dele, seguindo o plano de testes, e um QA novo (modo `verify`) confere a
-     evidência. Os dois vereditos vão para você numa tabela, e cada divergência ou dúvida é debatida com você, que
-     dá a palavra final;
-   - o que é manual vira `roteiro-testes-<id>.md`.
+Não corrige nem edita código. Sonnet medium.
 
-   Depois da revisão aprovada, o orquestrador mostra o roteiro **um passo por vez**: o que fazer, o resultado
-   esperado e a evidência a mandar. Você executa e manda a evidência, ele confere e registra, e segue até o fim. Um
-   passo que falha vira correção do codificador, revisão só da correção e um novo teste só daquele passo.
+### Documentador
+- **Board** (depois da sua aprovação do plano): anexa o plano ao card e cria uma Task por entrega, em texto simples e
+  direto, sem jargão técnico.
+- **PR** (depois dos testes): escreve `pr-<id>.md` com a mensagem de commit, o título e a descrição da PR, os work
+  items e as pendências para a QA. Quem faz o commit, o push e abre a PR é o orquestrador, com o seu OK.
+- **US e Dívida técnica**, quando pedido (skill `redigir-work-item`).
 
-Não corrige nem edita código. Uma chamada que muda estado no ambiente continua passando pela sua aprovação, uma por
-vez.
+Haiku.
 
-## Modelo e effort por nível
+## Modelo e effort
 
-A tabela vem de `[effort.levels]` em `orchestrator/config/routing.toml` (Claude; no Codex, o equivalente):
+Não há nível de demanda. Cada agente tem um **padrão** (`aidw.config.toml`) e só as **exceções** de
+`[effort.variants]` em `orchestrator/config/routing.toml`, cada uma com o motivo que a permite:
 
-| Agente | trivial | simples | padrao | complexa | critica |
-|---|---|---|---|---|---|
-| planejador | não roda | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
-| explorador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet high |
-| codificador | Sonnet low | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
-| revisor | Sonnet low | Sonnet medium | Sonnet medium | Sonnet high | Opus high |
-| bugs · seguranca | Sonnet low | Sonnet medium | Sonnet high | Sonnet high | Opus high |
-| api | Haiku | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
-| documentador | Haiku | Haiku | Haiku | Sonnet medium | Sonnet medium |
-| qa | Sonnet low | Sonnet low | Sonnet medium | Sonnet high | Sonnet high |
+| Agente | Padrão | Exceções (só pelo motivo) |
+|---|---|---|
+| orquestrador | o chat (recomendado Opus medium) | — |
+| explorador | Haiku | Sonnet medium — refazer uma vez quando o resultado não fez sentido; Sonnet high — levantamento |
+| planejador | Sonnet high | medium — ajuste do plano que você pediu |
+| codificador | Sonnet high | medium — correção pequena ou ajuste temporário de teste |
+| revisor | Sonnet high | medium — re-revisão só das correções; low — re-revisão de uma correção trivial |
+| qa | Sonnet medium | high — refazer uma vez quando o resultado não fez sentido |
+| documentador | Haiku | — |
 
 Por que assim:
 - **Ler é barato, decidir é caro.** Explorador e documentador ficam no Haiku; o raciocínio vai para quem planeja,
   codifica e revisa.
-- **Sonnet em quase tudo:** low no trivial, medium no simples e no padrão, high na complexa. O effort nunca cai de
-  um nível para o de cima: o simples economiza em etapas, não em raciocínio.
-- **Opus só na crítica** (planejador, codificador, revisor, bugs e segurança): o caso excepcional, em que errar custa
-  mais que o modelo.
-- **Nada acima de `high`:** acima disso o ganho é pequeno e a sessão do plano se esgota rápido.
+- **Uma rodada bem feita custa menos que três rápidas.** Planejador, codificador e revisor rodam em high por padrão; o
+  effort desce só no que é pequeno por natureza (a re-revisão de uma correção).
+- **Opus só quando você pede.** Nada acima de `high`.
 - **Modelos sem effort** (Haiku) ignoram o valor; ele continua valendo para o equivalente do Codex.
+
+Uma exceção nova é uma entrada a mais em `[effort.variants.<papel>]`, com `effort`, `model` (opcional) e `when`. O
+contexto pode redefinir a lista de um papel no `contexts/<nome>/routing.toml`.
 
 ### Equivalência no Codex
 
@@ -165,27 +140,24 @@ A mesma tabela serve aos dois provedores pelo **tier** de cada modelo (`config/m
 | Sonnet | `mid` | o intermediário |
 | Haiku | `fast` | o leve |
 
-O modelo é escolhido entre os liberados para a conta. Um modelo novo liberado no tier passa a ser usado sozinho.
-
 ### Versões
 
 No Claude, o `model_id` é o **apelido** (`opus`, `sonnet`, `haiku`), que o Claude Code resolve para o modelo mais
-novo da família que a versão instalada conhece. Por isso os nomes aparecem sem versão (`claude-sonnet`): é sempre o
-mais recente. No Codex, o `model_id` é o ID exato, e o `metricas.md` grava o modelo que a sessão realmente usou.
+novo da família que a versão instalada conhece. No Codex, o `model_id` é o ID exato, e o `metricas.md` grava o modelo
+que a sessão realmente usou.
 
 ### Variantes
 
-No Claude, o effort é fixado no arquivo do subagente. Por isso cada agente existe em **variantes**, uma por
-combinação usada na tabela:
+No Claude, o modelo e o effort são fixados no arquivo do subagente. Por isso cada exceção vira uma **variante**:
 
 ```text
-aidw:codificador                 ← o modelo e effort padrão do agente
-aidw:codificador-high            ← mesmo modelo, effort high
-aidw:codificador-sonnet-high     ← outro modelo naquele nível, effort high
+aidw:codificador                  ← o padrão (Sonnet high)
+aidw:codificador-medium           ← mesmo modelo, effort medium (correção pequena)
+aidw:explorador-sonnet-high       ← outro modelo, effort high (levantamento)
 ```
 
-A tabela *Effort per task* do orquestrador já traz em cada célula o `subagent_type` certo. No Codex, modelo e effort
-vão em cada `spawn_agent`, sem variantes.
+A tabela *Agents and effort* do orquestrador traz o `subagent_type` de cada uma, e o mod recusa uma variante fora
+dela. No Codex, modelo e effort vão em cada `spawn_agent`, sem variantes.
 
 ## O contrato de saída
 
@@ -199,7 +171,6 @@ Todo agente termina com **um** bloco JSON. Os campos comuns:
   "errors": [],
   "questions": [],
   "approvals": [],
-  "mcp_used": [],
   "notes": []
 }
 ```
@@ -212,13 +183,11 @@ Todo agente termina com **um** bloco JSON. Os campos comuns:
 | Agente | Estados |
 |---|---|
 | explorador | `exploration_complete`, `environment_blocked` |
-| planejador | `spec_ready`, `plan_has_open_questions`, `plan_needs_exploration`, `tickets_ready` |
-| codificador | `implementation_complete`, `implementation_failed`, `environment_blocked`, `ticket_has_open_questions`, `policy_requires_approval` |
-| revisor | `review_approved`, `review_changes_requested`, `review_has_open_questions`, `plan_review_approved`, `plan_review_changes_requested`, `plan_review_has_open_questions`, `pr_review_done` (modo PR) |
-| api | `task_complete`, `policy_requires_approval`, `environment_blocked` |
-| documentador | `docs_complete`, `environment_blocked`, `policy_requires_approval` |
-| bugs · seguranca | `audit_clean`, `audit_findings`, `audit_has_open_questions` |
-| qa | `test_plan_ready`, `test_plan_has_open_questions` (plan); `tests_passed`, `tests_failed`, `manual_test_required`, `test_adjustment_needed`, `orchestrator_test_needed`, `environment_blocked`, `policy_requires_approval` (test e verify) |
+| planejador | `plan_ready`, `plan_has_open_questions`, `plan_needs_exploration` |
+| codificador | `implementation_complete`, `implementation_failed`, `environment_blocked`, `implementation_has_open_questions`, `policy_requires_approval` |
+| revisor | `review_findings`, `review_approved`, `pr_review_done` (modo PR) |
+| qa | `test_plan_ready`, `test_plan_has_open_questions` (plan); `tests_passed`, `tests_failed`, `manual_test_required`, `test_adjustment_needed`, `environment_blocked`, `policy_requires_approval` (test) |
+| documentador | `task_complete` (board, work item), `pr_ready` (pr), `environment_blocked`, `policy_requires_approval` |
 
 ## O que um agente recebe
 
@@ -231,8 +200,8 @@ A definição final de cada agente é montada pelo `apply`/`install`, em camadas
 5. *Systems* do contexto: repositórios, stack, build e teste de cada sistema.
 6. As skills do papel (do núcleo e do contexto); as de `preload` já vêm carregadas.
 
-E na hora da delegação, o arquivo de tarefa: spec, ticket, arquivos com `arquivo:linha`, o comando de build e as
-regras. **Quanto menos um agente precisa procurar, menos ele gasta.**
+E na hora da delegação, os caminhos: o plano e a entrega, o relatório anterior, a tarefa curta quando há uma. **Quanto
+menos um agente precisa procurar, menos ele gasta.**
 
 ## Ligar, desligar e trocar
 
@@ -242,17 +211,16 @@ No `aidw.config.toml` ([configuracao.md](configuracao.md)):
 [agents.qa]
 enabled = false           # desliga o qa (o teste volta a ser o `validation` do codificador)
 
-[agents.bug-hunter]
-enabled = false           # o orquestrador nunca delega a ele
-
 [agents.coder]
 name = "dev"              # passa a se chamar aidw:dev
-model = "sonnet"          # modelo padrão do papel (a tabela por nível continua valendo onde dá outro modelo)
-effort = "medium"
+model = "sonnet"          # modelo padrão do papel
+effort = "high"
 ```
 
 Com o explorador ou o planejador desligados, o orquestrador faz a etapa ele mesmo (skill `to-spec`, a exploração mais
-barata disponível). O orquestrador não pode ser desligado. Depois de mudar: `python aidw.py install` e um chat novo.
+barata disponível). O orquestrador não pode ser desligado. Uma config antiga com `[agents.api-db]`,
+`[agents.bug-hunter]` ou `[agents.security]` é aceita com aviso, e esses papéis não são gerados. Depois de mudar:
+`python aidw.py install` e um chat novo.
 
 ## Criar um agente
 
@@ -260,8 +228,8 @@ barata disponível). O orquestrador não pode ser desligado. Depois de mudar: `p
    valores de `state`) e RULES.
 2. Os estados novos em `[rules]` de `orchestrator/config/routing.toml`, com a ação de cada um.
 3. O papel em `DEFAULT_AGENTS`, `DEFAULT_NAMES` e `RUN_PROFILE` do `aidw.py` (tier padrão, nome, ferramentas).
-4. O modelo e effort em cada nível de `[effort.levels]`, ou `"none"` onde ele não roda.
+4. As exceções de modelo e effort, se houver, em `[effort.variants.<papel>]`.
 5. `[agents.<papel>]` no `aidw.config.example.toml` e, se fizer sentido, os MCPs em `config/mcp.toml`.
-6. `python aidw.py apply`, `python -m unittest discover -s tests` e `python aidw.py install`.
+6. `python -m unittest discover -s tests` e `python aidw.py install`.
 
 Nomes que colidem com agentes do CLI (`plan`, `explore`, `default`…) são recusados.
