@@ -98,7 +98,7 @@ type Fake = {
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean },
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean },
 ): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
@@ -160,8 +160,10 @@ function fake(
     const header = { header: '## Codificador - claude-opus Medium', resumo: 'Codificador (padrao) | 1.000 tokens' }
     return { value: { exitCode: 0, stdout: JSON.stringify(header), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('tool.call', () => ({
-    result: {
+  on('tool.call', ($, e) => ({
+    result: opts.background ? {
+      status: 'async_launched', agentId: 'bg1', description: 'Revisar plano', prompt: e.tool === 'Agent' ? e.prompt : '', outputFile: 'C:/tmp/bg1.output',
+    } : {
       status: 'completed', agentId: 'a1', prompt: 'p',
       content: [{ type: 'text', text: 'feito\n{"state": "implementation_complete"}' }],
       totalTokens: 1000, totalToolUseCount: 5, totalDurationMs: 9000,
@@ -436,6 +438,67 @@ test('troca de etapa com contexto alto: compacta uma vez entre turnos', async ($
   await $.turn.complete(TURN(296_000))
   await f.clock.advance(1_000)
   expect(compactions.length).toBe(1) // a mesma etapa não compacta de novo
+})
+
+test('agente em segundo plano: grava o contexto da última resposta, não a soma do turno', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', background: true })
+  // três respostas do subagente; o cache relido cresce a cada uma (caso real da m-144245: revisor plano-r1)
+  const steps = [
+    { input_tokens: 3, cache_creation_input_tokens: 10_000, cache_read_input_tokens: 20_000, output_tokens: 500 },
+    { input_tokens: 2, cache_creation_input_tokens: 5_000, cache_read_input_tokens: 120_000, output_tokens: 800 },
+    { input_tokens: 1, cache_creation_input_tokens: 1_500, cache_read_input_tokens: 240_000, output_tokens: 596 },
+  ]
+  on('turn.step', async function* ($, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'tool_use' as const, usage: { model: 'claude-sonnet-5-5', ...steps[e.index]! } }
+  })
+  const read = { tool_use_id: 'r', tool: 'Read', input: {} }
+  on('session.messages', ($, e) => ({
+    value: e.agentId === 'bg1'
+      ? [
+          { role: 'user' as const, text: 'Tarefa', toolUses: [] },
+          { role: 'assistant' as const, text: '', toolUses: [read, read] },
+          { role: 'assistant' as const, text: '', toolUses: [read] },
+          { role: 'assistant' as const, text: 'pronto', toolUses: [] },
+        ]
+      : [],
+  }))
+  const rows: string[] = []
+  on('session.append', ($, e, next) => {
+    rows.push(JSON.stringify(e.message.content))
+    return next(e)
+  })
+  await $.session.start(START('us-1'))
+  const extra = { command: 'aidw-rodada', args: '' } as never
+  await $.command.run(extra)
+  await $.command.run(extra)
+
+  await $.tool.call(delegation()) // o Agent responde async_launched (fake com background)
+  expect(f.runs).toEqual([]) // só grava quando o agente termina
+
+  for (const [index] of steps.entries()) {
+    const stream = $.turn.step({ turnId: 'bt', index, model: 'claude-sonnet-5-5', messageCount: 1 + index, agentId: 'bg1' })
+    for await (const _ of stream) void _
+    await stream.result
+  }
+  const sum = steps.reduce((n, u) => n + u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens, 0)
+  await $.turn.complete({
+    answer: 'pronto\n{"state": "plan_review_changes_requested"}', durationMs: 508_448, isAborted: false, turnId: 'bt', reason: 'answer',
+    agentId: 'bg1', usage: { model: 'claude-sonnet-5-5', input_tokens: 6, output_tokens: 1_896, cache_read_input_tokens: 380_000, cache_creation_input_tokens: 16_500 },
+  })
+  expect(f.runs.length).toBe(1)
+  const argv = f.runs[0] ?? []
+  for (const [flag, value] of [
+    ['--agent', 'aidw:codificador'], ['--label', 'rota'], ['--tokens', '242097'], ['--tool-uses', '3'],
+    ['--duration-ms', '508448'], ['--state', 'plan_review_changes_requested'],
+  ] as const) {
+    expect(argv[argv.indexOf(flag) + 1]).toBe(value)
+  }
+  expect(argv).not.toContain(String(sum))
+  expect(rows.some(r => r.includes('delegação registrada') && r.includes('## Codificador - claude-opus Medium'))).toBe(true)
+
+  // o mesmo agente retomado (SendMessage) não grava de novo
+  await $.turn.complete({ answer: 'ok', durationMs: 1_000, isAborted: false, turnId: 'bt2', reason: 'answer', agentId: 'bg1' })
+  expect(f.runs.length).toBe(1)
 })
 
 test('filtro de segredos nas linhas da conversa', async ($, on) => {
