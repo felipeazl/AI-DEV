@@ -517,3 +517,30 @@ test('filtro de segredos nas linhas da conversa', async ($, on) => {
   expect(row).not.toContain('SuperSecreta1')
   expect(row).toContain('segredo ocultado: Password, 13 caracteres')
 })
+
+test('desktop: o botão leva o diff do app para o repositório, ou diz onde abrir quando já está nele', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1' })
+  const ran: string[] = []
+  on('command.run', { command: 'aidw:diff' }, ($, e) => {
+    ran.push(`/${e.command} ${e.args}`)
+    return { text: '' }
+  })
+  await $.session.start({ ...START('us-1'), surface: 'desktop' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  await pane.press({ key: 'tab-diffs' })
+  // a sessão está em outra pasta: o botão leva a sessão (e o painel de diff do app) para o worktree do Front
+  expect(await pane.find({ key: 'app-diff' })).toBeDefined()
+  await pane.press({ key: 'app-diff' })
+  expect(ran).toEqual(['/aidw:diff Front'])
+  await pane.unmount()
+})
+
+test('desktop: com a sessão já no worktree, não há o que trocar', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1', cwd: 'C:/wt/us-1/Front' })
+  await $.session.start({ ...START('us-1'), cwd: 'C:/wt/us-1/Front', surface: 'desktop' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  await pane.press({ key: 'tab-diffs' })
+  expect(await pane.find({ key: 'app-diff' })).toBeUndefined()
+  await has(pane, /ícone de diff no topo da janela/)
+  await pane.unmount()
+})

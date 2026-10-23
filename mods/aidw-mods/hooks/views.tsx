@@ -55,6 +55,8 @@ export type ViewState = {
   /** `terminal` mostra a tecla de cada aba (`1: Geral`); no app as teclas funcionam sem aparecer. */
   surface: string
   canAppDiff: boolean
+  /** A pasta da sessão: o painel de diff do app desktop mostra o repositório dela. */
+  sessionCwd: string
   reviewFile: string
   decisionTab: string
   filter: ReviewFilter
@@ -768,6 +770,10 @@ export function reviewRounds(s: Snapshot): { file: string; label: string }[] {
 
 const isFixed = (f: Finding) => /corrig|fixed|resolv/.test(f.status)
 
+/** Duas pastas iguais, sem diferenciar barra nem caixa (Windows). */
+export const samePath = (a: string, b: string) =>
+  a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+
 /** A categoria do achado: a do título (fluxo v3) ou a origem (as passadas de bugs e segurança de antes). */
 export function categoryOf(f: Finding): 'qualidade' | 'bug' | 'seguranca' {
   if (f.category === 'bug' || f.source === 'bugs') return 'bug'
@@ -1000,7 +1006,13 @@ function Diffs(ui: UI, v: ViewState, act: Actions) {
     <Box flexDirection="column" gap={1}>
       <Box justifyContent="space-between" alignItems="center" gap={2}>
         {choices(ui, 'diff-source', sources, d?.source ?? sources[0]?.value ?? '', value => act.diffSource(value))}
-        {repo && v.canAppDiff && <Button key="app-diff" label="Abrir no app ↗" plain dimColor onPress={() => act.appDiff(repo.name)} />}
+        {repo && v.canAppDiff && (samePath(repo.path, v.sessionCwd) ? (
+          // o mod não abre o painel de diff do app (não há API para isso): ele segue a pasta da sessão, que já é esta
+          <Text key="app-diff-here" color={C.dim}>No app: ícone de diff no topo da janela</Text>
+        ) : (
+          // leva a sessão para o worktree deste repositório (/aidw:diff), e o painel de diff do app vai junto
+          <Button key="app-diff" label="Levar o diff do app para cá ↗" plain dimColor onPress={() => act.appDiff(repo.name)} />
+        ))}
       </Box>
       {d && !d.error && (
         <Text color={C.dim}>

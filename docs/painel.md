@@ -154,7 +154,10 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 - Duas colunas: a lista de arquivos (nome, pasta, `+/−`, etiqueta "N achados") e o diff do arquivo, com os números
   de linha de antes e de depois.
 - Os achados da revisão aparecem abaixo da linha que apontam, com "ver na Revisão".
-- Botão **Abrir no app**, o painel de diff do app, para apontar linha a linha.
+- No app desktop, o painel de diff nativo (que se destaca numa janela à parte, para apontar linha a linha) mostra o
+  repositório da pasta da sessão; o mod não tem como abri-lo. Quando a sessão está em outra pasta, o botão **Levar o
+  diff do app para cá** roda `/aidw:diff <repo>` e leva a sessão para o worktree; quando já está nele, o painel diz onde
+  abrir o diff no app.
 
 ### Testes
 

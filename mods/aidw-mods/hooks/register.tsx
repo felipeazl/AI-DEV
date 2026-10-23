@@ -730,7 +730,8 @@ export const register: Register = (on, options) => {
           const d = await read($, diff)
           if (d) await showDiff($, d.source, path)
         })(),
-      appDiff: repo => void $.prompt.submit({ text: `/aidw:diff ${repo}`, asUser: true }),
+      // o host recusa um prompt.submit que começa com `/`: o comando roda pelo command.run
+      appDiff: repo => void $.command.run({ command: 'aidw:diff', args: repo }),
       expand: key => void update($, expanded, x => ({ ...x, [key]: !x[key] })),
     }
     return Panel(
@@ -750,6 +751,7 @@ export const register: Register = (on, options) => {
         columns: e.props.bodyColumns,
         surface: e.surface,
         canAppDiff: e.surface === 'desktop',
+        sessionCwd: e.surface === 'desktop' ? norm(await $.session.cwd()) : '',
         reviewFile: await read($, reviewFile),
         decisionTab: await read($, decisionTab),
         filter: await read($, reviewFilter),
