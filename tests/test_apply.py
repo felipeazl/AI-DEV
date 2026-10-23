@@ -1216,6 +1216,41 @@ class ContextTest(unittest.TestCase):
 class KnowledgeTest(unittest.TestCase):
     """`aidw.py kb`: a base de conhecimento do contexto (notas ligadas por [[links]])."""
 
+    def test_show_brief_e_collect(self) -> None:
+        """Fluxo v3: `kb show --brief` sem a lista de quem cita a nota, e `kb collect <id>` juntando o que a demanda
+        aprendeu (seções *Base de conhecimento*, aprendizados, notas do resumo e decisões do plano) para o /aidw:done."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            full = run_aidw(root, "kb", "show", "sistema-a")
+            brief = run_aidw(root, "kb", "show", "sistema-a", "--brief")
+            self.assertEqual(brief.returncode, 0, brief.stderr)
+            self.assertIn("## Citada por", full.stdout)
+            self.assertNotIn("## Citada por", brief.stdout)
+            self.assertIn("citada por 2 nota(s)", brief.stdout)
+
+            demand = root / "contexts" / "exemplo" / "demandas" / "us-9"
+            demand.mkdir(parents=True)
+            (demand / "exploracao-rota.md").write_text(
+                "# Exploração\n\n## Q1 onde\n- fato\n\n## Base de conhecimento\n- novo → [[sistema-a]]: rota X — `a.cs:1`\n",
+                encoding="utf-8")
+            (demand / "plano-us-9.md").write_text(
+                "# Plano v1\n\n## Decisões tomadas\n| 1 | Tema | Decisão | Felipe, 2026-10-23 |\n\n## Objetivo\nx\n",
+                encoding="utf-8")
+            (demand / "plano-us-9-v1.md").write_text("## Decisões tomadas\nvelha\n", encoding="utf-8")
+            (demand / "review-us-9-r1.md").write_text("### R1-01 — SUGESTAO — `a.cs:2`\n", encoding="utf-8")
+            (demand / "aprendizados-us-9.md").write_text("- decisão do Felipe → [[sistema-a]]\n", encoding="utf-8")
+            out = run_aidw(root, "kb", "collect", "us-9")
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            text = (demand / "collect-us-9.md").read_text(encoding="utf-8")
+            self.assertIn("## exploracao-rota.md", text)
+            self.assertIn("rota X", text)
+            self.assertNotIn("## Q1", text, "só a seção Base de conhecimento do relatório")
+            self.assertIn("Felipe, 2026-10-23", text)
+            self.assertNotIn("velha", text, "a versão antiga do plano não entra")
+            self.assertNotIn("review-us-9-r1.md", text, "relatório sem a seção não entra")
+            self.assertIn("decisão do Felipe", text)
+            self.assertNotEqual(run_aidw(root, "kb", "collect", "nao-existe").returncode, 0)
+
     def test_base_de_conhecimento(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
