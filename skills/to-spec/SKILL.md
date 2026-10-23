@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Turn a request into a persistent specification that becomes the source of truth for the task, and break it into self-contained tickets in the same pass. Use at the start of any feature, bugfix or refactor, and again to fix the plan or recut its tickets.
+description: Turn a request into a persistent, self-contained specification (spec-driven development) that becomes the source of truth for the task and the coder's own task, with its deliveries in the same pass. Use at the start of any feature, bugfix or refactor, and again to adjust the plan.
 ---
 
 # to-spec
@@ -20,11 +20,10 @@ description: Turn a request into a persistent specification that becomes the sou
    lists where each dependency lives.
 5. Describe current behavior from the code, not from assumptions.
 6. Run the checklists below and write the spec to `<state dir>/specs/<slug>.md` (or the location
-   the active context defines, e.g. an execution plan attached to a work item).
+   the active context defines, e.g. `plano-<id>.md` in the demand folder).
 7. **Open questions:** if there is a real doubt or more than one valid path, list them with
    options and your recommendation — that is the only reason to stop for the user. Otherwise
-   the spec is final and the flow continues.
-8. Write the tickets in the same pass (section *Tickets*); they are delegated once the plan is approved.
+   the spec is final and goes to the user for approval.
 
 ## Checklists (every spec)
 
@@ -45,7 +44,6 @@ description: Turn a request into a persistent specification that becomes the sou
 ```markdown
 # <Title> — v<N>
 
-Nível: <level> — <why> (orchestrator's model table; decides model/effort of every agent)
 (from v2 on: what changed since the previous version)
 
 ## Decisions taken
@@ -60,58 +58,48 @@ Nível: <level> — <why> (orchestrator's model table; decides model/effort of e
 
 ## Desired behavior
 
-## Dependencies inspected
-
-## Constraints
-
 ## Acceptance criteria
-- [ ] CA1: ...
+- CA1: <the card's text>
+- CA2 (plano): <added by a decision or by the code, and why>
 
 ## Business rules
-- RN1: ... (a rule of the business the change must keep or introduce; from the card, the decisions or the code)
+- RN1: <the card's text, or a rule the change must keep or introduce, with its source>
+
+## Dependencies inspected
 
 ## Checklists
 (enum/state values · limits · UI thread · errors)
 
+## Deliveries
+### E1 — <system>: <what it delivers, plain words>
+- Covers: CA1, RN2 · Depends on: — · Worktree: <path> · Build: `<ready command>`
+- Files: `path/File.cs:42` — <what changes>; `path/Other.cs` (new) — <what it holds>
+- Tests: <only internal steps an end-to-end test would not show> | none
+- Docs: <README/ARCHITECTURE/API doc of this repository the change makes stale> | none
+
 ## Out of scope (and why)
 
-## Branch and PR (base, target, when the PR opens; dependency on unmerged work)
-
-## Technical considerations
+## Branch and PR (base, target; dependency on unmerged work)
 
 ## Risks
 
 ## Open questions (only if any)
 ```
 
+## Deliveries
+
+1. Every delivery traces back to at least one acceptance criterion (`CA1`) and names the rules (`RN1`) it touches.
+2. One delivery per cohesive technical change — usually one system or repository, a known set of files that one coder
+   finishes in one pass. Each delivery becomes a work item, so never split it into tiny ones (one per file, method or
+   criterion, or a separate one for comments, tests or docs of the same code). Split only parts that are independent
+   (another system, or one that must be done first).
+3. A delivery must be executable by a coder that never saw the conversation: files with `file:line` and what changes,
+   the criteria, the worktree and the build/test command from *Systems*. If the coder would have to search for where
+   something lives, the delivery is not finished.
+4. Order by dependency; deliveries on the same files run in sequence.
+
 Finish with:
 
 ```json
-{"state": "spec_ready | plan_has_open_questions", "spec": "<path>", "level": "<level>", "open_questions": []}
+{"state": "plan_ready | plan_has_open_questions", "spec": "<path>", "deliveries": ["E1"], "open_questions": []}
 ```
-
-## Tickets (written with the plan, delegated once it is approved)
-
-1. Every ticket traces back to at least one acceptance criterion (by its id, `CA1`) and names the rules (`RN1`) it touches.
-2. One ticket per cohesive technical delivery — usually one system or repository, a known set of files that
-   one agent finishes in one pass. Each ticket becomes a work item and a delegation, so never split a delivery
-   into tiny tickets (one per file, method or criterion, or a separate ticket for comments, tests or docs of the
-   same code). Split only parts that are independent deliveries (another system, or one that must be done first).
-3. A ticket must be executable by an agent that never saw the conversation: goal, files in scope
-   with `file:line`, acceptance criteria, out of scope, build/test command from *Systems*.
-4. Order by dependency; tickets on the same files run in sequence.
-5. Write them where the active context says (e.g. Tasks in Azure DevOps + `tarefa-<agente>-<assunto>.md`);
-   otherwise `<state dir>/tickets/<PREFIX>-<NNN>-<slug>.md`.
-
-```markdown
-# <PREFIX>-<NNN> <Title>
-- Spec: <path> · Agent: coder | api-db | qa | documenter · Depends on: <ids or none>
-- Risk: low | medium | high · Level: <only when it differs from the demand's, and why>
-## Goal
-## Scope (files / modules, with file:line)
-## Acceptance criteria
-- [ ] ...
-## Out of scope
-```
-
-Finish with `{"state": "tickets_ready", "tickets": ["<path>", "..."]}`.

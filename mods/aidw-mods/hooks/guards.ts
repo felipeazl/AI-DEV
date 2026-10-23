@@ -4,12 +4,9 @@
 import type { DemandKind } from '../types'
 
 export type Runtime = {
-  /** {nível: {agente: variante ou null quando não roda}} — a tabela Effort per task. */
-  levels: Record<string, Record<string, string | null>>
-  defaultLevel: string
+  /** {agente: [subagent_type permitidos]} — o padrão e as exceções da tabela Agents and effort (fluxo v3). */
+  variants: Record<string, string[]>
   maxRetries: number
-  /** Limite do laço revisão do plano ⇄ correção; sem ele, o `maxRetries`. */
-  maxRetriesPlan?: number
   /** Nomes dos agentes ligados (planejador, codificador…). */
   agents: string[]
 }
@@ -35,10 +32,10 @@ export type { DemandKind }
 
 const MAX_PROMPT = 6000
 const MODEL_WORDS = /\b(opus|sonnet|haiku|fable|modelo)\b/i
-const FIX_STEPS = new Set(['REVIEW', 'CODER_FIX'])
-const PLAN_FIX_STEPS = new Set(['PLAN_REVIEW', 'PLAN_FIX'])
+/** As etapas do laço revisão ⇄ correção (as antigas ficam pelas demandas abertas antes do fluxo v3). */
+const FIX_STEPS = new Set(['REVIEW', 'TRIAGE', 'CODER_FIX'])
 
-/** O agente da tabela a que a variante pertence (`aidw:codificador-sonnet-high` → `codificador`). */
+/** O agente da tabela a que a variante pertence (`aidw:codificador-medium` → `codificador`). */
 export function agentOf(subagentType: string, runtime: Runtime): string | null {
   const bare = subagentType.split(':').pop() ?? subagentType
   const byPrefix = runtime.agents
@@ -62,32 +59,21 @@ export function checkDelegation(check: DelegationCheck): string | null {
 
   if (check.model && !said(check, MODEL_WORDS)) {
     return fix(
-      `não passe \`model\` (${check.model}): o modelo de cada agente vem da tabela Effort per task. ` +
+      `não passe \`model\` (${check.model}): o modelo de cada agente vem da tabela Agents and effort. ` +
         'Só passe outro modelo quando o usuário pedir nesta conversa.',
     )
   }
   if (!/Pasta da demanda:/.test(prompt)) {
-    return fix('o prompt precisa de `Tarefa: <arquivo>. Pasta da demanda: <pasta>. Nível: <nível>.` (falta a pasta).')
+    return fix('o prompt precisa de `Tarefa: <arquivo>. Pasta da demanda: <pasta>.` (falta a pasta).')
   }
-  const level = /N[íi]vel:\s*`?([a-z]+)/.exec(prompt)?.[1]
-  if (!level) {
-    return fix('o prompt precisa do `Nível: <nível>.` da tarefa (é ele que escolhe a célula da tabela).')
-  }
-  const row = runtime.levels[level]
-  if (!row) {
-    return fix(`nível \`${level}\` não existe; use um de: ${Object.keys(runtime.levels).join(', ')}.`)
-  }
-  if (!(agent in row)) {
+  const allowed = runtime.variants[agent]
+  if (!allowed) {
     return fix(`o agente \`${agent}\` está desligado nesta configuração; faça a etapa você mesmo ou ligue o agente.`)
   }
-  const cell = row[agent]
-  if (cell === null) {
-    return fix(`\`${agent}\` não roda no nível \`${level}\` (célula "— (não roda)"); a etapa é sua nesse nível.`)
-  }
-  if (cell !== undefined && cell !== bare) {
+  if (!allowed.includes(bare)) {
     return fix(
-      `no nível \`${level}\` o \`subagent_type\` de \`${agent}\` é \`${cell}\`, não \`${bare}\`. ` +
-        'Se é um follow-up (um nível abaixo) ou um escalonamento (um acima), escreva no prompt o nível usado.',
+      `\`${bare}\` não está na tabela Agents and effort; para \`${agent}\` use ${allowed.map(a => `\`${a}\``).join(', ')} ` +
+        '(o padrão, ou a exceção cujo motivo vale para esta tarefa).',
     )
   }
   if (prompt.length > MAX_PROMPT) {
@@ -96,15 +82,11 @@ export function checkDelegation(check: DelegationCheck): string | null {
         'num arquivo da pasta da demanda, nunca colados.',
     )
   }
-  const base = check.roundKind === 'plano' ? (runtime.maxRetriesPlan ?? runtime.maxRetries) : runtime.maxRetries
-  const limit = base + check.extraRounds
+  const limit = runtime.maxRetries + check.extraRounds
   if (check.kind === 'desenvolvimento' && check.round >= limit && check.step) {
-    const codeLoop = check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['revisor', 'codificador'].includes(agent)
-    const planLoop = check.roundKind === 'plano' && PLAN_FIX_STEPS.has(check.step) && ['revisor', 'planejador'].includes(agent)
-    if (codeLoop || planLoop) {
+    if (check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['revisor', 'codificador'].includes(agent)) {
       return fix(
-        `a ${check.roundKind === 'plano' ? 'revisão do plano' : 'revisão'} já está na rodada ${check.round} e o ` +
-          `limite é ${limit} (${check.roundKind === 'plano' ? 'max_retries_plan' : 'max_retries'}` +
+        `a revisão já está na rodada ${check.round} e o limite é ${limit} (max_retries` +
           `${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
           'Pare e leve ao usuário (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
           'botão "Liberar +1 rodada" do painel ou com /aidw-rodada.',

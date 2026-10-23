@@ -34,13 +34,11 @@ impede que o modelo chame a skill sozinho (o `done` só roda quando você chama)
 
 | Skill | Quem usa | O que faz |
 |---|---|---|
-| `to-spec` | planejador (pré-carregada) | Confere trabalho existente, parte dos relatórios de exploração, inspeciona as dependências, descreve o comportamento atual pelo código, roda os checklists e grava o plano; depois corta os tickets autocontidos |
-| `verificar-premissa` | orquestrador, planejador, revisor, especialistas | Antes de aceitar "não dá para corrigir aqui", "cobre todos os casos", "é a convenção do repositório", "esse valor nunca acontece", "o outro sistema já faz X": evidência de primeira mão ou a premissa cai |
+| `to-spec` | planejador (pré-carregada) | Confere trabalho existente, parte dos relatórios de exploração, inspeciona as dependências, descreve o comportamento atual pelo código, roda os checklists e grava o plano spec-driven com as entregas `E1…`, autossuficiente para o codificador |
+| `verificar-premissa` | orquestrador, planejador, revisor | Antes de aceitar "não dá para corrigir aqui", "cobre todos os casos", "é a convenção do repositório", "esse valor nunca acontece", "o outro sistema já faz X": evidência de primeira mão ou a premissa cai |
 | `preparar-worktree` | orquestrador, codificador | Cria, confere e remove o worktree com `aidw.py worktree`: base certa (inclusive branch não mergeada de que a demanda depende), branch, junctions, registro |
-| `code-review` | revisor (pré-carregada) | Revisão contra spec e ticket, achados com IDs estáveis e severidade |
-| `database-safe` | api | Classifica cada operação de banco: leitura só pelo validador; escrita sempre proposta com a query exata, o `SELECT` de conferência e como reverter |
-| `bug-hunt` | bugs (pré-carregada) | Caça de defeitos com cenário de falha concreto, ou causa-raiz de um bug reportado |
-| `security-audit` | seguranca (pré-carregada) | Auditoria de vulnerabilidades com caminho de ataque |
+| `code-review` | revisor (pré-carregada) | Revisão contra o plano numa passada — qualidade, bugs com cenário de falha, segurança com caminho de ataque —, achados com IDs estáveis, severidade, categoria e a recomendação de manter ou descartar |
+| `database-safe` | explorador, qa | Classifica cada operação de banco: leitura só pelo validador; escrita sempre proposta com a query exata, o `SELECT` de conferência e como reverter |
 
 ## `skills` × `preload`
 

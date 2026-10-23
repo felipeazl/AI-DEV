@@ -41,7 +41,7 @@ O fluxo roda sozinho na rotina (ler código, planejar, delegar, triar, build, te
 - git `commit`, `push`, `pull`, `merge`, `rebase`, `reset`, `checkout`/`switch`, `cherry-pick`, `revert`, `tag`, apagar branch;
 - SQL de escrita e o que o contexto marcar;
 - chamadas de API que mudam estado;
-- comentários em card ou PR, todos juntos na revisão final;
+- comentários em card ou PR (as pendências para a QA no OK da PR; na PR de outro dev, na revisão final);
 - qualquer coisa que o contexto coloque em `ask`.
 
 O prompt de permissão do CLI é o ponto de aprovação.

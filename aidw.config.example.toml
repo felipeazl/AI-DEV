@@ -49,76 +49,66 @@ ask = [
 # [agents.<papel>] — o papel é fixo. Opcionais:
 #   name   nome do agente (aceita acento e espaço; sem ele, vale o padrão comentado)
 #   model  chave de config/models.toml do provedor; sem ele, vale o tier padrão do papel
-#          (Opus/top no planejador, codificador e revisor; Sonnet/mid na api, bugs e segurança;
-#           Haiku/fast no explorador e no documentador). Modelo de outro provedor é ignorado com aviso.
-#   effort effort padrão do agente; o orquestrador escolhe o de cada tarefa (routing.toml).
+#          (Opus/top no orquestrador; Sonnet/mid no planejador, codificador, revisor e qa;
+#           Haiku/fast no explorador e no documentador). Modelo de outro provedor vira o equivalente.
+#   effort effort padrão do agente; as exceções permitidas ficam em [effort.variants] do routing.toml.
+# Fluxo v3 (2026-10-23): sem níveis de demanda; os agentes api, bugs e segurança saíram (o explorador e o qa
+# fazem as consultas do api; o revisor revisa qualidade, bugs e segurança numa passada).
 
 [agents.orchestrator]
 # name = "orquestrador"
+# O chat aberto; o effort é a recomendação para o chat (o modelo é o que você escolhe nele).
 enabled = true
-effort = "high"
+effort = "medium"
 skills = ["to-spec", "verificar-premissa", "preparar-worktree"]
 
 # Para desligar um agente: enabled = false (o orquestrador faz a etapa dele ou a pula).
 [agents.planner]
 # name = "planejador"
-# Plano, correção do plano e tickets num contexto novo. Opus: o plano decide o custo das etapas seguintes.
+# O plano SDD (simples e autossuficiente para o codificador) e o ajuste dele, num contexto novo.
+model = "sonnet"
 enabled = true
-effort = "medium"
+effort = "high"
 skills = ["to-spec", "verificar-premissa"]
 preload = ["to-spec"]
 
 [agents.explorer]
 # name = "explorador"
-# Leitura de código com arquivo:linha. Haiku (sem effort); Sonnet nas demandas complexa e crítica (routing.toml).
+# Código com arquivo:linha, contratos, ids e SELECT pelo validador. Haiku (sem effort); Sonnet só nas exceções.
+model = "haiku"
 enabled = true
 effort = "low"
-skills = []
+skills = ["database-safe"]
 
 [agents.coder]
 # name = "codificador"
+model = "sonnet"
 enabled = true
-effort = "medium"
+effort = "high"
 skills = ["preparar-worktree"]
 
 [agents.reviewer]
 # name = "revisor"
-# Sonnet (low em trivial, medium em simples/padrao, high em complexa); Opus high na crítica (routing.toml).
-model = "opus"
+# Qualidade, bugs e segurança numa passada; medium/low só na re-revisão das correções.
+model = "sonnet"
 enabled = true
-effort = "medium"
+effort = "high"
 skills = ["code-review", "verificar-premissa"]
 preload = ["code-review"]
 
-[agents.api-db]
-# name = "api"
+[agents.qa]
+# name = "qa"
+# Roteiro e massa em paralelo com o codificador; depois da sua revisão, o teste (API e navegador sozinho, o resto
+# com você).
+model = "sonnet"
 enabled = true
 effort = "medium"
 skills = ["database-safe"]
 
-[agents.qa]
-# name = "qa"
-# Plano de testes logo depois do plano e o teste da entrega: automático (API, navegador) ou roteiro com você.
-enabled = true
-effort = "medium"
-skills = []
-
 [agents.documenter]
 # name = "documentador"
+# As Tasks no board e o texto da PR.
+model = "haiku"
 enabled = true
 effort = "medium"
 skills = []
-
-[agents.bug-hunter]
-# name = "bugs"
-enabled = true
-effort = "high"
-skills = ["bug-hunt", "verificar-premissa"]
-preload = ["bug-hunt"]
-
-[agents.security]
-# name = "seguranca"
-enabled = true
-effort = "high"
-skills = ["security-audit", "verificar-premissa"]
-preload = ["security-audit"]

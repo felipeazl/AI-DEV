@@ -25,9 +25,9 @@
       "name": "planejador",
       "display": "Planejador",
       "enabled": true,
-      "model": "gpt-6-sol",
-      "model_id": "gpt-6-sol",
-      "effort": "medium",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
+      "effort": "high",
       "skills": [
         "to-spec",
         "verificar-premissa"
@@ -50,7 +50,9 @@
       "model": "gpt-5-6-luna",
       "model_id": "gpt-5.6-luna",
       "effort": "low",
-      "skills": [],
+      "skills": [
+        "database-safe"
+      ],
       "preload": [],
       "tools": {
         "mcp": [
@@ -64,9 +66,9 @@
       "name": "codificador",
       "display": "Codificador",
       "enabled": true,
-      "model": "gpt-6-sol",
-      "model_id": "gpt-6-sol",
-      "effort": "medium",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
+      "effort": "high",
       "skills": [
         "preparar-worktree",
         "skill-exemplo"
@@ -89,9 +91,9 @@
       "name": "revisor",
       "display": "Revisor",
       "enabled": true,
-      "model": "gpt-6-sol",
-      "model_id": "gpt-6-sol",
-      "effort": "medium",
+      "model": "gpt-5-6-terra",
+      "model_id": "gpt-5.6-terra",
+      "effort": "high",
       "skills": [
         "code-review",
         "verificar-premissa"
@@ -109,25 +111,6 @@
         "deny_tools": []
       }
     },
-    "api-db": {
-      "name": "api",
-      "display": "API",
-      "enabled": true,
-      "model": "gpt-5-6-terra",
-      "model_id": "gpt-5.6-terra",
-      "effort": "medium",
-      "skills": [
-        "database-safe"
-      ],
-      "preload": [],
-      "tools": {
-        "mcp": [
-          "context7",
-          "servidor-exemplo"
-        ],
-        "deny_tools": []
-      }
-    },
     "qa": {
       "name": "qa",
       "display": "QA",
@@ -135,7 +118,9 @@
       "model": "gpt-5-6-terra",
       "model_id": "gpt-5.6-terra",
       "effort": "medium",
-      "skills": [],
+      "skills": [
+        "database-safe"
+      ],
       "preload": [],
       "tools": {
         "mcp": [
@@ -165,52 +150,6 @@
         ],
         "deny_tools": []
       }
-    },
-    "bug-hunter": {
-      "name": "bugs",
-      "display": "Bugs",
-      "enabled": true,
-      "model": "gpt-5-6-terra",
-      "model_id": "gpt-5.6-terra",
-      "effort": "high",
-      "skills": [
-        "bug-hunt",
-        "verificar-premissa"
-      ],
-      "preload": [
-        "bug-hunt"
-      ],
-      "tools": {
-        "mcp": [
-          "chrome-devtools",
-          "context7",
-          "playwright",
-          "servidor-exemplo"
-        ],
-        "deny_tools": []
-      }
-    },
-    "security": {
-      "name": "seguranca",
-      "display": "Seguranca",
-      "enabled": true,
-      "model": "gpt-5-6-terra",
-      "model_id": "gpt-5.6-terra",
-      "effort": "high",
-      "skills": [
-        "security-audit",
-        "verificar-premissa"
-      ],
-      "preload": [
-        "security-audit"
-      ],
-      "tools": {
-        "mcp": [
-          "context7",
-          "servidor-exemplo"
-        ],
-        "deny_tools": []
-      }
     }
   },
   "mcp": [
@@ -220,66 +159,34 @@
     "context7"
   ],
   "claude_settings": {},
-  "levels": {
-    "trivial": {
-      "planejador": null,
-      "explorador": "explorador",
-      "codificador": "codificador-gpt-5-6-terra-low",
-      "revisor": "revisor-gpt-5-6-terra-low",
-      "api": "api-gpt-5-6-luna-low",
-      "qa": "qa-low",
-      "documentador": "documentador-low",
-      "bugs": "bugs-low",
-      "seguranca": "seguranca-low"
-    },
-    "simples": {
-      "planejador": "planejador-gpt-5-6-terra-medium",
-      "explorador": "explorador",
-      "codificador": "codificador-gpt-5-6-terra-medium",
-      "revisor": "revisor-gpt-5-6-terra-medium",
-      "api": "api-low",
-      "qa": "qa-low",
-      "documentador": "documentador-low",
-      "bugs": "bugs-medium",
-      "seguranca": "seguranca-medium"
-    },
-    "padrao": {
-      "planejador": "planejador-gpt-5-6-terra-medium",
-      "explorador": "explorador",
-      "codificador": "codificador-gpt-5-6-terra-medium",
-      "revisor": "revisor-gpt-5-6-terra-medium",
-      "api": "api",
-      "qa": "qa",
-      "documentador": "documentador",
-      "bugs": "bugs",
-      "seguranca": "seguranca"
-    },
-    "complexa": {
-      "planejador": "planejador-gpt-5-6-terra-high",
-      "explorador": "explorador-gpt-5-6-terra-medium",
-      "codificador": "codificador-gpt-5-6-terra-high",
-      "revisor": "revisor-gpt-5-6-terra-high",
-      "api": "api-high",
-      "qa": "qa-high",
-      "documentador": "documentador-gpt-5-6-terra-medium",
-      "bugs": "bugs",
-      "seguranca": "seguranca"
-    },
-    "critica": {
-      "planejador": "planejador-high",
-      "explorador": "explorador-gpt-5-6-terra-high",
-      "codificador": "codificador-high",
-      "revisor": "revisor-high",
-      "api": "api-high",
-      "qa": "qa-high",
-      "documentador": "documentador-gpt-5-6-terra-medium",
-      "bugs": "bugs-gpt-6-sol-high",
-      "seguranca": "seguranca-gpt-6-sol-high"
-    }
+  "variants": {
+    "planejador": [
+      "planejador",
+      "planejador-medium"
+    ],
+    "explorador": [
+      "explorador",
+      "explorador-gpt-5-6-terra-medium",
+      "explorador-gpt-5-6-terra-high"
+    ],
+    "codificador": [
+      "codificador",
+      "codificador-medium"
+    ],
+    "revisor": [
+      "revisor",
+      "revisor-medium",
+      "revisor-low"
+    ],
+    "qa": [
+      "qa",
+      "qa-high"
+    ],
+    "documentador": [
+      "documentador"
+    ]
   },
-  "default_level": "padrao",
   "max_retries": 3,
-  "max_retries_plan": 2,
   "panel": true,
   "external_steps": [],
   "votes": []
