@@ -17,7 +17,7 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 | Agentes | `aidw:<agente>`, uma variante por modelo e effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |
 | Workflows (feature, bugfix, refactor, hotfix, `pr-review`, `levantamento`), QA, revisão | ✅ | ✅ (pelas skills) |
-| Abrir e retomar demanda, modos auto e interativo | ✅ | ✅ |
+| Abrir e retomar demanda | ✅ | ✅ |
 | Worktree por demanda (inclusive `--pr`) | ✅ | ✅ (o sandbox pede aprovação no `worktree create`) |
 | Regras de permissão do AiDW (force push, `reset --hard`, `.env`, commit/push/SQL pedem OK) | ✅ `~/.claude/settings.json` | — as do seu Codex (sandbox e aprovações dele) |
 | Guard: agente fora do worktree, commit com `AIDW-TESTE` | ✅ hooks do plugin | — |

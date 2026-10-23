@@ -143,8 +143,8 @@ python aidw.py worktree create --repo C:\ProjetosLegados\Hope --demand us-127508
 ```powershell
 python aidw.py demand list --active
 python aidw.py demand show us-1234
-python aidw.py demand set us-1234 --step REVIEW --status paused --mode interativo --note "esperando o QA"
+python aidw.py demand set us-1234 --step REVIEW --status paused --note "esperando o QA"
 ```
 
-O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`), o modo, os repositórios e o histórico das
+O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`), os repositórios e o histórico das
 etapas. É o que permite fechar o chat e voltar depois.

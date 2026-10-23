@@ -28,7 +28,7 @@ export type { CardPoint, CoverageItem, Criterion, Doubt, EffortBlock, Estimate, 
 // ---------------------------------------------------------------------------------------------------------------
 // Tipo de uso e linha do tempo
 
-export type DemandFile = { id?: string; title?: string; step?: string; status?: string; mode?: string; note?: string; summary?: string;
+export type DemandFile = { id?: string; title?: string; step?: string; status?: string; note?: string; summary?: string;
   repos?: { repo?: string; path?: string; branch?: string; base?: string; system?: string | null; pr?: string;
     head?: string; source?: string }[]; history?: { step: string; at: string }[]
   /** Laço de correção depois da entrega (`demand set --loop`); as Tasks de cada ticket (`--task`). */

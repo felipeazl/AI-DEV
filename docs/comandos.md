@@ -4,7 +4,7 @@
 
 | Claude | Codex | O que faz |
 |---|---|---|
-| `/aidw:orquestrar [demanda] [auto\|interativo]` | `$aidw-orquestrar` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
+| `/aidw:orquestrar [demanda]` | `$aidw-orquestrar` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
 | `/aidw:levantamento <card ou texto>` | `$aidw-levantamento` | Levantamento antes de implementar (workflow `levantamento`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `levantamento-<id>.md` com horas, story points, complexidade e dúvidas ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
 | `/aidw:sair` | `$aidw-sair` | Grava a etapa e o próximo passo (`paused`) e volta o chat ao normal |
 | `/aidw:diff [repo\|sair]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demandas-e-worktrees.md](demandas-e-worktrees.md#ver-o-diff-de-cada-repositório)) |
@@ -39,7 +39,7 @@
 | `open [--provider claude\|codex] [--demand <id> [--repo <repo>] \| --path <pasta>] [--no-orchestrate] [--print]` | Abre o CLI na demanda (ou na pasta), já chamando o orquestrador. `--print` só mostra o comando |
 | `chat` | Abre o orquestrador do modo projeto (chat na raiz do AiDW) |
 | `project detect [--path p] [--json]` | Repositório principal, sistema do contexto e demanda de uma pasta |
-| `demand set <id> [--step S] [--status active\|paused\|done] [--mode auto\|interativo] [--title t] [--note n] [--summary s] [--pr REPO=N] [--extra-step STEP]` | Grava o estado da demanda: etapa (inclusive `CODE_REVIEW`, `QA_TEST` e as que o contexto acrescenta, de fora do AiDW), resumo de até 4 linhas e PR de um repositório, que o painel mostra. `--extra-step` marca uma etapa de fora do contexto pela qual a demanda passa (`-STEP` tira) |
+| `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n] [--summary s] [--pr REPO=N] [--extra-step STEP]` | Grava o estado da demanda: etapa (inclusive `CODE_REVIEW`, `QA_TEST` e as que o contexto acrescenta, de fora do AiDW), resumo de até 4 linhas e PR de um repositório, que o painel mostra. `--extra-step` marca uma etapa de fora do contexto pela qual a demanda passa (`-STEP` tira) |
 | `demand show <id>` · `demand list [--active]` | Consulta |
 | `worktree create --repo <pasta> --demand <id> [--slug s] [--base b]` | Worktree da demanda, branch, junctions (idempotente) |
 | `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação, remoção segura e limpeza do registro |
