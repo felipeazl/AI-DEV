@@ -1,193 +1,83 @@
-# Regras de decisão do orquestrador.
+# Regras de decisão do orquestrador (fluxo v3, 2026-10-23).
 #
-# [rules]  estado devolvido pelo agente → próxima ação (determinístico).
-# [effort] quanto raciocínio cada tarefa merece. O orquestrador escolhe o effort de CADA
-#          delegação (`aidw.py delegate --effort`), com o nível da tarefa e as regras abaixo.
-#          O modelo de cada agente é fixo (aidw.config.toml); só muda se o usuário pedir ou
-#          se o nível tiver [effort.levels.<nível>.models] (papel → chave de config/models.toml).
+# [rules]   estado devolvido pelo agente → próxima ação (determinístico).
+# [effort]  sem níveis de demanda: cada agente roda no modelo e no effort padrão do aidw.config.toml. As variantes
+#           abaixo são as únicas exceções, cada uma com o motivo que a permite.
 #
-# Cada agente termina com `"state": "<estado>"` usando as chaves de [rules] (veja o OUTPUT de
-# cada AGENT.md); o orquestrador aplica a regra. Agentes não escolhem a próxima ação.
+# Cada agente termina com `"state": "<estado>"` usando as chaves de [rules] (veja o OUTPUT de cada AGENT.md); o
+# orquestrador aplica a regra. Agentes não escolhem a próxima ação.
+#
+# Contexto: contexts/<nome>/routing.toml, quando existe, vai por cima deste arquivo (tabelas se fundem, valores
+# substituem).
 
-max_retries = 3          # explorar ⇄ planejar e revisar ⇄ corrigir (no caminho curto, por item: demand set --loop)
-max_retries_plan = 2     # revisar o plano ⇄ corrigir o plano: SUGESTAO não reabre o plano
+max_retries = 3          # revisar ⇄ corrigir e explorar ⇄ planejar; no caminho curto, por item (demand set --loop)
 
 [rules]
-# Início e plano (planejador; o orquestrador quando ele está desabilitado)
-existing_work_found = "HUMAN_APPROVAL"          # continuação, correção ou retrabalho?
+# Entender e plano
+existing_work_found = "HUMAN_APPROVAL"          # Tasks, PR ou branch já existem: continuação, correção ou retrabalho?
+exploration_complete = "RETURN"                 # o explorador volta para a etapa que o chamou
+plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece (conta em max_retries)
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
-plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece: explorador, e
-                                                # um planejador novo no mesmo modo (conta em max_retries)
-spec_ready = "TEST_PLAN"                        # plano e tickets prontos: o qa monta o plano de testes (desabilitado: PLAN_REVIEW)
-test_plan_ready = "PLAN_REVIEW"                 # revisor confere o plano e o plano de testes (só complexa/crítica; abaixo: TICKETS)
-test_plan_has_open_questions = "HUMAN_APPROVAL" # critério sem cenário verificável ou dúvida real
-plan_review_approved = "TICKETS"                # o orquestrador cria os work items e o worktree (os tickets vieram com o plano)
-plan_review_changes_requested = "PLAN_FIX"      # CRITICO/IMPORTANTE: o planejador corrige plano e tickets; nova rodada
-plan_review_has_open_questions = "HUMAN_APPROVAL"
-tickets_ready = "IMPLEMENT"                     # planejador em modo tickets (recorte)
+plan_ready = "PLAN_APPROVAL"                    # o orquestrador lê o plano e o usuário aprova; ajuste → PLAN_FIX
 
-# Implementação (codificador)
-implementation_complete = "TEST"
+# Implementação (codificador). Com o plano aprovado, o orquestrador dispara em paralelo o codificador, o qa (roteiro e
+# massa) e o documentador (Tasks no board).
+implementation_complete = "REVIEW"
 implementation_failed = "CODER_FIX"
+implementation_has_open_questions = "HUMAN_APPROVAL"  # o plano não serve para o código; confira antes
 environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não consegue resolver
-ticket_has_open_questions = "HUMAN_APPROVAL"    # o plano não serve para o código; confira antes
 
-# Testes (qa, modo test). Com o qa desabilitado, TEST = conferir o bloco `validation` do codificador.
-tests_failed = "CODER_FIX"
-tests_passed = "PREPARE_REVIEW"
-manual_test_required = "PREPARE_REVIEW"         # parte automática OK; o roteiro roda com o usuário depois da revisão
-test_adjustment_needed = "TEST_ADJUST"          # codificador aplica o ajuste temporário; um qa novo continua
-orchestrator_test_needed = "ORCHESTRATOR_TEST"  # o qa não tinha navegador: o orquestrador testa e o qa confere
-
-# Ciclo de revisão (triagem por regras)
-review_ready = "REVIEW"
-review_changes_requested = "CODER_FIX"          # CRITICO/IMPORTANTE pendentes
-review_has_open_questions = "HUMAN_APPROVAL"    # só as dúvidas; o resto do ciclo segue
-review_approved = "MANUAL_TEST"                 # roteiro manual pendente → usuário testa; sem roteiro → DOCS
-pr_review_done = "FINAL_REVIEW"                 # PR de outra pessoa: triagem e o usuário escolhe o que publicar
+# Revisão (revisor: qualidade, bugs e segurança numa passada)
+review_findings = "TRIAGE"                      # os achados vão ao usuário e ao orquestrador; mantidos → CODER_FIX
+review_approved = "USER_REVIEW"                 # nenhum achado a decidir: a revisão de código do usuário
 max_retries_exceeded = "HUMAN_APPROVAL"
 
-# Agentes de apoio (api, explorador): devolvem o fluxo para a etapa que os chamou
-task_complete = "RETURN"
-exploration_complete = "RETURN"
+# Testes (qa)
+test_plan_ready = "RETURN"                      # roteiro e massa prontos, em paralelo com o codificador
+test_plan_has_open_questions = "HUMAN_APPROVAL" # critério sem como provar, ou dúvida real
+test_adjustment_needed = "TEST_ADJUST"          # o roteiro precisa de um bypass/flag temporário: codificador
+tests_passed = "PR"                             # tudo provado, sem passo manual pendente
+manual_test_required = "MANUAL_TEST"            # automáticos OK; os passos manuais o usuário roda com o orquestrador
+tests_failed = "CODER_FIX"                      # revisão só da correção e reteste só dos passos afetados
 
-# Especialistas sob demanda (bugs, seguranca): voltam para a etapa que os chamou. Os achados
-# entram na mesma triagem da revisão (CRITICO/IMPORTANTE → CODER_FIX ou PLAN_FIX).
-audit_clean = "RETURN"
-audit_findings = "RETURN"
-audit_has_open_questions = "HUMAN_APPROVAL"
-
-# Fim
-docs_complete = "FINAL_REVIEW"
+# Board, PR e fim (documentador)
+task_complete = "RETURN"                        # Tasks criadas no board
+pr_ready = "PR"                                 # pr-<id>.md pronto: com o OK do usuário, commit, push e PR
+pr_review_done = "FINAL_REVIEW"                 # PR de outra pessoa: o usuário escolhe o que publicar
 final_review_approved = "DONE"
 policy_requires_approval = "HUMAN_APPROVAL"     # ação travada (commit, push, SQL de escrita...)
 
 # ---------------------------------------------------------------------------------------------
-# Effort por tarefa.
-#
-# O orquestrador classifica cada tarefa num nível e passa o effort daquele nível para o papel
-# que vai executá-la. Papel ausente num nível = o effort padrão do agente (aidw.config.toml).
-# Valores: low | medium | high | xhigh | max, ou "none" (o papel não roda no nível). Modelos sem effort
-# (ex.: Haiku) ignoram o valor, que continua valendo para o equivalente do Codex.
-# [effort.levels.<nível>.models]: papel → modelo do Claude; no Codex vale o equivalente pelo tier
-# (opus → top, sonnet → mid, haiku → fast), então a mesma tabela serve aos dois.
-#
-# Custo: effort é a principal alavanca de gasto depois do modelo. Na dúvida entre dois níveis,
-# escolha o menor e suba se o resultado mostrar que faltou (regras em [effort.escalate]).
-# O effort de cada papel nunca cai de um nível para o de cima (trivial ≤ simples ≤ padrao ≤ complexa ≤ critica).
-#
-# Contexto: contexts/<nome>/routing.toml, quando existe, vai por cima deste arquivo (tabelas se fundem, valores
-# substituem). Ex.: só `max_retries = 2` ou só `[effort.levels.padrao] reviewer = "high"`.
+# Effort: exceções ao padrão de cada agente (aidw.config.toml). Cada uma vira uma variante (`subagent_type` no
+# Claude, o effort/modelo a passar no Codex) e só vale pelo motivo do `when`. Sem `model`, é o do agente; um modelo
+# de outro provedor vira o equivalente pelo tier (opus → top, sonnet → mid, haiku → fast).
 
-[effort]
-default_level = "padrao"
+[[effort.variants.planner]]
+effort = "medium"
+when = "ajuste do plano que o usuário pediu na aprovação"
 
-[effort.levels.trivial]
-when = "Leitura ou consulta sem decisão: levantar arquivos e trechos, descobrir um id, gerar um dado de teste por receita pronta, resumir um documento, ajuste de texto."
-# Trivial não tem plano. Código e revisão em Sonnet low (ajuste pontual, re-revisão de uma correção simples); api no Haiku.
-planner = "none"
-explorer = "low"
-coder = "low"
-reviewer = "low"
-api-db = "low"
-documenter = "low"
-qa = "low"
-bug-hunter = "low"
-security = "low"
+[[effort.variants.explorer]]
+model = "sonnet"
+effort = "medium"
+when = "refazer uma vez quando o resultado do padrão não fez sentido (diga o motivo)"
 
-[effort.levels.trivial.models]
-coder = "sonnet"
-reviewer = "sonnet"
-api-db = "haiku"
+[[effort.variants.explorer]]
+model = "sonnet"
+effort = "high"
+when = "levantamento: o mapa do fluxo de ponta a ponta é a entrega"
 
-[effort.levels.simples]
-when = "Mudança pontual de baixo risco: 1–2 arquivos, lógica direta, sem contrato entre sistemas, banco, concorrência/UI thread, laços/polling ou segurança."
-# Mesmo effort do padrao no planejador, codificador e revisor: o que o nível simples economiza são as etapas (sem
-# revisão do plano, plano de testes enxuto), não o raciocínio. api em Sonnet low (monta SQL/chamadas que o usuário aprova).
-planner = "medium"
-explorer = "low"
-coder = "medium"
-reviewer = "medium"
-api-db = "low"
-documenter = "low"
-qa = "low"
-bug-hunter = "medium"
-security = "medium"
+[[effort.variants.coder]]
+effort = "medium"
+when = "correção pequena (achado mantido, teste que falhou, ajuste do usuário) ou ajuste temporário de teste"
 
-[effort.levels.simples.models]
-planner = "sonnet"
-coder = "sonnet"
-reviewer = "sonnet"
+[[effort.variants.reviewer]]
+effort = "medium"
+when = "re-revisão só das correções"
 
-[effort.levels.padrao]
-when = "O caso comum: feature ou bug num sistema, alguns arquivos, regra de negócio."
-# O caso comum: Sonnet medium no planejador, codificador e revisor (Opus só na crítica).
-planner = "medium"
-explorer = "low"
-coder = "medium"
-reviewer = "medium"
-api-db = "medium"
-documenter = "medium"
-qa = "medium"
-bug-hunter = "high"
-security = "high"
+[[effort.variants.reviewer]]
+effort = "low"
+when = "re-revisão de uma correção trivial (texto, uma linha, renomear)"
 
-[effort.levels.padrao.models]
-planner = "sonnet"
-coder = "sonnet"
-reviewer = "sonnet"
-
-[effort.levels.complexa]
-when = "Vários sistemas ou contrato entre eles, concorrência/UI thread, polling/timers, script de banco, segurança, legado frágil, ou a revisão anterior achou CRITICO."
-# Tudo em Sonnet, effort high nos papéis de decisão; explorador e documentador sobem para Sonnet. Nada acima de high.
-planner = "high"
-explorer = "medium"
-coder = "high"
-reviewer = "high"
-api-db = "high"
-documenter = "medium"
-qa = "high"
-bug-hunter = "high"
-security = "high"
-
-[effort.levels.complexa.models]
-planner = "sonnet"
-coder = "sonnet"
-reviewer = "sonnet"
-explorer = "sonnet"
-documenter = "sonnet"
-bug-hunter = "sonnet"
-security = "sonnet"
-
-[effort.levels.critica]
-when = "Excepcional: falhou duas vezes no nível complexa, correção de segurança/produção, ou migração de dados irreversível. Use raramente e diga o porquê."
-# O único nível com Opus: planejador, codificador, revisor, bugs e segurança; explorador em Sonnet high. Nada acima de high.
-planner = "high"
-explorer = "high"
-coder = "high"
-reviewer = "high"
-api-db = "high"
-documenter = "medium"
-qa = "high"
-bug-hunter = "high"
-security = "high"
-
-[effort.levels.critica.models]
-planner = "opus"
-coder = "opus"
-reviewer = "opus"
-explorer = "sonnet"
-documenter = "sonnet"
-bug-hunter = "opus"
-security = "opus"
-
-[effort.escalate]
-# Quando subir um nível na próxima tentativa do mesmo papel.
-rules = [
-    "o agente falhou duas vezes na mesma etapa",
-    "a revisão achou CRITICO",
-    "o resultado mostra que a tarefa é mais difícil do que o nível classificado",
-]
-# Quando descer: tarefas de acompanhamento (re-revisão só das correções, rodar build de novo,
-# responder uma dúvida pontual) usam um nível abaixo do da demanda.
-downgrade = "re-revisão só das correções, rodada de build/teste, pergunta pontual"
+[[effort.variants.qa]]
+effort = "high"
+when = "refazer uma vez quando o resultado não fez sentido (diga o motivo)"

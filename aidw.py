@@ -113,19 +113,21 @@ DEFAULT_WORKTREE_LINKS = ["packages", "node_modules"]
 DEMAND_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
 GENERATED_MARK = "Gerado por aidw.py"
 ORCHESTRATOR = "orchestrator"
-SKIP_LEVEL = "none"  # routing.toml: o papel não roda naquele nível
 PLANNER = "planner"
 EXPLORER = "explorer"
 # Papéis que chegaram depois das primeiras configs: uma config que não os lista os recebe com o padrão.
 LATE_ROLES = (PLANNER, EXPLORER)
+# Papéis que saíram no fluxo v3 (2026-10-23): o explorador e o qa absorveram o api; o revisor, os de bugs e
+# segurança. Uma config antiga que ainda os lista é aceita, com aviso, e eles não são gerados.
+REMOVED_ROLES = ("api-db", "bug-hunter", "security")
 PROVIDERS = ("claude", "codex")
 PROVIDER_LABEL = {"claude": "Claude (Claude Code)", "codex": "Codex (Codex CLI)"}
 # native   = subagentes nativos do provedor (Claude: ferramenta Agent; Codex: spawn_agent)
 # headless = um processo do CLI por tarefa, via `aidw.py delegate`
 DELEGATION_MODES = ("native", "headless")
 
-ACTIONS = {"EXPLORE", "TEST_PLAN", "PLAN_REVIEW", "PLAN_FIX", "TICKETS", "IMPLEMENT", "TEST", "TEST_ADJUST", "ORCHESTRATOR_TEST",
-           "PREPARE_REVIEW", "REVIEW", "CODER_FIX", "MANUAL_TEST", "ESTIMATE", "DOCS", "FINAL_REVIEW", "DONE",
+ACTIONS = {"EXPLORE", "PLAN", "PLAN_APPROVAL", "PLAN_FIX", "IMPLEMENT", "TEST_PLAN", "REVIEW", "TRIAGE", "CODER_FIX",
+           "USER_REVIEW", "TEST", "TEST_ADJUST", "MANUAL_TEST", "PR", "ESTIMATE", "FINAL_REVIEW", "DONE",
            "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST"}
 # Etapas de fora do AiDW (o time revisa a PR, a QA testa): gravadas quando o usuário avisa; o painel as mostra à parte.
 # O contexto pode declarar outras ([[workflows.external_steps]]), cada uma antes de uma destas.
@@ -140,37 +142,33 @@ DEFAULT_NAMES = {
     "explorer": "explorador",
     "coder": "codificador",
     "reviewer": "revisor",
-    "api-db": "api",
     "qa": "qa",
     "documenter": "documentador",
-    "bug-hunter": "bugs",
-    "security": "seguranca",
 }
-# Modelo base (o do nível padrao): Opus no orquestrador, planejador, codificador e revisor; Sonnet no api, bugs e
-# segurança; Haiku no explorador e no documentador. Os outros níveis trocam modelo/effort no routing.toml.
-# No Codex o tier escolhe o equivalente (config/models.toml).
+# Modelo e effort de cada papel (fluxo v3, sem níveis; Felipe, 2026-10-23): Opus no orquestrador; Sonnet high no
+# planejador, codificador e revisor; Sonnet medium no qa; Haiku no explorador e no documentador. As exceções
+# permitidas (descer numa re-revisão, subir quando o resultado não fez sentido) ficam em [effort.variants] do
+# routing.toml. No Codex o tier escolhe o equivalente (config/models.toml).
 # skills  = disponíveis para o agente (listadas no prompt; ele chama com o Skill tool quando precisa)
 # preload = subconjunto injetado inteiro no início de cada execução — só o que ele usa sempre.
 DEFAULT_AGENTS: dict[str, dict] = {
     "orchestrator": {"enabled": True, "tier": "top", "effort": "high",
                      "skills": ["to-spec", "verificar-premissa", "preparar-worktree"]},
     # Planejador: o plano, a correção dele e os tickets, num contexto novo (o do orquestrador fica enxuto).
-    "planner": {"enabled": True, "tier": "top", "effort": "medium",
+    "planner": {"enabled": True, "tier": "mid", "effort": "high",
                 "skills": ["to-spec", "verificar-premissa"], "preload": ["to-spec"]},
-    # Explorador: leitura barata do código, com `arquivo:linha`, num relatório que o plano e o código reusam.
-    "explorer": {"enabled": True, "tier": "fast", "effort": "low", "skills": []},
-    "coder": {"enabled": True, "tier": "top", "effort": "medium", "skills": ["preparar-worktree"]},
-    "reviewer": {"enabled": True, "tier": "top", "effort": "medium",
+    # Explorador: leitura barata do código, com `arquivo:linha`, e as consultas (ids, contratos, SELECT pelo
+    # validador do contexto) que eram do api, num relatório que o plano e o código reusam.
+    "explorer": {"enabled": True, "tier": "fast", "effort": "low", "skills": ["database-safe"]},
+    "coder": {"enabled": True, "tier": "mid", "effort": "high", "skills": ["preparar-worktree"]},
+    # Revisor: qualidade, bugs e segurança numa passada só (a skill code-review traz as três).
+    "reviewer": {"enabled": True, "tier": "mid", "effort": "high",
                  "skills": ["code-review", "verificar-premissa"], "preload": ["code-review"]},
-    "api-db": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe"]},
-    # QA: plano de testes logo depois do plano e o teste da entrega (automático ou roteiro com o usuário).
-    "qa": {"enabled": True, "tier": "mid", "effort": "medium", "skills": []},
+    # QA: roteiro e massa em paralelo com o codificador; depois da revisão do usuário, o teste (API e navegador
+    # sozinho, o resto assistido pelo usuário).
+    "qa": {"enabled": True, "tier": "mid", "effort": "medium", "skills": ["database-safe"]},
+    # Documentador: as Tasks no board e o texto da PR.
     "documenter": {"enabled": True, "tier": "fast", "effort": "medium", "skills": []},
-    # Especialistas sob demanda: o orquestrador decide quando uma passada vale o custo.
-    "bug-hunter": {"enabled": True, "tier": "mid", "effort": "high",
-                   "skills": ["bug-hunt", "verificar-premissa"], "preload": ["bug-hunt"]},
-    "security": {"enabled": True, "tier": "mid", "effort": "high",
-                 "skills": ["security-audit", "verificar-premissa"], "preload": ["security-audit"]},
 }
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 RESERVED_NAMES = {"general-purpose", "explore", "plan", "statusline-setup", "claude-code-guide",
@@ -185,14 +183,11 @@ PLACEHOLDER_RE = re.compile(r"\{\{agent:([\w-]+)\}\}")
 #   network:     acesso de rede dos comandos do agente Codex (build com restore, APIs).
 RUN_PROFILE = {
     "planner": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
-    "explorer": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": False},
+    "explorer": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": True},
     "coder": {"claude_mode": "auto", "max_turns": 80, "write": "projects", "network": True},
     "reviewer": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": False},
     "documenter": {"claude_mode": "auto", "max_turns": 40, "write": "projects", "network": False},
     "qa": {"claude_mode": "auto", "max_turns": 40, "write": "state", "network": True},
-    "api-db": {"claude_mode": "default", "max_turns": 30, "write": "state", "network": True},
-    "bug-hunter": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
-    "security": {"claude_mode": "auto", "max_turns": 50, "write": "state", "network": False},
 }
 
 DEFAULT_DENY = [
@@ -324,6 +319,9 @@ def load_config() -> dict | None:
     if "agents" in cfg:
         base["agents"] = {}
         for role, a in cfg["agents"].items():
+            if role in REMOVED_ROLES:  # papel do fluxo antigo: o resolve avisa e ele não é gerado
+                base.setdefault("removed_roles", []).append(role)
+                continue
             defaults = {k: v for k, v in DEFAULT_AGENTS.get(role, {"enabled": True, "skills": []}).items()
                         if k != "tier"}
             base["agents"][role] = {**defaults, **a}
@@ -407,9 +405,9 @@ def render_config(cfg: dict) -> str:
         "# [agents.<papel>] — o papel é fixo. Opcionais:",
         "#   name   nome do agente (aceita acento e espaço; sem ele, vale o padrão comentado)",
         "#   model  chave de config/models.toml do provedor; sem ele, vale o tier padrão do papel",
-        "#          (Opus/top no orquestrador e codificador, Sonnet/mid no revisor e api,",
-        "#           Haiku/fast no documentador). Modelo de outro provedor é ignorado com aviso.",
-        "#   effort effort padrão do agente; o orquestrador escolhe o de cada tarefa (routing.toml).",
+        "#          (Opus/top no orquestrador; Sonnet/mid no planejador, codificador, revisor e qa;",
+        "#           Haiku/fast no explorador e no documentador). Modelo de outro provedor vira o equivalente.",
+        "#   effort effort padrão do agente; as exceções permitidas ficam em [effort.variants] do routing.toml.",
     ]
     for role, a in cfg["agents"].items():
         default = DEFAULT_NAMES.get(role, role)
@@ -573,6 +571,9 @@ def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Repor
     if ORCHESTRATOR not in agents or not agents[ORCHESTRATOR].get("enabled", True):
         rep.error("o agente orchestrator é obrigatório e precisa estar habilitado")
 
+    for role in cfg.get("removed_roles", []):
+        rep.warn(f"aidw.config.toml: [agents.{role}] saiu no fluxo v3 (o explorador e o qa fazem o do api; o revisor, "
+                 "os de bugs e segurança) e é ignorado; apague a seção")
     resolved = {}
     for role, a in agents.items():
         key = a.get("model")
@@ -637,89 +638,67 @@ def context_routing_file(ctx: dict | None) -> Path | None:
 
 
 def load_routing(rep: Report, ctx: dict | None = None) -> dict:
-    """routing.toml do núcleo com o do contexto ativo por cima (só o que ele redefine: níveis, efforts, modelos,
-    max_retries, regras)."""
+    """routing.toml do núcleo com o do contexto ativo por cima (só o que ele redefine: variantes, max_retries,
+    regras)."""
     routing = load_toml(ROUTING_FILE) if ROUTING_FILE.exists() else {}
     if over := context_routing_file(ctx):
         routing = deep_merge(routing, load_toml(over))
-    for key in ("max_retries", "max_retries_plan"):
-        if key in routing and (not isinstance(routing[key], int) or routing[key] < 1):
-            rep.error(f"routing.toml: {key} deve ser um inteiro ≥ 1 (atual: {routing[key]!r})")
+    if "max_retries" in routing and (not isinstance(routing["max_retries"], int) or routing["max_retries"] < 1):
+        rep.error(f"routing.toml: max_retries deve ser um inteiro ≥ 1 (atual: {routing['max_retries']!r})")
     for st, action in routing.get("rules", {}).items():
         if action not in ACTIONS:
             rep.error(f"routing.toml: ação desconhecida {action!r} em {st!r} "
                       f"(válidas: {', '.join(sorted(ACTIONS))})")
     eff = routing.get("effort", {})
-    levels = eff.get("levels", {})
-    for lvl, spec in levels.items():
-        for role, value in spec.items():
-            if role == "when":
-                continue
-            if role == "models":
-                for r in value:
-                    if r not in DEFAULT_AGENTS:
-                        rep.error(f"routing.toml: [effort.levels.{lvl}.models] cita papel desconhecido {r!r}")
-                continue
-            if role not in DEFAULT_AGENTS:
-                rep.error(f"routing.toml: [effort.levels.{lvl}] cita papel desconhecido {role!r}")
-            elif value not in EFFORTS and value != SKIP_LEVEL:
-                rep.error(f"routing.toml: [effort.levels.{lvl}] {role} = {value!r} não é effort válido")
-    if levels and eff.get("default_level") not in levels:
-        rep.error(f"routing.toml: effort.default_level {eff.get('default_level')!r} não está em [effort.levels]")
+    if "levels" in eff:
+        rep.warn("routing.toml: [effort.levels] saiu no fluxo v3 (sem níveis) e é ignorado; use [effort.variants]")
+    for role, variants in eff.get("variants", {}).items():
+        if role not in DEFAULT_AGENTS or role == ORCHESTRATOR:
+            rep.error(f"routing.toml: [effort.variants] cita papel desconhecido {role!r}")
+            continue
+        if not isinstance(variants, list):
+            rep.error(f"routing.toml: [effort.variants.{role}] precisa ser uma lista ([[effort.variants.{role}]])")
+            continue
+        for v in variants:
+            if not v.get("when"):
+                rep.error(f"routing.toml: variante de {role} sem `when` (o motivo que permite usá-la)")
+            if v.get("effort") and v["effort"] not in EFFORTS:
+                rep.error(f"routing.toml: variante de {role}: effort {v['effort']!r} inválido")
     return routing
 
 
-def effort_for(routing: dict, role: str, level: str, agent: dict) -> str:
-    spec = routing.get("effort", {}).get("levels", {}).get(level, {})
-    value = spec.get(role)
-    if value == SKIP_LEVEL:
-        return ""
-    return value or agent["effort"]
-
-
 def attach_variants(resolved: dict, routing: dict, catalog: dict, rep: Report) -> None:
-    """Resolve, por papel, o modelo e o effort de cada nível (`a["by_level"]`) e as variantes
-    nativas do Claude (`a["variants"]`: nome → modelo/effort). O modelo do nível vem de
-    [effort.levels.<nível>.models] (exceção à regra de modelo fixo); sem ele, o do agente. O effort
-    padrão com o modelo do agente fica com o nome base; outro effort vira `<nome>-<effort>` e outro
-    modelo `<nome>-<alias>-<effort>` (o Claude fixa modelo e effort no arquivo do subagente)."""
-    levels = routing.get("effort", {}).get("levels", {})
+    """Resolve, por papel, as variantes (`a["variants"]`: nome → modelo, effort e quando usar): o padrão do agente
+    e as exceções de [effort.variants.<papel>] (outro effort e, às vezes, outro modelo). O padrão fica com o nome
+    base; outro effort vira `<nome>-<effort>` e outro modelo `<nome>-<alias>-<effort>` (o Claude fixa modelo e
+    effort no arquivo do subagente)."""
+    specs = routing.get("effort", {}).get("variants", {})
     for role, a in resolved.items():
         if role == ORCHESTRATOR:
             continue
         base = a["model"]
-        by_level, skip = {}, []
-        for lvl, spec in levels.items():
-            if spec.get(role) == SKIP_LEVEL:  # o papel não roda nesse nível (ex.: planejador em trivial)
-                skip.append(lvl)
-                continue
-            key = spec.get("models", {}).get(role)
-            model = base
-            if key:
-                if key not in catalog:
-                    rep.error(f"routing.toml: [effort.levels.{lvl}.models] {role} = {key!r} não existe em "
-                              "config/models.toml")
-                else:  # de outro provedor: o equivalente pelo tier
-                    eq = equivalent_model(catalog, key, base["provider"])
-                    model = {**catalog[eq], "key": eq} if eq else base
-            effort = effort_for(routing, role, lvl, a) if model.get("efforts") else ""
-            if effort and effort not in model["efforts"]:
-                rep.error(f"routing.toml: [effort.levels.{lvl}] {model['name']} não aceita effort {effort!r}")
-            by_level[lvl] = (model, effort)
         base_effort = a["effort"] if base.get("efforts") else ""
-        pairs = [(base, base_effort), *by_level.values()]
-        pairs.sort(key=lambda p: (p[0]["key"] != base["key"], p[0]["key"],
-                                  EFFORTS.index(p[1]) if p[1] in EFFORTS else -1))
-        variants: dict[str, dict] = {}
-        for model, effort in pairs:
+        variants: dict[str, dict] = {a["name"]: {"model": base, "effort": base_effort, "when": ""}}
+        for spec in specs.get(role, []) if isinstance(specs.get(role), list) else []:
+            model = base
+            if key := spec.get("model"):
+                if key not in catalog:
+                    rep.error(f"routing.toml: variante de {role}: modelo {key!r} não existe em config/models.toml")
+                    continue
+                eq = equivalent_model(catalog, key, base["provider"])  # de outro provedor: o equivalente
+                model = {**catalog[eq], "key": eq} if eq else base
+            effort = (spec.get("effort") or base_effort) if model.get("efforts") else ""
+            if effort and effort not in model["efforts"]:
+                rep.error(f"routing.toml: variante de {role}: {model['name']} não aceita effort {effort!r}")
+                continue
             if model["key"] == base["key"] and effort == base_effort:
                 name = a["name"]
             elif model["key"] == base["key"]:
                 name = f"{a['name']}-{effort}"
             else:
                 name = "-".join(x for x in (a["name"], model.get("alias") or model["key"], effort) if x)
-            variants.setdefault(name, {"model": model, "effort": effort})
-        a["by_level"], a["variants"], a["skip_levels"] = by_level, variants, skip
+            variants.setdefault(name, {"model": model, "effort": effort, "when": spec.get("when", "")})
+        a["variants"] = variants
 
 
 def variant_name(a: dict, model: dict, effort: str) -> str:
@@ -1183,6 +1162,20 @@ def systems_section(ctx: dict | None, detailed: bool) -> str:
                   "and report the difference. A note describes how the code **is**, legacy deviations included — a "
                   "fact, not a rule: which pattern new code follows is decided by the team's guidelines and the "
                   "policies, never by a note alone.")
+    if not detailed:
+        # O orquestrador só localiza o sistema e a nota dele: build, teste e stack vão nas entregas do plano (o
+        # planejador e o codificador recebem a seção detalhada). Uma linha por sistema, para o prompt dele ficar curto.
+        rows = ["## Systems", "",
+                "Where each system lives (`id` is the key the agents and the knowledge base use). The build and test "
+                "commands are in the agents' definitions and in each delivery of the plan; *Depends on* is the system "
+                "whose contract a change must inspect.", "",
+                "| System | Repos | Depends on | Knowledge |", "|---|---|---|---|"]
+        for key, s in systems.items():
+            note = base / KB_TYPES["sistema"] / f"{key}.md" if base else None
+            rows.append(f"| {s.get('name', key)} (`{key}`) | {', '.join(f'`{r}`' for r in s.get('repos', []))} | "
+                        f"{', '.join(f'`{d}`' for d in s.get('depends_on', [])) or '—'} | "
+                        f"{f'`{note.as_posix()}`' if note and note.is_file() else '—'} |")
+        return "\n".join(rows)
     lines = ["## Systems", "", intro, ""]
     for key, s in systems.items():
         lines.append(f"### {s.get('name', key)} (`{key}`)")
@@ -1288,7 +1281,6 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
         skills_section(a["skills"], skills, provider, a["preload"], ns),
         mcp_agent_section(servers, role),
         systems_section(ctx, detailed=True),
-        levels_section(routing) if role == PLANNER else "",
         reference_section(ctx, role),
         "# POLICIES",
         *[tpl.include(p) for p in policy_files(ctx)],
@@ -1299,18 +1291,6 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
         parts += [tpl.include(p) for p in context_files(ctx, role)]
     description = tpl.render(meta.get("description", a["display"]), source)
     return {**meta, "description": description}, "\n\n".join(parts) + "\n"
-
-
-def levels_section(routing: dict) -> str:
-    """Níveis da demanda (routing.toml) e o guia das passadas extras: o planejador classifica a demanda."""
-    levels = routing.get("effort", {}).get("levels", {})
-    if not levels:
-        return ""
-    rows = ["## Levels", "", "Classify the demand in exactly one (if unsure between two, the lower):", ""]
-    rows += [f"- **{lvl}** — {spec.get('when', '')}" for lvl, spec in levels.items()]
-    guide = (ROOT / "orchestrator" / "reference" / "passadas-extras.md").as_posix()
-    rows += ["", f"Extra passes (bugs, security): triggers in `{guide}` — read it when you decide them."]
-    return "\n".join(rows)
 
 
 def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict,
@@ -1340,57 +1320,45 @@ def agent_tool_policy(role: str, meta: dict, prompt: str, ctx: dict | None, serv
 
 
 def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
-    eff = routing.get("effort", {})
-    levels = eff.get("levels", {})
+    """*Agents and effort*: o padrão de cada agente e as únicas exceções permitidas, com o motivo de cada uma."""
     roles = [r for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
-    if not levels or not roles:
+    if not roles:
         return ""
     claude_native = cfg["provider"]["name"] == "claude" and cfg["delegation"]["mode"] == "native"
-    rows = ["| Level | When | " + " | ".join(f"`{ns}{resolved[r]['name']}`" for r in roles) + " |",
-            "|---|---|" + "---|" * len(roles)]
-    for lvl, spec in levels.items():
-        cells = []
-        for r in roles:
-            a = resolved[r]
-            model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
-            if lvl in a.get("skip_levels", []):
-                cells.append("— (não roda)")
-            elif claude_native:
-                cells.append(f"`{ns}{variant_name(a, model, effort)}`")
-            elif model["key"] != a["model"]["key"]:
-                cells.append(f"{effort or '—'} + model `{model['key']}` (`{model_tag(model)}`)")
-            else:
-                cells.append(effort or "—")
-        rows.append(f"| **{lvl}** | {spec.get('when', '')} | " + " | ".join(cells) + " |")
-    esc = eff.get("escalate", {})
+
+    def cell(a: dict, name: str, v: dict) -> str:
+        if claude_native:
+            return f"`{ns}{name}`"
+        e = v["effort"] or "—"
+        return e if v["model"]["key"] == a["model"]["key"] else f"{e} + model `{v['model']['key']}` (`{model_tag(v['model'])}`)"
+
+    rows = ["| Agent | Default | Exceptions (only for the reason given) |", "|---|---|---|"]
+    for r in roles:
+        a = resolved[r]
+        items = list(a.get("variants", {}).items())
+        default = (f"`{ns}{a['name']}` — " if claude_native else "") + model_label(a)
+        others = "; ".join(f"{cell(a, n, v)} — {v['when']}" for n, v in items[1:]) or "—"
+        rows.append(f"| `{ns}{a['name']}` | {default} | {others} |")
     if claude_native:
-        intro = ("Each cell is the `subagent_type` to use: the agent's model with the effort of that "
-                 "level already pinned in its definition (a `-<alias>-` in the name means that level "
-                 "uses another model, e.g. `bugs-opus-high`).")
+        intro = ("Each cell is the `subagent_type` to use: the agent's model with that effort already pinned in its "
+                 "definition (a `-<alias>-` in the name means another model, e.g. `explorador-sonnet-medium`).")
     else:
-        intro = ("Each cell is the effort to pass. `—` = the model takes no effort (omit it). A cell "
-                 "with `+ model` also names the model to pass for that level.")
-    lines = ["## Effort per task", "", f"Default level: **{eff.get('default_level', 'padrao')}**. {intro}",
-             "", *rows]
-    if esc.get("rules"):
-        lines += ["", "Escalate one level for the next attempt of a role when: " + "; ".join(esc["rules"]) + "."]
-    if esc.get("downgrade"):
-        lines += [f"Go one level down for: {esc['downgrade']}."]
-    return "\n".join(lines)
+        intro = ("Each cell is the effort to pass (`—` = the model takes no effort: omit it); a cell with `+ model` "
+                 "also names the model to pass.")
+    return "\n".join([
+        "## Agents and effort", "",
+        "There are no demand levels: every task runs on the agent's default. " + intro, "",
+        *rows, "",
+        "Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs "
+        "**once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that "
+        "failed, a result that made no sense). Another model (Opus) only when the user asks."])
 
 
-def level_cells(resolved: dict, routing: dict) -> dict[str, dict[str, str | None]]:
-    """{nível: {nome do agente: variante (o subagent_type sem namespace) ou None quando não roda}}: a mesma tabela
-    *Effort per task* do Claude, para quem precisa dela em dado (o mod de travas da delegação)."""
-    out: dict[str, dict[str, str | None]] = {}
-    for lvl in routing.get("effort", {}).get("levels", {}):
-        out[lvl] = {}
-        for r, a in resolved.items():
-            if r == ORCHESTRATOR or not a["enabled"]:
-                continue
-            model, effort = a["by_level"].get(lvl, (a["model"], a["effort"]))
-            out[lvl][a["name"]] = None if lvl in a.get("skip_levels", []) else variant_name(a, model, effort)
-    return out
+def variant_cells(resolved: dict) -> dict[str, list[str]]:
+    """{nome do agente: [subagent_type permitidos, sem namespace]}: o padrão e as exceções da tabela *Agents and
+    effort*, para quem precisa dela em dado (o mod de travas da delegação)."""
+    return {a["name"]: list(a.get("variants", {}) or [a["name"]])
+            for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]}
 
 
 def aidw_command(global_mode: bool) -> str:
@@ -1403,7 +1371,7 @@ def explore_line(resolved: dict, fallback: str = "the built-in `Explore` subagen
     ex = resolved.get(EXPLORER)
     if not ex or not ex["enabled"]:
         return f"- Code exploration: {fallback}."
-    return (f"- Code exploration: the `{ex['name']}` agent (its column in *Effort per task*), not this chat and "
+    return (f"- Code exploration: the `{ex['name']}` agent (*Agents and effort*), not this chat and "
             "not a generic "
             "explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder "
             "(the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the "
@@ -1413,7 +1381,7 @@ def explore_line(resolved: dict, fallback: str = "the built-in `Explore` subagen
 def record_hint(codex: bool, global_mode: bool = False) -> str:
     usage = ("--codex-task <task_name>" if codex else
              "--tokens <subagent_tokens> --tool-uses <tool_uses> --duration-ms <duration_ms>")
-    return (f"{aidw_command(global_mode)} record --agent <name> [--effort <effort>] --level <level> --label <label> "
+    return (f"{aidw_command(global_mode)} record --agent <name> [--effort <effort>] --label <label> "
             f"--demand <demand dir> --state <state> {usage}")
 
 
@@ -1427,11 +1395,11 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
         lines = [
             "## How to delegate", "",
             "The agents are **native Claude Code subagents**: call them with the `Agent` tool.", "",
-            "- `subagent_type`: take it from the *Effort per task* table — each cell is the agent with "
-            "its model and that level's effort pinned. That is how you choose the effort.",
+            "- `subagent_type`: the agent's default from *Agents and effort*, or one of its exceptions when its "
+            "reason applies — each one has its model and effort pinned. That is how you choose the effort.",
             "- Do **not** pass `model`: it would override the agent's model. Only when the user asked "
             "for another model.",
-            "- `prompt`: `Tarefa: <task file>. Pasta da demanda: <demand dir>. Nível: <level>.` plus the MCP "
+            "- `prompt`: `Tarefa: <task file>. Pasta da demanda: <demand dir>.` plus the MCP "
             "choice (see *MCP tools*).",
             "- Parallel tickets: several `Agent` calls in the same message, or `run_in_background`.",
             "- After **every** subagent returns, record it — this appends `metricas.md` and prints the "
@@ -1443,8 +1411,8 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "  - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) "
             "carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run "
             "`record` for it; run it yourself only when that line is missing or says the mod could not record.",
-            "  - An Agent call that breaks the delegation rules (wrong cell of the table, `model` the user did not "
-            "ask for, missing `Nível`/folder, a pasted input, a loop past `max_retries`) comes back denied with "
+            "  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, "
+            "`model` the user did not ask for, missing task/folder, a pasted input, a loop past `max_retries`) comes back denied with "
             "`AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the "
             "limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or "
             "`/aidw-rodada`).",
@@ -1463,29 +1431,29 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "- `agent_type`: the agent name from the Team table (e.g. `aidw-codificador`) — the role carries the "
             "agent's standing instructions.",
             "- `fork_turns: \"none\"` (a full-history fork rejects `agent_type`, `model` and `reasoning_effort`).",
-            "- `model`: the agent's model from the Team table. `reasoning_effort`: the cell of the *Effort per task* "
-            "table — that is how you choose the effort.",
+            "- `model`: the agent's model from the Team table. `reasoning_effort`: the agent's default in *Agents "
+            "and effort*, or an exception when its reason applies — that is how you choose the effort.",
             "- `task_name`: `<agent>-<label>` (e.g. `aidw-codificador-t1-r1`), unique in the demand.",
-            "- `message`: `Task: <task file>. Demand folder: <demand dir>. Worktree: <path>. Level: <level>, effort "
+            "- `message`: `Task: <task file>. Demand folder: <demand dir>. Worktree: <path>. Effort "
             "<effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
             "- Sub-agents inherit your sandbox, rules and MCP servers; the `aidw` profile makes the worktree root "
             "writable. Only the agents allowed to edit code may edit it (their definition says so).",
             "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the sub-agent "
             "session, appends `metricas.md` and prints the `header` and `resumo` you must show:",
             "", "```", record_hint(codex=True, global_mode=True), "```", "",
-            explore_line(resolved, fallback=f"spawn `{CODEX_NS}{example}` at level `trivial` asking "
+            explore_line(resolved, fallback=f"spawn `{CODEX_NS}{example}` with its lowest effort asking "
                          "for `file:line` pointers, or read short excerpts yourself"),
         ])
     lines = [
         "## How to delegate", "",
         "The agents are **native Codex sub-agents**: spawn them with `spawn_agent` (multi-agent).", "",
         "- `task_name`: `<agent>-<label>` (e.g. `codificador-t1-r1`), unique in the demand.",
-        "- `model`: the agent's model from the Team table. `reasoning_effort`: the cell of the *Effort per "
-        "task* table — that is how you choose the effort.",
+        "- `model`: the agent's model from the Team table. `reasoning_effort`: the agent's default in *Agents "
+        "and effort*, or an exception when its reason applies — that is how you choose the effort.",
         "- `message` (always this shape): `You are the AiDW agent <name>. Your standing instructions are "
         "in <definition file> — read that file first and follow it; ignore the orchestrator instructions "
-        "(AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Level: <level>, "
-        "effort <effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
+        "(AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Effort "
+        "<effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
         "- If your spawn tool also takes an agent type/role, pass the agent name too (roles are defined "
         "in `.codex/agents/`).",
         "- Sub-agents inherit your sandbox, rules and MCP servers: the task must say which MCP to use, and "
@@ -1493,7 +1461,7 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
         "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the "
         "sub-agent session, appends `metricas.md` and prints the `header` and `resumo` you must show:",
         "", "```", record_hint(codex=True, global_mode=global_mode), "```", "",
-        f"- There is no exploration role: for broad code exploration spawn `{example}` at level `trivial` "
+        f"- There is no exploration role: for broad code exploration spawn `{example}` with its lowest effort "
         "asking for `file:line` pointers, or read short excerpts yourself.",
         "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
         "workflow or a trigger says to use it.",
@@ -1509,14 +1477,14 @@ def headless_delegation_section(provider: str, example: str) -> str:
         "",
         "```",
         "python aidw.py delegate --agent <name> --effort <low|medium|high|xhigh|max> "
-        "--level <level> --task <task.md> --demand <demand dir> [--label <ticket>-r<N>]",
+        "--task <task.md> --demand <demand dir> [--label <step>-r<N>]",
         "```",
         "",
         f"- `--agent`: the agent name from the Team table (e.g. `{example}`) or its role.",
-        "- `--effort` and `--level`: your decision for this task (*Effort per task*). Omit `--effort` "
-        "only for models marked `—`.",
-        "- `--model <key>`: only when the user asked for another model for this task (a level whose "
-        "*Effort per task* cell names a model already gets it without `--model`).",
+        "- `--effort`: the agent's default in *Agents and effort*, or an exception when its reason applies. Omit "
+        "it only for models marked `—`.",
+        "- `--model <key>`: only for an exception whose cell names a model, or when the user asked for another "
+        "model for this task.",
         "- The command prints one JSON line: `header`, `resumo`, `state`, `output` (the agent's final "
         "JSON), `result_file`, `denials`, tokens and duration. The full answer is in `result_file` — read "
         "it only when needed. The same JSON is saved next to it (`resultado-<agent>-<label>.json`): if you "
@@ -1543,7 +1511,7 @@ def headless_delegation_section(provider: str, example: str) -> str:
             "- The delegate starts another Codex process; if your sandbox blocks it (no network), rerun "
             "it asking for escalated permissions — the project rules allow this command.",
             "- There is no exploration subagent: for broad code exploration delegate a read-only task to "
-            f"`{example}` at level `trivial` asking for `file:line` pointers, or read short excerpts yourself.",
+            f"`{example}` with its lowest effort asking for `file:line` pointers, or read short excerpts yourself.",
             "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
             "workflow or a trigger says to use it.",
         ]
@@ -1650,16 +1618,16 @@ def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: 
     model = model or a["model"]
     entry = claude_agent_entry(role, meta, prompt, ctx, servers)
     description = meta["description"]
-    # Variantes: descrição de uma linha. O orquestrador escolhe pela tabela Effort per task, e a lista
+    # Variantes: descrição de uma linha. O orquestrador escolhe pela tabela Agents and effort, e a lista
     # de agentes com as descrições entra em toda sessão (a descrição completa fica só no agente base).
     if model["key"] != a["model"]["key"]:
         description = (f"{a['display']} com {model['name']}, effort {effort or '—'}: mesmo papel de "
-                       f"{ns}{a['name']}. Só quando a tabela Effort per task indicar.")
+                       f"{ns}{a['name']}. Só na exceção da tabela Agents and effort.")
         prompt = prompt.replace(f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`).",
                                 f"- Model: {model['name']} (`{model_tag(model)}`).")
     elif name != a["name"]:
         description = (f"{a['display']}, effort {effort}: mesmo papel de {ns}{a['name']}. "
-                       "Só quando a tabela Effort per task indicar.")
+                       "Só na exceção da tabela Agents and effort.")
     if guard:
         description = f"{guard} {description}"
     front = ["---", f"name: {name}", f"description: {json.dumps(description, ensure_ascii=False)}",
@@ -2134,11 +2102,9 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
                    for role, a in resolved.items()},
         "mcp": list(servers),
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),
-        # para os mods do Claude (travas da delegação): o subagent_type de cada célula da tabela Effort per task
-        "levels": level_cells(resolved, b["routing"]),
-        "default_level": b["routing"].get("effort", {}).get("default_level", "padrao"),
+        # para os mods do Claude (travas da delegação): os subagent_type de cada agente (tabela Agents and effort)
+        "variants": variant_cells(resolved),
         "max_retries": b["routing"].get("max_retries", 3),
-        "max_retries_plan": b["routing"].get("max_retries_plan", b["routing"].get("max_retries", 3)),
         # o painel lateral do mod: ligado, a não ser que o contexto o desligue ([mods] panel = false); sem os
         # arquivos de um modelo, as abas dele somem
         "panel": bool(ctx.get("mods", {}).get("panel", True)) if ctx else True,
@@ -2263,12 +2229,11 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "`--status done`. Pedido só de leitura (explicar, analisar) não abre demanda.",
         workspace, "",
         "## Modo interativo", "",
-        "Só acrescenta paradas; as ações travadas das policies pedem OK nos dois modos, e ler código, rodar "
+        "Só acrescenta paradas às do fluxo (plano, achados da revisão, a revisão de código, os passos manuais e a "
+        "PR param nos dois modos); as ações travadas das policies pedem OK nos dois modos, e ler código, rodar "
         "`record`, build e git local continuam sem pergunta.",
-        "- **Plano:** antes de `TICKETS`, mostre o resumo do plano (nível, tickets, passadas extras, riscos) e o "
-        "caminho do arquivo; espere *aprovar* ou *ajustar*.",
         "- **Cada delegação:** antes de chamar o agente, escreva o arquivo da tarefa e mostre, em até 6 linhas: "
-        "agente e effort (a célula da tabela *Effort per task*), nível, ticket, arquivos em escopo, comando de build/teste, MCP e o "
+        "agente e effort (o padrão ou a exceção da tabela *Agents and effort*), etapa, arquivos em escopo, comando de build/teste, MCP e o "
         "caminho da tarefa. Espere *aprovar*, *ajustar* (refaça a tarefa e mostre de novo) ou *pular*. Delegações "
         "paralelas vão numa aprovação só.",
         "- Depois de cada resultado, mostre o `header` e o `resumo` e a próxima ação que você pretende; a "
@@ -4615,13 +4580,13 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         print(json.dumps({"error": f"agente {args.agent!r} desconhecido"}, ensure_ascii=False))
         return 2
     a = resolved[role]
-    level = args.level or routing.get("effort", {}).get("default_level", "padrao")
     model = model or a["model"]
     if not effort and model.get("efforts"):
-        effort = effort_for(routing, role, level, a)
+        effort = a["effort"]
     if not model.get("efforts"):
         effort = ""
-    row = {"date": date.today().isoformat(), "agent": a["name"], "level": level, "model": model["model_id"],
+    # a coluna Nível fica no metricas.md pelas demandas antigas; no fluxo v3 não há nível
+    row = {"date": date.today().isoformat(), "agent": a["name"], "level": args.level or "—", "model": model["model_id"],
            "effort": effort, "label": args.label, "state": args.state or "missing_state", "turns": None,
            "duration_s": round((args.duration_ms or 0) / 1000), "tokens_in": args.tokens,
            "tokens_out": None, "cost_usd": None, "limits": "—"}
@@ -4650,7 +4615,7 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     else:
         tokens = f"{row['tokens_in']:,} tokens entrada + {row['tokens_out']:,} saída".replace(",", ".")
     shown = model["name"] + (f" ({row['model']})" if real_id else "")  # mesma família, versões diferentes
-    parts = [f"{a['display']} ({level})", shown, f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
+    parts = [f"{a['display']} ({args.label})", shown, f"effort {effort or '—'}", tokens, f"{row['duration_s']} s"]
     if row["limits"] != "—":
         parts.append(row["limits"])
     print(json.dumps({"header": head, "resumo": " | ".join(parts), **row, "warnings": rep.warnings},
@@ -4817,11 +4782,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         valid = ", ".join(x["name"] for r, x in resolved.items() if r != ORCHESTRATOR and x["enabled"])
         rep.error(f"agente {args.agent!r} inexistente, desabilitado ou é o orquestrador (válidos: {valid})")
     attach_variants(resolved, routing, catalog, rep)
-    level = args.level or routing.get("effort", {}).get("default_level", "padrao")
-    if a and level in a.get("skip_levels", []) and not (args.model or args.effort):
-        rep.error(f"{a['name']} não roda no nível {level} (routing.toml); use o nível mais baixo em que ele roda")
-    # Modelo do nível ([effort.levels.<nível>.models]) quando houver; `--model` vence.
-    model = a["by_level"].get(level, (a["model"], ""))[0] if a else {}
+    model = a["model"] if a else {}  # o do agente; `--model` vence (exceção com outro modelo ou pedido do usuário)
     if a and args.model:
         m = catalog.get(args.model) or next((dict(v, key=k) for k, v in catalog.items()
                                              if v["model_id"] == args.model), None)
@@ -4829,7 +4790,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
             rep.error(f"--model {args.model!r} não é um modelo {provider} de config/models.toml")
         else:
             model = {**m, "key": m.get("key", args.model)}
-    effort = args.effort or (effort_for(routing, role, level, a) if a else "")
+    effort = args.effort or (a["effort"] if a else "")
     if effort and effort not in EFFORTS:
         rep.error(f"--effort {effort!r} inválido (válidos: {', '.join(EFFORTS)})")
     if model and not model.get("efforts"):
@@ -4854,7 +4815,7 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     head = header(shown, effort)
     label = args.label or task.stem
     effort_txt = f"effort **{effort}**" if effort else "no effort setting"
-    prompt = (f"Model for this task: {model['name']} (`{model_tag(model)}`), {effort_txt}, level `{level}`.\n\n"
+    prompt = (f"Model for this task: {model['name']} (`{model_tag(model)}`), {effort_txt}.\n\n"
               f"Your task is in the file `{task.as_posix()}`: read it and execute it. Demand folder: "
               f"`{demand.as_posix()}`. Finish with the JSON of the OUTPUT section of your definition, "
               "with `state`.")
@@ -4877,13 +4838,13 @@ def delegate(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     (demand / f"{base}.md").write_text(f"{head}\n\n{res['text']}", encoding="utf-8", newline="\n")
     output = final_json(res["text"])
     state = (output or {}).get("state") or ("implementation_failed" if not res["ok"] else "missing_state")
-    row = {"date": date.today().isoformat(), "agent": a["name"], "level": level, "model": model["model_id"],
+    row = {"date": date.today().isoformat(), "agent": a["name"], "level": "—", "model": model["model_id"],
            "effort": effort, "label": label, "state": state, "turns": res["turns"],
            "duration_s": res["duration_s"], "tokens_in": res["tokens_in"], "tokens_out": res["tokens_out"],
            "cost_usd": res["cost_usd"], "limits": res["limits"]}
     append_metrics(demand, row)
     cost = f"US$ {res['cost_usd']:.2f}".replace(".", ",") if res["cost_usd"] is not None else "assinatura"
-    resumo = " | ".join([f"{a['display']} ({level})", model["name"], f"effort {effort or '—'}",
+    resumo = " | ".join([f"{a['display']} ({label})", model["name"], f"effort {effort or '—'}",
                          f"{res['tokens_in']:,} tokens entrada + {res['tokens_out']:,} saída".replace(",", "."),
                          f"{res['duration_s']} s", cost, res["limits"]])
     summary = {"header": head, "resumo": resumo, **row, "output": output,
@@ -5428,7 +5389,7 @@ def main() -> int:
     p_del = sub.add_parser("delegate", help="roda um agente headless para uma tarefa")
     p_del.add_argument("--agent", required=True, help="nome ou papel do agente")
     p_del.add_argument("--effort", choices=EFFORTS, help="effort desta tarefa (padrão: o do nível/agente)")
-    p_del.add_argument("--level", help="nível da tarefa ([effort.levels] do routing.toml)")
+    p_del.add_argument("--level", help=argparse.SUPPRESS)  # fluxo v3: sem níveis; aceito e ignorado
     p_del.add_argument("--model", help="outro modelo do provedor (só quando o usuário pedir)")
     p_del.add_argument("--task", required=True, help="arquivo .md com a tarefa")
     p_del.add_argument("--demand", required=True, help="pasta da demanda (resultado e metricas.md)")
@@ -5438,7 +5399,7 @@ def main() -> int:
     p_rec = sub.add_parser("record", help="registra uma delegação feita com subagente nativo")
     p_rec.add_argument("--agent", required=True, help="nome, papel ou variante (ex.: codificador-high)")
     p_rec.add_argument("--effort", choices=EFFORTS, help="effort usado (padrão: o da variante ou do nível)")
-    p_rec.add_argument("--level", help="nível da tarefa")
+    p_rec.add_argument("--level", help=argparse.SUPPRESS)  # fluxo v3: sem níveis; aceito e ignorado
     p_rec.add_argument("--label", required=True, help="rótulo, ex.: t1-r1")
     p_rec.add_argument("--demand", required=True, help="pasta da demanda (metricas.md)")
     p_rec.add_argument("--state", help="state do JSON final do agente")

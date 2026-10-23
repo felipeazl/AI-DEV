@@ -1,0 +1,33 @@
+name: desenvolvimento
+description: Feature, melhoria, bug, dívida técnica ou correção urgente, do card até a PR — plano aprovado pelo usuário, implementação com revisão, revisão de código do usuário e testes.
+# Fluxo v3 (2026-10-23): um só para todo tipo de demanda que muda código. No bug, a causa-raiz é pergunta do
+# explorador; no refactor, o plano diz "sem mudança de comportamento" e o roteiro cobre a regressão.
+steps:
+  - id: understand      # resumo-<id>.md: card, critérios e regras (texto do card), decisões, trabalho existente
+    agent: orchestrator
+  - id: explore         # perguntas numeradas: onde a mudança vai, comportamento atual, contratos, ids e dados reais
+    agent: explorer
+  - id: plan            # plano SDD simples e autossuficiente, com CA/RN do card e as entregas E1…
+    agent: planner
+    skill: to-spec
+  - id: plan_approval   # o orquestrador lê e o usuário aprova; ajuste → planejador (fix)
+    agent: orchestrator
+  - id: implement       # um codificador por entrega; em paralelo: board (documentador) e roteiro/massa (qa)
+    agent: coder
+    for_each: delivery
+  - id: board           # anexa o plano e cria uma Task por entrega (em paralelo com implement)
+    agent: documenter
+  - id: test_plan       # roteiro-testes-<id>.md e a massa de dados (em paralelo com implement)
+    agent: qa
+  - id: review          # qualidade, bugs e segurança numa passada; os achados vão ao usuário a cada rodada
+    agent: reviewer
+    skill: code-review
+  - id: user_review     # a revisão de código do usuário
+    agent: orchestrator
+  - id: test            # o qa roda os passos automáticos (API, E2E/navegador); os manuais o usuário roda com o orquestrador
+    agent: qa
+  - id: pr              # o documentador escreve o pr-<id>.md; com o OK, commit, push e PR
+    agent: documenter
+gates:
+  - before: pr
+    require: human_approval

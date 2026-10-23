@@ -224,44 +224,57 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertIsNone(aidw.build(aidw.load_config(), aidw.load_catalog(), rep))
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
 
-    def test_tabela_de_modelos_por_nivel(self) -> None:
-        """A tabela modelo/effort por nível (Felipe, 2026-09-30; Opus só na crítica, 2026-10-15; effort que nunca cai
-        de um nível para o de cima, 2026-10-19): nada acima de high; planejador fora do trivial; no Codex, o
-        equivalente de cada modelo pelo tier (três degraus, como no Claude)."""
-        esperado = {  # papel: (trivial, simples, padrao, complexa, critica); None = não roda
-            "planner": (None, "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
-            "explorer": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/high"),
-            "coder": ("sonnet/low", "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
-            "reviewer": ("sonnet/low", "sonnet/medium", "sonnet/medium", "sonnet/high", "opus/high"),
-            "bug-hunter": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
-            "security": ("sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high", "opus/high"),
-            "api-db": ("haiku/", "sonnet/low", "sonnet/medium", "sonnet/high", "sonnet/high"),
-            "documenter": ("haiku/", "haiku/", "haiku/", "sonnet/medium", "sonnet/medium"),
+    def test_agentes_e_variantes(self) -> None:
+        """Fluxo v3 (Felipe, 2026-10-23): sem níveis; cada agente no seu padrão e só as exceções do routing.toml
+        (descer na re-revisão, subir quando o resultado não fez sentido, o explorador do levantamento); nada acima de
+        high; os agentes api, bugs e segurança saíram; no Codex, o equivalente de cada modelo pelo tier."""
+        esperado = {  # papel: {variante: modelo/effort}
+            "planner": {"planejador": "sonnet/high", "planejador-medium": "sonnet/medium"},
+            "explorer": {"explorador": "haiku/", "explorador-sonnet-medium": "sonnet/medium",
+                         "explorador-sonnet-high": "sonnet/high"},
+            "coder": {"codificador": "sonnet/high", "codificador-medium": "sonnet/medium"},
+            "reviewer": {"revisor": "sonnet/high", "revisor-medium": "sonnet/medium", "revisor-low": "sonnet/low"},
+            "qa": {"qa": "sonnet/medium", "qa-high": "sonnet/high"},
+            "documenter": {"documentador": "haiku/"},
         }
-        niveis = ("trivial", "simples", "padrao", "complexa", "critica")
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             aidw = load_aidw(root)
             rep = aidw.Report(quiet=True)
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
-            for role, cells in esperado.items():
-                a = b["resolved"][role]
-                got = tuple(None if lvl in a["skip_levels"] else
-                            f"{a['by_level'][lvl][0]['key']}/{a['by_level'][lvl][1]}" for lvl in niveis)
-                self.assertEqual(got, cells, role)
-            efforts = [e for a in b["resolved"].values() for _, e in a.get("by_level", {}).values()]
-            self.assertFalse(set(efforts) & {"xhigh", "max"}, "nada acima de high")
-            # delegar um papel num nível em que ele não roda é recusado (não cai no modelo base)
-            task = root / "tarefa.md"
-            task.write_text("x\n", encoding="utf-8")
-            out = run_aidw(root, "delegate", "--agent", "planejador", "--level", "trivial", "--task", str(task),
-                           "--demand", str(root / "demanda"))
-            self.assertNotEqual(out.returncode, 0)
-            self.assertIn("não roda no nível trivial", out.stdout + out.stderr)
+            self.assertEqual(set(b["resolved"]) - {"orchestrator"}, set(esperado), "api, bugs e segurança saíram")
+            for role, variants in esperado.items():
+                got = {n: f"{v['model']['key']}/{v['effort']}" for n, v in b["resolved"][role]["variants"].items()}
+                self.assertEqual(got, variants, role)
+                for n, v in b["resolved"][role]["variants"].items():
+                    if n != b["resolved"][role]["name"]:
+                        self.assertTrue(v["when"], f"{n}: a exceção diz quando vale")
+            efforts = {v["effort"] for a in b["resolved"].values() for v in a.get("variants", {}).values()}
+            self.assertFalse(efforts & {"xhigh", "max"}, "nada acima de high")
+            orq = b["orchestrator_md"]
+            self.assertIn("## Agents and effort", orq)
+            self.assertIn("`revisor-medium` — re-revisão só das correções", orq)
+            self.assertNotIn("Effort per task", orq)
+            self.assertNotIn("Nível:", orq)
             cat = aidw.load_catalog()
             tiers = {t: aidw.tier_model(cat, "codex", t) for t in ("top", "mid", "fast")}
             self.assertEqual(len(set(tiers.values())), 3, f"três degraus no Codex: {tiers}")
+
+    def test_config_com_agentes_que_sairam(self) -> None:
+        """Uma config de antes do fluxo v3 com [agents.api-db] e [agents.bug-hunter]: aviso, não erro, e eles não são
+        gerados."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            cfg_file = root / "aidw.config.toml"
+            cfg_file.write_text(cfg_file.read_text(encoding="utf-8") + '\n[agents.api-db]\nenabled = true\n'
+                                '\n[agents.bug-hunter]\nenabled = true\n', encoding="utf-8")
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            self.assertNotIn("api-db", b["resolved"])
+            self.assertTrue(any("[agents.api-db]" in w for w in rep.warnings), rep.warnings)
 
     def test_settings_so_perde_o_que_o_aidw_gravou(self) -> None:
         """O modelo do orquestrador é o do chat: o apply tira `model`/`effortLevel` só quando são o valor que ele
@@ -288,8 +301,8 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertEqual(json.loads(aidw.CLAUDE_SETTINGS.read_text(encoding="utf-8"))["model"], "opus")
 
     def test_config_antiga_ganha_os_agentes_novos(self) -> None:
-        """Uma config com [agents.*] de antes do planejador e do explorador: os dois entram com o padrão, o
-        planejador recebe os níveis e o orquestrador delega a exploração ao explorador."""
+        """Uma config com [agents.*] de antes do planejador e do explorador: os dois entram com o padrão e o
+        orquestrador delega a exploração ao explorador."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             cfg_file = root / "aidw.config.toml"
@@ -302,14 +315,10 @@ class OrchestratorReferenceTest(unittest.TestCase):
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
             self.assertEqual(b["resolved"]["explorer"]["model"]["key"], "haiku")
-            self.assertEqual(b["resolved"]["planner"]["model"]["key"], "opus")
-            planner = b["agents"]["planner"]["prompt"]
-            self.assertIn("## Levels", planner)
-            self.assertIn("passadas-extras.md", planner)
+            self.assertEqual(b["resolved"]["planner"]["model"]["key"], "sonnet")
+            self.assertEqual(b["resolved"]["planner"]["effort"], "high")
             self.assertIn("the `explorador` agent", b["orchestrator_md"])
-            self.assertEqual(b["resolved"]["planner"]["skip_levels"], ["trivial"], "planejador não roda em trivial")
-            self.assertIn("— (não roda)", b["orchestrator_md"])
-            self.assertIn("`codificador-sonnet-high`", b["orchestrator_md"], "trivial/simples: Sonnet high")
+            self.assertIn("`codificador-medium`", b["orchestrator_md"], "a exceção da correção pequena")
             cat = aidw.load_catalog()
             self.assertEqual(aidw.equivalent_model(cat, "opus", "codex"), aidw.tier_model(cat, "codex", "top"))
             self.assertEqual(aidw.equivalent_model(cat, "haiku", "codex"), aidw.tier_model(cat, "codex", "fast"))
@@ -1044,8 +1053,8 @@ class ContextTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             ctx_dir = root / "contexts" / "exemplo"
-            (ctx_dir / "routing.toml").write_text('max_retries = 2\n\n[effort.levels.padrao]\nreviewer = "high"\n',
-                                                  encoding="utf-8")
+            (ctx_dir / "routing.toml").write_text('max_retries = 2\n\n[[effort.variants.reviewer]]\neffort = "low"\n'
+                                                  'when = "só a do contexto"\n', encoding="utf-8")
             (ctx_dir / "workflows").mkdir()
             (ctx_dir / "workflows" / "bugfix.yaml").write_text(
                 "name: bugfix\ndescription: Bug do contexto.\nsteps:\n  - id: implement\n    agent: coder\n",
@@ -1058,17 +1067,15 @@ class ContextTest(unittest.TestCase):
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
             self.assertEqual(b["routing"]["max_retries"], 2)
-            self.assertEqual(b["routing"]["max_retries_plan"], 2, "o do núcleo continua")
-            self.assertEqual(b["routing"]["effort"]["levels"]["padrao"]["reviewer"], "high")
-            self.assertEqual(b["routing"]["effort"]["levels"]["padrao"]["coder"], "medium", "o resto vem do núcleo")
-            self.assertIn("when", b["routing"]["effort"]["levels"]["padrao"])
-            self.assertEqual(b["resolved"]["reviewer"]["by_level"]["padrao"][1], "high")
+            self.assertEqual(list(b["resolved"]["reviewer"]["variants"]), ["revisor", "revisor-low"],
+                             "a lista do contexto substitui a do núcleo")
+            self.assertIn("codificador-medium", b["resolved"]["coder"]["variants"], "o resto vem do núcleo")
             orq = b["orchestrator_md"]
             self.assertIn("## Workflows", orq)
             self.assertIn("Bug do contexto.", orq)
             self.assertIn("contexts/exemplo/workflows/bugfix.yaml", orq)
             self.assertIn("- Bug → `bugfix`", orq)
-            self.assertIn("workflows/feature.yaml", orq)
+            self.assertIn("workflows/desenvolvimento.yaml", orq)
 
             toml.write_text(toml.read_text(encoding="utf-8").replace('"bugfix" }', '"nao-existe" }'), encoding="utf-8")
             rep = aidw.Report(quiet=True)
