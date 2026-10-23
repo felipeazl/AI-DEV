@@ -77,13 +77,16 @@ Métricas e Card × código.
 Toda delegação do AiDW (um `Agent` cujo prompt traz `Pasta da demanda:`) vira uma linha no `metricas.md` quando o
 agente termina. O mod chama o próprio `aidw.py record` com os números medidos pelo Claude Code: tokens, chamadas de
 ferramenta, duração e o `state` lido do JSON final do agente.
-- **Nível e rótulo:** o nível vem do `Nível:` do prompt; o rótulo vem do nome da tarefa (`tarefa-codificador-rota.md` →
-  `rota`).
+- **Rótulo:** vem do nome da tarefa (`tarefa-codificador-rota.md` → `rota`); sem tarefa, da descrição da chamada.
 - **O que o orquestrador recebe:** o resultado volta com a linha `AiDW: delegação registrada…` e o `header` e o
   `resumo` para mostrar. Com ela, o orquestrador **não** roda o `record`. Sem ela, ou se o mod disser que não
   conseguiu, ele roda à mão.
 - **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa e um
-  toast.
+  toast. Os números são os mesmos da notificação do agente (`subagent_tokens`, `tool_uses`): os tokens são o uso da
+  última resposta dele (o contexto no fim, como o `totalTokens` de um agente em primeiro plano), não a soma do turno,
+  que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
+  agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
+  caminho não perde o registro.
 - **O orquestrador:** no fim de cada turno do chat principal, o mod soma o uso do turno (entrada, cache escrito, cache
   lido e saída, como a API informou) no `metricas-orquestrador.md` da demanda, pelo `aidw.py record-orchestrator`: uma
   linha por sessão e modelo, com o custo equivalente em preço de API. É o que o `metricas.md` não mostra e costuma ser
@@ -91,16 +94,18 @@ ferramenta, duração e o `state` lido do JSON final do agente.
 
 ## Travas da delegação
 
-Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Effort per task*, que o `apply` grava em
-`.aidw/runtime.json` (`levels`). Ele recusa, com o motivo, quando:
+Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Agents and effort*, que o `apply` grava em
+`.aidw/runtime.json` (`variants`: o padrão e as exceções de cada agente). Ele recusa, com o motivo, quando:
 
 | Regra | Recusa quando |
 |---|---|
 | Modelo | a chamada passa `model` e o Felipe não falou de modelo nas últimas mensagens |
-| Formato | falta `Pasta da demanda:` ou `Nível:` no prompt, ou o nível não existe |
-| Tabela | o `subagent_type` não é a célula do agente naquele nível, o agente está desligado ou não roda naquele nível |
+| Formato | falta `Pasta da demanda:` no prompt |
+| Tabela | o `subagent_type` não é o padrão nem uma exceção do agente, ou o agente está desligado |
 | Insumo colado | o prompt passa de 6.000 caracteres (diff, plano e review vão por caminho) |
-| Limite de rodadas | num desenvolvimento, a revisão (ou a revisão do plano) chegou ao `max_retries` e a chamada é do revisor, do codificador ou do planejador do laço |
+| Limite de rodadas | num desenvolvimento, a revisão chegou ao `max_retries` e a chamada é do revisor ou do codificador do laço |
+
+Um `runtime.json` de antes do fluxo v3 (sem `variants`) desliga a trava até o próximo `aidw.py apply`.
 
 O limite de rodadas é uma trava de verdade: o orquestrador tem de parar e te perguntar. Só você libera mais uma
 rodada, pelo botão **Liberar +1 rodada** do painel ou com **`/aidw-rodada`**. Revisão de PR e levantamento não têm
@@ -109,7 +114,7 @@ esse laço.
 ## Avisos
 
 Toasts, cada um uma vez:
-- **A demanda espera você:** aprovação, teste manual ou revisão final.
+- **A demanda espera você:** a aprovação do plano, a decisão dos achados, a sua revisão de código, os passos manuais, o OK da PR ou a revisão final de uma PR de outro dev.
 - **Agente terminou:** um agente em segundo plano terminou, com o `state` dele.
 - **Contexto:** o contexto do orquestrador passou de 250k tokens fora de uma espera longa (ver *Contexto enxuto*).
 - **Compactou:** o mod compactou a conversa antes de uma espera longa, com o tamanho antes e depois.
@@ -159,7 +164,7 @@ três notas por mensagem).
 ## Estado depois da compactação
 
 Quando a conversa do orquestrador é compactada, o mod relê a demanda do disco e põe na conversa um resumo do estado:
-- o uso, a etapa e o nível;
+- o uso, a etapa e o modo;
 - a pasta e os worktrees;
 - a rodada do laço e os achados abertos;
 - o lembrete de reler a skill e os artefatos.

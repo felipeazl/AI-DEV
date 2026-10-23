@@ -11,10 +11,10 @@ const RUNTIME = {
   state_dir: STATE,
   context: 'x',
   max_retries: 3,
-  default_level: 'padrao',
-  levels: {
-    padrao: { planejador: 'planejador', codificador: 'codificador', revisor: 'revisor' },
-    complexa: { planejador: 'planejador-high', codificador: 'codificador-high', revisor: 'revisor-high' },
+  variants: {
+    planejador: ['planejador', 'planejador-medium'],
+    codificador: ['codificador', 'codificador-medium'],
+    revisor: ['revisor', 'revisor-medium', 'revisor-low'],
   },
   agents: {
     orchestrator: { name: 'orquestrador', enabled: true },
@@ -98,7 +98,7 @@ type Fake = {
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean },
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean },
 ): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
@@ -160,8 +160,10 @@ function fake(
     const header = { header: '## Codificador - claude-opus Medium', resumo: 'Codificador (padrao) | 1.000 tokens' }
     return { value: { exitCode: 0, stdout: JSON.stringify(header), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('tool.call', () => ({
-    result: {
+  on('tool.call', ($, e) => ({
+    result: opts.background ? {
+      status: 'async_launched', agentId: 'bg1', description: 'Revisar plano', prompt: e.tool === 'Agent' ? e.prompt : '', outputFile: 'C:/tmp/bg1.output',
+    } : {
       status: 'completed', agentId: 'a1', prompt: 'p',
       content: [{ type: 'text', text: 'feito\n{"state": "implementation_complete"}' }],
       totalTokens: 1000, totalToolUseCount: 5, totalDurationMs: 9000,
@@ -180,11 +182,11 @@ async function has(view: { find: (q: { type: 'Text'; text: RegExp }) => Promise<
 const why = (r: { deny?: string; text?: string; isError?: boolean }) => r.deny ?? (r.isError ? (r.text ?? '') : '')
 
 const START = (id: string) => ({ cwd: `C:/wt/${id}/repo`, surface: 'terminal' as const, isInteractive: true })
-const delegation = (over: { subagent_type?: string; level?: string } = {}) => ({
+const delegation = (over: { subagent_type?: string } = {}) => ({
   tool: 'Agent' as const,
   description: 'Codificar rota',
   subagent_type: over.subagent_type ?? 'aidw:codificador',
-  prompt: `Tarefa: ${STATE}/us-1/tarefa-codificador-rota.md. Pasta da demanda: ${STATE}/us-1. Nível: ${over.level ?? 'padrao'}.`,
+  prompt: `Tarefa: ${STATE}/us-1/tarefa-codificador-rota.md. Pasta da demanda: ${STATE}/us-1.`,
 })
 
 test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a demanda', async ($, on) => {
@@ -228,7 +230,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     }
     // Geral: título, mapa (critérios, tokens, tempo, etapa) e o último agente
     await has(pane, /^Rota fast$/)
-    await has(pane, /etapa 5 de 9/)
+    await has(pane, /etapa 5 de 11/)
     await has(pane, /^117k$/)
     await has(pane, /último: codificador \(rota\), concluído/)
     await pane.press({ key: 'tab-metricas' })
@@ -236,7 +238,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     await has(pane, /arquivos na pasta da demanda/)
     await pane.press({ key: 'tab-criterios' })
     await has(pane, /^abre a rota$/)
-    await has(pane, /A cobertura ainda não foi registrada/)
+    expect(await pane.find({ type: 'Text', text: /Ainda não há plano/ })).toBeUndefined()
     // Revisão: rodada como seletor, abas de decisão; decidir leva ao prompt
     await pane.press({ key: 'tab-revisao' })
     await pane.press({ key: 'review-round-review-us-1-r4.md' })
@@ -265,11 +267,11 @@ test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:o
   await pane.unmount()
 })
 
-test('travas: célula errada da tabela e model sem pedido são recusados', async ($, on) => {
+test('travas: variante fora da tabela e model sem pedido são recusados', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1' })
   await $.session.start(START('us-1'))
   const wrong = await $.tool.call(delegation({ subagent_type: 'aidw:codificador-high' }))
-  expect(why(wrong)).toContain('é `codificador`')
+  expect(why(wrong)).toContain('não está na tabela Agents and effort')
   const model = await $.tool.call({ ...delegation(), model: 'sonnet' })
   expect(why(model)).toContain('não passe `model`')
   expect(f.runs).toEqual([])
@@ -438,6 +440,67 @@ test('troca de etapa com contexto alto: compacta uma vez entre turnos', async ($
   expect(compactions.length).toBe(1) // a mesma etapa não compacta de novo
 })
 
+test('agente em segundo plano: grava o contexto da última resposta, não a soma do turno', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', background: true })
+  // três respostas do subagente; o cache relido cresce a cada uma (caso real da m-144245: revisor plano-r1)
+  const steps = [
+    { input_tokens: 3, cache_creation_input_tokens: 10_000, cache_read_input_tokens: 20_000, output_tokens: 500 },
+    { input_tokens: 2, cache_creation_input_tokens: 5_000, cache_read_input_tokens: 120_000, output_tokens: 800 },
+    { input_tokens: 1, cache_creation_input_tokens: 1_500, cache_read_input_tokens: 240_000, output_tokens: 596 },
+  ]
+  on('turn.step', async function* ($, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'tool_use' as const, usage: { model: 'claude-sonnet-5-5', ...steps[e.index]! } }
+  })
+  const read = { tool_use_id: 'r', tool: 'Read', input: {} }
+  on('session.messages', ($, e) => ({
+    value: e.agentId === 'bg1'
+      ? [
+          { role: 'user' as const, text: 'Tarefa', toolUses: [] },
+          { role: 'assistant' as const, text: '', toolUses: [read, read] },
+          { role: 'assistant' as const, text: '', toolUses: [read] },
+          { role: 'assistant' as const, text: 'pronto', toolUses: [] },
+        ]
+      : [],
+  }))
+  const rows: string[] = []
+  on('session.append', ($, e, next) => {
+    rows.push(JSON.stringify(e.message.content))
+    return next(e)
+  })
+  await $.session.start(START('us-1'))
+  const extra = { command: 'aidw-rodada', args: '' } as never
+  await $.command.run(extra)
+  await $.command.run(extra)
+
+  await $.tool.call(delegation()) // o Agent responde async_launched (fake com background)
+  expect(f.runs).toEqual([]) // só grava quando o agente termina
+
+  for (const [index] of steps.entries()) {
+    const stream = $.turn.step({ turnId: 'bt', index, model: 'claude-sonnet-5-5', messageCount: 1 + index, agentId: 'bg1' })
+    for await (const _ of stream) void _
+    await stream.result
+  }
+  const sum = steps.reduce((n, u) => n + u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens, 0)
+  await $.turn.complete({
+    answer: 'pronto\n{"state": "plan_review_changes_requested"}', durationMs: 508_448, isAborted: false, turnId: 'bt', reason: 'answer',
+    agentId: 'bg1', usage: { model: 'claude-sonnet-5-5', input_tokens: 6, output_tokens: 1_896, cache_read_input_tokens: 380_000, cache_creation_input_tokens: 16_500 },
+  })
+  expect(f.runs.length).toBe(1)
+  const argv = f.runs[0] ?? []
+  for (const [flag, value] of [
+    ['--agent', 'aidw:codificador'], ['--label', 'rota'], ['--tokens', '242097'], ['--tool-uses', '3'],
+    ['--duration-ms', '508448'], ['--state', 'plan_review_changes_requested'],
+  ] as const) {
+    expect(argv[argv.indexOf(flag) + 1]).toBe(value)
+  }
+  expect(argv).not.toContain(String(sum))
+  expect(rows.some(r => r.includes('delegação registrada') && r.includes('## Codificador - claude-opus Medium'))).toBe(true)
+
+  // o mesmo agente retomado (SendMessage) não grava de novo
+  await $.turn.complete({ answer: 'ok', durationMs: 1_000, isAborted: false, turnId: 'bt2', reason: 'answer', agentId: 'bg1' })
+  expect(f.runs.length).toBe(1)
+})
+
 test('filtro de segredos nas linhas da conversa', async ($, on) => {
   fake(on, { orchestrating: true, demand: 'us-1' })
   const rows: unknown[] = []
@@ -453,4 +516,31 @@ test('filtro de segredos nas linhas da conversa', async ($, on) => {
   const row = JSON.stringify(rows.at(-1))
   expect(row).not.toContain('SuperSecreta1')
   expect(row).toContain('segredo ocultado: Password, 13 caracteres')
+})
+
+test('desktop: o botão leva o diff do app para o repositório, ou diz onde abrir quando já está nele', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1' })
+  const ran: string[] = []
+  on('command.run', { command: 'aidw:diff' }, ($, e) => {
+    ran.push(`/${e.command} ${e.args}`)
+    return { text: '' }
+  })
+  await $.session.start({ ...START('us-1'), surface: 'desktop' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  await pane.press({ key: 'tab-diffs' })
+  // a sessão está em outra pasta: o botão leva a sessão (e o painel de diff do app) para o worktree do Front
+  expect(await pane.find({ key: 'app-diff' })).toBeDefined()
+  await pane.press({ key: 'app-diff' })
+  expect(ran).toEqual(['/aidw:diff Front'])
+  await pane.unmount()
+})
+
+test('desktop: com a sessão já no worktree, não há o que trocar', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1', cwd: 'C:/wt/us-1/Front' })
+  await $.session.start({ ...START('us-1'), cwd: 'C:/wt/us-1/Front', surface: 'desktop' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  await pane.press({ key: 'tab-diffs' })
+  expect(await pane.find({ key: 'app-diff' })).toBeUndefined()
+  await has(pane, /ícone de diff no topo da janela/)
+  await pane.unmount()
 })

@@ -86,9 +86,10 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 ### Geral
 
 1. **Mapa da demanda:** resumo de até 4 linhas e o **progresso** numa barra fina em dois grupos: **AiDW** (Entender,
-   Plano, Implementar, Testar, Revisar, Revisão final) e **Time e QA** (Code review, Testes QA, Pronto, mais as etapas
-   de fora que o contexto acrescenta, como a Validação UX, só na demanda que passa por elas; as ainda não alcançadas
-   são pontos vazados), com o nome da etapa atual e "etapa N de 9". Quando o time ou a QA devolve, a etapa de fora
+   Plano, Sua aprovação, Implementar, Revisão, Sua revisão, Testes, PR) e **Time e QA** (Code review, Testes QA, Pronto),
+   mais as etapas de fora que o contexto acrescenta, como a Validação UX antes da PR, só na demanda que passa por elas
+   (as ainda não alcançadas são pontos vazados), com o nome da etapa atual e "etapa N de 11". As etapas de antes do
+   fluxo v3 caem na fase equivalente. Quando o time ou a QA devolve, a etapa de fora
    fica amarela com "↩ voltou do Code review · 1ª vez" e a barra volta para onde o ajuste é feito; um contador
    discreto guarda as voltas ("voltas: Code review 1× · QA 1×").
 2. **Números**, os do modelo e o consumo:
@@ -114,31 +115,24 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 
 - Três cartões: **Critérios de aceite** (`CA1…`), **Regras de negócio** (`RN1…`) e **Cenários** (`CN1…`).
 - Cada linha: identificador, texto e status. Não há "como provar".
-- **Status pelo nosso código e pelos nossos testes** (Code review e QA não contam):
-  - **Falta:** ainda não está no código;
-  - **Implementado** (amarelo): o codificador entregou, nenhum teste nosso provou;
-  - **Coberto** (verde): um teste nosso prova (unitário, E2E ou do agente QA).
+- **Status pelo nosso código e pelos nossos testes** (Code review e QA não contam), derivado sem trabalho do
+  orquestrador (fluxo v3):
+  - **Falta:** a demanda ainda não passou da implementação, ou o item não está em nenhuma entrega do plano;
+  - **Implementado** (amarelo): a demanda passou da implementação e o item está numa entrega (`Covers:` do plano);
+  - **Coberto** (verde): um passo do roteiro que prova o item (coluna `Critério`) tem ✅.
 - No topo, a cobertura por tipo com barra de duas cores (verde coberto, amarelo implementado).
-- **Dados:** o plano numera os itens (`CA1`, `RN1`, `CN1`); o orquestrador mantém `cobertura-<id>.md` a partir dos
-  relatórios do codificador e do QA:
-
-```text
-| ID | Status | Evidência |
-|---|---|---|
-| CA1 | coberto | E2E r2 (resultado-e2e-101662-r2.md) |
-| RN3 | implementado | SaneadorDadosEquipamento.cs |
-| CN7 | falta | — |
-```
-
-  Sem esse arquivo, os critérios do plano aparecem com status "Falta" e um aviso de que a cobertura ainda não foi
-  registrada.
+- **Dados:** o plano numera os itens com o texto do card (`CA1`, `RN1`) e diz em cada entrega o que ela cobre
+  (`Covers: CA1, RN2`); o roteiro do QA diz em cada passo o critério que ele prova (coluna `Critério`) e o resultado.
+  Demandas de antes do fluxo v3 com `cobertura-<id>.md` continuam lidas por ele. Sem plano, os critérios vêm do resumo
+  do card, todos em "Falta".
 
 ### Revisão
 
-- **Rodada** em botões (seletor com mais de 4), por tipo: Plano r1…, Código r1…, Otimização r1….
+- **Rodada** em botões (seletor com mais de 4), por tipo: Código r1…, Otimização r1… (e Plano r1… nas demandas antigas).
 - **Decisão** em abas de texto: Com você · Mantidos · Descartados · Todos. Abre em **Com você**; os decididos ficam
   escondidos.
-- **Filtros:** botão que abre uma linha de botões liga/desliga por criticidade, origem (revisor, segurança, bugs) e status.
+- **Filtros:** botão que abre uma linha de botões liga/desliga por criticidade, categoria (qualidade, bug, segurança —
+  do título do achado, ou da passada nas demandas antigas) e status.
 - **Cada achado é um cartão:**
   - criticidade, ID, `arquivo:linha` e status (com você, corrigido na rN);
   - o que foi apontado;
@@ -147,8 +141,9 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
   - a decisão: Manter e Descartar, a recomendada com "(recomendado)"; nas dúvidas, as opções do próprio achado com o
     texto inteiro numa lista ("(a) …", a primeira é a recomendada) e botões só com a letra.
 - Rodapé: **Levar decisões ao prompt**.
-- **Dados:** achados no `review-*-rN.md`; o revisor passa a gravar, por achado, os blocos `Antes:` e `Depois:` (cercas
-  de código); a recomendação e a decisão vêm do `triagem-*-rN.md`.
+- **Dados:** achados no `review-*-rN.md`, com a categoria no título (`R1-01 — IMPORTANTE — bug — `arquivo:linha``), os
+  blocos `Antes:` e `Depois:` (cercas de código) e a `**Recomendação:**` do revisor; a decisão vem do `triagem-*-rN.md`,
+  que o orquestrador grava a partir da mensagem do painel.
 
 ### Diffs
 
@@ -159,9 +154,12 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 - Duas colunas: a lista de arquivos (nome, pasta, `+/−`, etiqueta "N achados") e o diff do arquivo, com os números
   de linha de antes e de depois.
 - Os achados da revisão aparecem abaixo da linha que apontam, com "ver na Revisão".
-- Botão **Abrir no app**, o painel de diff do app, para apontar linha a linha.
+- No app desktop, o painel de diff nativo (que se destaca numa janela à parte, para apontar linha a linha) mostra o
+  repositório da pasta da sessão; o mod não tem como abri-lo. Quando a sessão está em outra pasta, o botão **Levar o
+  diff do app para cá** roda `/aidw:diff <repo>` e leva a sessão para o worktree; quando já está nele, o painel diz onde
+  abrir o diff no app.
 
-### Teste manual
+### Testes
 
 - Progresso no topo (passaram, falharam, faltam), só com os passos ativos; os removidos do roteiro ficam escondidos.
 - Cartão **Agora** com o passo da vez: seção, o que fazer, esperado, evidência e **Passou / Falhou / Pular**.
@@ -209,8 +207,8 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
   (precisa mudar, é a dor, não muda, nada a reaproveitar), o "hoje no código" e, apagado, o "para a demanda"; 5 à
   vista e "Mostrar mais"; e **Onde a mudança toca** (a seção do levantamento: sistemas, contratos, banco).
 - **Estimativa:**
-  - os números (SP do card como está, SP quebrado, horas de dev, de QA, complexidade e confiança), nível e passadas
-    extras;
+  - os números (SP do card como está, SP quebrado, horas de dev, de QA, complexidade e confiança); o nível e as
+    passadas extras só aparecem nos levantamentos de antes do fluxo v3;
   - esforço por bloco em barras de intervalo (mínimo a máximo);
   - a recomendação de quebra em itens, com SP;
   - **Riscos** (o tópico `**Riscos:**` da estimativa, com os subtópicos);
@@ -226,7 +224,8 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 | Quem | Passa a gravar |
 |---|---|
 | `aidw.py demand set` | `--summary` (resumo de até 4 linhas), `--pr <repo>=<n>` e as etapas `CODE_REVIEW` e `QA_TEST` |
-| Orquestrador | o resumo ao entender o card; as etapas de fora quando você avisa; o `cobertura-<id>.md` depois de cada entrega do codificador e de cada relatório do QA |
-| Planejador | critérios, regras e cenários numerados como `CA1`, `RN1`, `CN1` |
-| Revisor | `Antes:` e `Depois:` em cada achado que propõe mudança |
+| Orquestrador | o resumo ao entender o card; as etapas de fora quando você avisa; as suas decisões dos achados no `triagem-*-rN.md` |
+| Planejador | critérios e regras do card numerados como `CA1`, `RN1`, e o `Covers:` de cada entrega |
+| Revisor | a categoria no título, `Antes:` e `Depois:` e a `Recomendação:` em cada achado |
+| QA | as colunas `Critério` e `Como` e o `Resultado` de cada passo do roteiro |
 | Explorador (levantamento) | o modelo novo do levantamento |

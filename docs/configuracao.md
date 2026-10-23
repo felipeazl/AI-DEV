@@ -7,7 +7,7 @@ mais ou menos controle. Este documento mostra onde cada coisa se configura e tra
 
 | Camada | Onde | Versionado | Quem muda | O que define |
 |---|---|---|---|---|
-| **Núcleo** | repositório do AiDW | sim | quem mantém o AiDW | agentes, skills, fluxo, regras de `state`, tabela de níveis, catálogos de modelos e MCPs, políticas genéricas |
+| **Núcleo** | repositório do AiDW | sim | quem mantém o AiDW | agentes, skills, fluxo, regras de `state`, exceções de effort, catálogos de modelos e MCPs, políticas genéricas |
 | **Contexto** | `contexts/<nome>/` | sim, repositório do time | o time | sistemas, regras por agente, políticas, permissões, MCPs obrigatórios, prefixo de branch ([contextos.md](contextos.md)) |
 | **Máquina** | `aidw.config.toml` | **não** | você | provedor, pastas, contexto ativo, MCPs ligados, bloqueios extras, nome, modelo, effort e status de cada agente |
 
@@ -93,8 +93,8 @@ Somam às regras do contexto. Use para um bloqueio que vale só na sua máquina.
 [agents.reviewer]
 name = "revisor"          # nome que aparece no chat (aceita acento e espaço); sem ele, o padrão
 enabled = true            # false = o orquestrador nunca delega a ele
-model = "opus"            # chave de config/models.toml do provedor; sem ele, o tier padrão do papel
-effort = "medium"         # effort padrão; o orquestrador escolhe o de cada tarefa pela tabela de níveis
+model = "sonnet"          # chave de config/models.toml do provedor; sem ele, o tier padrão do papel
+effort = "high"           # effort padrão; as exceções ficam em [effort.variants] do routing.toml
 skills = ["code-review", "verificar-premissa"]
 preload = ["code-review"]
 ```
@@ -102,46 +102,38 @@ preload = ["code-review"]
 | Papel | Nome padrão | Tier padrão |
 |---|---|---|
 | `orchestrator` | orquestrador | o modelo do chat |
-| `planner` | planejador | top |
+| `planner` | planejador | mid (high) |
 | `explorer` | explorador | fast |
-| `coder` | codificador | top |
-| `reviewer` | revisor | top |
-| `api-db` | api | mid |
+| `coder` | codificador | mid (high) |
+| `reviewer` | revisor | mid (high) |
+| `qa` | qa | mid (medium) |
 | `documenter` | documentador | fast |
-| `bug-hunter` | bugs | mid |
-| `security` | seguranca | mid |
-| `qa` | qa | mid |
 
-- **`model` troca o modelo base do papel.** Os níveis em que a tabela de `routing.toml` dá outro modelo ao papel
-  (ex.: Sonnet no codificador em trivial e simples) continuam com o da tabela.
-- Um modelo de outro provedor é ignorado com aviso.
-- Uma config antiga, sem os agentes mais novos, recebe os novos com o padrão.
+- **`model` troca o modelo do papel.** As exceções de `[effort.variants]` que dão outro modelo (ex.: o explorador em
+  Sonnet no levantamento) continuam com o delas.
+- Um modelo de outro provedor vira o equivalente pelo tier.
+- Uma config antiga, sem os agentes mais novos, recebe os novos com o padrão; com `api-db`, `bug-hunter` ou
+  `security` (que saíram no fluxo v3), recebe um aviso e eles não são gerados.
 - Nomes que colidem com agentes do CLI (`plan`, `explore`, `default`…) são recusados.
 
 ## Perfis de exemplo
 
 ### Padrão (Claude, plano da empresa)
 
-O que o wizard gera. Nada a mudar: a tabela de níveis já equilibra custo e qualidade.
+O que o wizard gera. Nada a mudar: o padrão de cada agente e as exceções já equilibram custo e qualidade.
 
 ### Economizar a sessão (plano menor)
 
 ```toml
 [agents.coder]
-model = "sonnet"          # Sonnet no lugar de Opus onde a tabela não indica outro
+effort = "medium"         # medium como padrão; a correção pequena continua na exceção
+
+[agents.reviewer]
 effort = "medium"
-
-[agents.planner]
-model = "sonnet"
-
-[agents.bug-hunter]
-enabled = false           # sem passadas extras automáticas; peça quando quiser
-
-[agents.security]
-enabled = false
 ```
 
-E no dia a dia: "esse ticket é simples, use effort low". O `metricas.md` mostra onde o consumo está.
+E no dia a dia: "essa correção é pequena, use o codificador medium". O `metricas.md` e o `metricas-orquestrador.md`
+mostram onde o consumo está — em geral, no chat do orquestrador.
 
 ### Só Codex
 
@@ -158,7 +150,7 @@ python aidw.py install --provider codex              # agentes e skills aidw-*
 python aidw.py open --provider codex --demand 1234   # já liga multi_agent_v2 (o spawn_agent precisa dele)
 ```
 
-A tabela de níveis vale pelo tier equivalente de cada modelo, entre os liberados para a conta
+A tabela de agentes e effort vale pelo tier equivalente de cada modelo, entre os liberados para a conta
 ([agentes.md](agentes.md#equivalência-no-codex)).
 
 ### Front-end
@@ -175,8 +167,8 @@ O Figma precisa de autenticação uma vez (Claude: `/mcp` → figma → Authenti
 
 ### Mais controle
 
-Não é configuração: chame `/aidw:orquestrar <demanda> interativo`. O orquestrador para antes dos tickets e antes de
-cada delegação.
+Não é configuração: chame `/aidw:orquestrar <demanda> interativo`. Além dos pontos fixos (plano, achados, sua revisão,
+passos manuais, PR), o orquestrador para antes de cada delegação.
 
 ### Nomes próprios
 
@@ -197,28 +189,30 @@ Mudanças aqui valem para todos que usam o AiDW: faça por PR.
 | Arquivo | O que define |
 |---|---|
 | `config/models.toml` | Catálogo de modelos por provedor: `model_id` (no Claude, o apelido que sempre aponta para a versão mais nova), `label` (como aparece), `tiers` (`top`/`mid`/`fast`), `efforts` aceitos, `min_cli` |
-| `orchestrator/config/routing.toml` | `[rules]` (`state` → ação), `max_retries`, `[effort] default_level`, `[effort.levels.<nível>]` (effort por papel, `"none"` = não roda) e `.models` (modelo por papel no nível), `[effort.escalate]` |
+| `orchestrator/config/routing.toml` | `[rules]` (`state` → ação), `max_retries` e `[[effort.variants.<papel>]]` (as exceções ao padrão de cada agente: `effort`, `model` opcional e `when`, o motivo que permite usá-la) |
 | `config/mcp.toml` | Catálogo de MCPs: comando ou URL, `auth`, `allow`, os papéis que podem usar (`agents`), `use_when` e `triggers` (quando o orquestrador manda usar) |
 | `orchestrator/ORCHESTRATOR.md` | O núcleo do orquestrador |
 | `orchestrator/reference/` | O que o orquestrador lê sob demanda (com `when:`) |
 | `orchestrator/policies/` | Políticas genéricas: git, banco, produção, segredos, permissões |
 | `agents/`, `skills/`, `workflows/` | Agentes, skills e fluxos por tipo de demanda |
 
-### Mudar a tabela de níveis
+### Mudar as exceções de effort
 
 ```toml
-[effort.levels.padrao]
-coder = "medium"
-reviewer = "medium"
+[[effort.variants.coder]]
+effort = "medium"
+when = "correção pequena (achado mantido, teste que falhou, ajuste do usuário) ou ajuste temporário de teste"
 
-[effort.levels.complexa]
-coder = "high"
-
-[effort.levels.complexa.models]
-bug-hunter = "opus"       # chave do Claude; no Codex vale o equivalente pelo tier
+[[effort.variants.explorer]]
+model = "sonnet"          # chave do Claude; no Codex vale o equivalente pelo tier
+effort = "high"
+when = "levantamento: o mapa do fluxo de ponta a ponta é a entrega"
 ```
 
-Os testes (`python -m unittest discover -s tests`) conferem a tabela inteira; atualize o teste junto.
+Cada exceção vira uma variante (`codificador-medium`, `explorador-sonnet-high`) e entra na tabela *Agents and effort*
+do orquestrador com o `when`; o mod recusa uma variante fora dela. Um contexto pode trocar a lista de um papel no
+`contexts/<nome>/routing.toml`. Os testes (`python -m unittest discover -s tests`) conferem as variantes; atualize o
+teste junto.
 
 ## O que fica fora do AiDW
 

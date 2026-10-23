@@ -68,7 +68,7 @@ Se o working copy principal tem alterações locais, o `worktree create` avisa e
 
 No app desktop, depois de mudar (ou quando o chat já abriu na pasta da demanda), o orquestrador também adiciona à
 sessão a **pasta do contexto ativo** (ex.: `contexts/safeweb`, que tem a pasta `demandas/`) com o
-`request_directory` do app, uma vez por sessão. Assim o plano, o plano de testes, os relatórios e a documentação
+`request_directory` do app, uma vez por sessão. Assim o plano, o roteiro de testes, os relatórios e a documentação
 gerada na demanda abrem no app, que só abre arquivos das pastas da sessão. Se o estado das demandas (`state_dir`)
 ficar fora da pasta do contexto, ele entra também. O `aidw open --demand` faz o mesmo com `--add-dir`.
 

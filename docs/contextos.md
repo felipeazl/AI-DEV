@@ -178,7 +178,7 @@ reference = [                                               # lidas SÓ quando o
 [agents.orchestrator]
 include = ["agents/orchestrator.md"]                        # entra no CLAUDE.md/AGENTS.md e no orquestrar
 reference = [
-    { path = "reference/revisao-final.md", when = "montar o pacote da revisão final (FINAL_REVIEW)" },
+    { path = "reference/validacao-ux.md", when = "o plano diz `Validação UX: sim`" },
 ]
 ```
 
@@ -207,7 +207,7 @@ orquestrador lê a política só naquele momento (os agentes continuam recebendo
 
 ```markdown
 ---
-orchestrator_when: preparar a revisão (PREPARE_REVIEW)
+orchestrator_when: a etapa PR (commit, push e o comentário de pendências)
 ---
 
 # Policy — Cards no board
