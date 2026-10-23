@@ -63,17 +63,16 @@ export const KIND_LABEL: Record<DemandKind, string> = {
 type Phase = { name: string; steps: string[] }
 
 const PHASES: Record<DemandKind, Phase[]> = {
+  // fluxo v3 (2026-10-23); as etapas antigas ficam na fase equivalente, pelas demandas abertas antes dele
   desenvolvimento: [
-    { name: 'Entender', steps: ['UNDERSTAND'] },
-    { name: 'Explorar', steps: ['EXPLORE'] },
-    { name: 'Plano', steps: ['TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FIX'] },
-    { name: 'Tickets', steps: ['TICKETS'] },
-    { name: 'Implementar', steps: ['IMPLEMENT', 'TEST_ADJUST'] },
-    { name: 'Testar', steps: ['TEST', 'ORCHESTRATOR_TEST'] },
-    { name: 'Revisar', steps: ['PREPARE_REVIEW', 'REVIEW', 'CODER_FIX'] },
-    { name: 'Teste manual', steps: ['MANUAL_TEST'] },
-    { name: 'Documentar', steps: ['DOCS'] },
-    { name: 'Revisão final', steps: ['FINAL_REVIEW'] },
+    { name: 'Entender', steps: ['UNDERSTAND', 'EXPLORE'] },
+    { name: 'Plano', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
+    { name: 'Sua aprovação', steps: ['PLAN_APPROVAL', 'TICKETS'] },
+    { name: 'Implementar', steps: ['IMPLEMENT', 'TEST_PLAN'] },
+    { name: 'Revisão', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
+    { name: 'Sua revisão', steps: ['USER_REVIEW'] },
+    { name: 'Testes', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
+    { name: 'PR', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
     { name: 'Pronto', steps: ['DONE'] },
   ],
   'pr-review': [
@@ -114,8 +113,16 @@ export function waitingFor(step: string | undefined): string | null {
   switch (step) {
     case 'HUMAN_APPROVAL':
       return 'sua aprovação ou resposta'
+    case 'PLAN_APPROVAL':
+      return 'a aprovação do plano'
+    case 'TRIAGE':
+      return 'a decisão dos achados'
+    case 'USER_REVIEW':
+      return 'a sua revisão de código'
     case 'MANUAL_TEST':
-      return 'o teste manual'
+      return 'os passos manuais do teste'
+    case 'PR':
+      return 'o OK do commit e da PR'
     case 'FINAL_REVIEW':
       return 'a revisão final'
     default:
@@ -132,11 +139,13 @@ type Stage = { name: string; group: ProgressStage['group']; steps: string[]; who
 const STAGES: Record<DemandKind, Stage[]> = {
   desenvolvimento: [
     { name: 'Entender', group: 'aidw', steps: ['UNDERSTAND', 'EXPLORE'] },
-    { name: 'Plano', group: 'aidw', steps: ['SPEC', 'PLAN', 'TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FIX', 'TICKETS'] },
-    { name: 'Implementar', group: 'aidw', steps: ['IMPLEMENT', 'TEST_ADJUST'] },
-    { name: 'Testar', group: 'aidw', steps: ['TEST', 'ORCHESTRATOR_TEST', 'MANUAL_TEST'] },
-    { name: 'Revisar', group: 'aidw', steps: ['PREPARE_REVIEW', 'REVIEW', 'CODER_FIX', 'DOCS'] },
-    { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
+    { name: 'Plano', group: 'aidw', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
+    { name: 'Sua aprovação', group: 'aidw', steps: ['PLAN_APPROVAL', 'TICKETS'] },
+    { name: 'Implementar', group: 'aidw', steps: ['IMPLEMENT', 'TEST_PLAN'] },
+    { name: 'Revisão', group: 'aidw', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
+    { name: 'Sua revisão', group: 'aidw', steps: ['USER_REVIEW'] },
+    { name: 'Testes', group: 'aidw', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
+    { name: 'PR', group: 'aidw', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
     { name: 'Code review', group: 'fora', steps: ['CODE_REVIEW'], who: 'o time' },
     { name: 'Testes QA', group: 'fora', steps: ['QA_TEST'], who: 'a QA' },
     { name: 'Pronto', group: 'fora', steps: ['DONE'] },
@@ -253,6 +262,10 @@ export function parseFindings(text: string, round: number, source: Finding['sour
       ? 'DUVIDA'
       : (SEVERITY.find(([re]) => segments.some(s => re.test(s)))?.[1] ?? null)
     const where = segments.find(s => /`[^`]+`/.test(s))?.match(/`([^`]+)`/)?.[1] ?? ''
+    // a categoria no título (`R1-01 — IMPORTANTE — bug — \`arquivo:linha\``), do revisor do fluxo v3
+    const catIdx = segments.findIndex(s => CATEGORY.test(s))
+    const category = catIdx < 0 ? '' : categoryOf(segments[catIdx] ?? '')
+    if (catIdx >= 0) segments.splice(catIdx, 1)
     let status = segments.map(s => STATUS.exec(s)?.[1]).find(Boolean) ?? ''
     // o corpo, até o próximo achado ou seção
     const body: string[] = []
@@ -289,9 +302,17 @@ export function parseFindings(text: string, round: number, source: Finding['sour
         240,
       ),
       decision: 'pendente',
+      category,
     })
   }
   return out
+}
+
+const CATEGORY = /^(qualidade|bugs?|seguran[cç]a)$/i
+
+function categoryOf(s: string): Finding['category'] {
+  const v = s.toLowerCase()
+  return v.startsWith('bug') ? 'bug' : v.startsWith('segur') ? 'seguranca' : 'qualidade'
 }
 
 /** O bloco de código cercado (```) logo depois de um rótulo (`**Antes:**`), sem as cercas. */
@@ -586,6 +607,8 @@ export function parseRoteiro(text: string): ManualStep[] {
       note: cut(clean(result.replace(/[✅❌]/g, '')), 120),
       section,
       removed: cells.some(c => /\bremovid[oa]\b/i.test(c)),
+      criteria: [...at(/^crit[ée]rio/).matchAll(/\b(CA|RN|CN)\s*0*(\d+)\b/g)].map(m => `${m[1]}${m[2]}`),
+      how: clean(at(/^como$/)).toLowerCase(),
     })
   }
   return out

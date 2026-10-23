@@ -1,7 +1,7 @@
 // O retrato da demanda que os painéis e a faixa mostram, montado a partir dos arquivos da pasta. Puro: `wanted` diz
 // quais arquivos ler, o register.tsx lê e entrega os textos, `buildSnapshot` monta.
 
-import type { CoverageItem, Finding, PrTriage, Repo, Snapshot, VoteOption } from '../types'
+import type { CoverageItem, Finding, ManualStep, PrTriage, Repo, Snapshot, VoteOption } from '../types'
 import { budgetFor, parseDelegations, parseOrchestrator, roundFor } from './aidw'
 import {
   DEFAULT_VOTES,
@@ -170,8 +170,11 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
 
   // critérios, regras e cenários (CA/RN/CN) com a cobertura pelo nosso código e testes
   const planText = text(planFile(files))
+  const roteiro = first(files, /^roteiro-testes.*\.md$/) ?? ''
+  const manual = parseRoteiro(text(roteiro))
   const coverageFile = first(files, /^cobertura-.*\.md$/)
-  const status = parseCoverage(text(coverageFile))
+  // demandas de antes do fluxo v3 têm o cobertura-<id>.md; nas novas o status sai do plano, da etapa e do roteiro
+  const status = coverageFile ? parseCoverage(text(coverageFile)) : derivedCoverage(planText, demand, manual)
   const coverage: CoverageItem[] = []
   for (const kind of ['CA', 'RN', 'CN'] as const) {
     const items = parseItems(`${planText}\n${text(testPlanFile(files))}`, kind)
@@ -179,7 +182,6 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     for (const it of list) coverage.push({ id: it.id, kind, text: it.text, status: status[it.id] ?? 'falta' })
   }
 
-  const roteiro = first(files, /^roteiro-testes.*\.md$/) ?? ''
   const levantamento = first(files, /^levantamento-.*\.md$/) ?? ''
   const lev = text(levantamento)
   const repos: Repo[] = (demand.repos ?? []).map(r => ({
@@ -224,8 +226,8 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     votes: input.votes?.length ? input.votes : DEFAULT_VOTES,
     criteria,
     coverage,
-    coverageRecorded: !!coverageFile,
-    manual: parseRoteiro(text(roteiro)),
+    coverageRecorded: !!coverageFile || !!planText,
+    manual,
     roteiro,
     points: parsePoints(lev, text(first(files, /^pontos-.*\.md$/))),
     cardAsk: parseCardAsk(lev),
@@ -240,6 +242,33 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
   }
 }
 
+/** As etapas em que a entrega já está implementada (o código existe, mesmo que ainda sem teste). */
+const IMPLEMENTED_STEPS = new Set([
+  'REVIEW', 'TRIAGE', 'CODER_FIX', 'USER_REVIEW', 'TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'PR', 'CODE_REVIEW', 'QA_TEST',
+  'UX_VALIDATION', 'DONE', 'PREPARE_REVIEW', 'ORCHESTRATOR_TEST', 'DOCS', 'FINAL_REVIEW',
+])
+
+/**
+ * A cobertura sem arquivo (fluxo v3): *coberto* quando um passo do roteiro que prova o item tem ✅; *implementado*
+ * quando a demanda já passou da implementação e o item está numa entrega do plano (`Covers:`/`Cobre:`), ou em
+ * qualquer entrega quando o plano não diz; senão *falta*.
+ */
+export function derivedCoverage(plan: string, demand: DemandFile, manual: ManualStep[]): Record<string, CoverageItem['status']> {
+  const out: Record<string, CoverageItem['status']> = {}
+  const past = IMPLEMENTED_STEPS.has(demand.step ?? '') || (demand.history ?? []).some(h => IMPLEMENTED_STEPS.has(h.step))
+  if (past) {
+    const covered = [...plan.matchAll(/^[-*\s]*(?:\*\*)?(?:Covers|Cobre)(?:\*\*)?:?\s*(?:\*\*)?([^\n·]+)/gim)]
+      .flatMap(m => [...(m[1] ?? '').matchAll(/\b(CA|RN|CN)\s*0*(\d+)\b/g)].map(x => `${x[1]}${x[2]}`))
+    const ids = covered.length ? covered : [...plan.matchAll(/\b(CA|RN|CN)\s*0*(\d+)\b/g)].map(x => `${x[1]}${x[2]}`)
+    for (const id of ids) out[id] = 'implementado'
+  }
+  for (const step of manual) {
+    if (step.removed || step.result !== '✅') continue
+    for (const id of step.criteria) out[id] = 'coberto'
+  }
+  return out
+}
+
 /** A fase em que a demanda está, pelo nome da linha do tempo (Revisar, Revisão final…). */
 export function phaseOf(s: Snapshot): string {
   return s.timeline.find(t => t.state === 'atual')?.name ?? s.timeline.filter(t => t.state === 'feito').at(-1)?.name ?? s.step
@@ -248,21 +277,22 @@ export function phaseOf(s: Snapshot): string {
 const DOING: [string[], string][] = [
   [['UNDERSTAND'], 'O orquestrador está entendendo o card; se tiver dúvida, ele pergunta no chat.'],
   [['EXPLORE'], 'O explorador está mapeando o código.'],
-  [['SPEC', 'PLAN', 'TEST_PLAN'], 'O plano e o plano de testes estão sendo escritos.'],
+  [['SPEC', 'PLAN'], 'O plano está sendo escrito.'],
   [['PLAN_REVIEW'], 'O plano está em revisão.'],
-  [['PLAN_FIX'], 'O plano está sendo corrigido depois da revisão.'],
+  [['PLAN_FIX'], 'O plano está sendo ajustado.'],
   [['TICKETS'], 'O plano está sendo dividido em tarefas.'],
-  [['IMPLEMENT', 'TEST_ADJUST'], 'O codificador está implementando.'],
-  [['TEST', 'ORCHESTRATOR_TEST'], 'Os testes automáticos estão rodando.'],
+  [['IMPLEMENT', 'TEST_PLAN'], 'O codificador está implementando; o QA monta o roteiro e a massa em paralelo.'],
+  [['TEST_ADJUST'], 'O codificador está aplicando um ajuste temporário de teste.'],
+  [['TEST', 'ORCHESTRATOR_TEST'], 'O QA está rodando os testes automáticos (API e navegador).'],
   [['PREPARE_REVIEW', 'REVIEW'], 'O código está em revisão.'],
-  [['CODER_FIX'], 'O codificador está corrigindo os achados da revisão.'],
+  [['CODER_FIX'], 'O codificador está corrigindo o que foi mantido.'],
   [['DOCS'], 'A documentação está sendo atualizada.'],
   [['ESTIMATE'], 'A estimativa está sendo montada.'],
   [['RETURN'], 'O orquestrador está voltando a uma etapa anterior.'],
 ]
 
-/** As etapas do laço de revisão (do plano ou do código): só nelas o limite de rodadas trava. */
-export const LOOP_STEPS = new Set(['PLAN_REVIEW', 'PLAN_FIX', 'PREPARE_REVIEW', 'REVIEW', 'CODER_FIX'])
+/** As etapas do laço de revisão: só nelas o limite de rodadas trava (as antigas ficam pelas demandas abertas). */
+export const LOOP_STEPS = new Set(['REVIEW', 'TRIAGE', 'CODER_FIX', 'PLAN_REVIEW', 'PLAN_FIX', 'PREPARE_REVIEW'])
 
 /** O próximo passo em uma frase: o que você faz, ou o que o AiDW está fazendo. */
 export function nextStep(s: Snapshot, limit: number): { you: boolean; text: string } {
@@ -274,8 +304,16 @@ export function nextStep(s: Snapshot, limit: number): { you: boolean; text: stri
   switch (s.step) {
     case 'HUMAN_APPROVAL':
       return { you: true, text: 'Responda no chat: o orquestrador espera sua aprovação ou resposta.' }
+    case 'PLAN_APPROVAL':
+      return { you: true, text: 'Leia o plano e diga no chat se aprova ou o que ajustar; nada vai para o código antes disso.' }
+    case 'TRIAGE':
+      return { you: true, text: 'Decida cada achado na aba Revisão (manter ou descartar) e leve as decisões ao prompt.' }
+    case 'USER_REVIEW':
+      return { you: true, text: 'Revise o código na aba Diffs e diga no chat se aprova ou o que mudar.' }
     case 'MANUAL_TEST':
-      return { you: true, text: 'Siga o roteiro na aba Teste manual e marque cada passo.' }
+      return { you: true, text: 'Siga os passos manuais na aba Testes e marque cada um.' }
+    case 'PR':
+      return { you: true, text: 'Confira o commit, o texto da PR e as pendências para a QA e dê o OK no chat.' }
     case 'FINAL_REVIEW':
       return {
         you: true,
@@ -311,7 +349,7 @@ export function stateNote(s: Snapshot): string {
   const open = s.findings.filter(f => f.round === s.round && /CRITICO|IMPORTANTE/.test(f.severity ?? '') && !/corrig|resolv|fixed/.test(f.status))
   return [
     `AiDW (mod aidw-mods): estado da demanda ${s.id} relido do disco depois da compactação.`,
-    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}; nível: ${s.level ?? '?'}; modo: ${s.mode}.`,
+    `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}; modo: ${s.mode}.`,
     `- Pasta da demanda: ${s.dir}${s.repos.length ? `; worktrees: ${s.repos.map(r => `${r.name} → ${r.path}`).join(', ')}` : ''}.`,
     s.roundKind ? `- Laço de ${s.roundKind}: rodada ${s.round} de ${s.maxRetries}.` : '',
     open.length ? `- Achados abertos da última rodada: ${open.map(f => `${f.id} ${f.severity}`).join(', ')}.` : '',

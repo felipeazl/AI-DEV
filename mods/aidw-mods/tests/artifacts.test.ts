@@ -41,8 +41,8 @@ describe('tipo de uso e linha do tempo', () => {
       step: 'HUMAN_APPROVAL',
       history: [{ step: 'REVIEW', at: '' }, { step: 'CODER_FIX', at: '' }, { step: 'REVIEW', at: '' }, { step: 'HUMAN_APPROVAL', at: '' }],
     })
-    expect(t.find(x => x.state === 'atual')?.name).toBe('Revisar')
-    expect(t.find(x => x.name === 'Revisar')?.visits).toBe(3)
+    expect(t.find(x => x.state === 'atual')?.name).toBe('Revisão')
+    expect(t.find(x => x.name === 'Revisão')?.visits).toBe(3)
     expect(timeline('pr-review', { step: 'DONE' }).every(x => x.state === 'feito')).toBe(true)
   })
 })
@@ -199,5 +199,28 @@ describe('plano e arquivos', () => {
       Revisão: ['review-1-r1.md'],
       Diffs: ['diff-1-r1.patch'],
     })
+  })
+})
+
+describe('revisão do fluxo v3: uma passada com categoria', () => {
+  test('a categoria sai do título e não entra no texto do achado', async () => {
+    const review = [
+      '### R1-01 — IMPORTANTE — bug — `src/a.ts:10`',
+      '**O quê:** o flag de salvando não volta no erro',
+      '**Recomendação:** manter — o botão fica travado',
+      '',
+      '### R1-02 — CRITICO — seguranca — `src/b.ts:3`',
+      '**O quê:** token no log',
+      '',
+      '### R1-03 — SUGESTAO — `src/c.ts:1`',
+      '**O quê:** nome',
+    ].join('\n')
+    const f = parseFindings(review, 1, 'revisão', 'review-us-1-r1.md')
+    expect(f.map(x => `${x.id}:${x.severity}:${x.category}:${x.where}`)).toEqual([
+      'R1-01:IMPORTANTE:bug:src/a.ts:10',
+      'R1-02:CRITICO:seguranca:src/b.ts:3',
+      'R1-03:SUGESTAO::src/c.ts:1',
+    ])
+    expect(f[0]?.recommendation).toContain('manter')
   })
 })

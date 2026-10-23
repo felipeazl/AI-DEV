@@ -11,10 +11,10 @@ const RUNTIME = {
   state_dir: STATE,
   context: 'x',
   max_retries: 3,
-  default_level: 'padrao',
-  levels: {
-    padrao: { planejador: 'planejador', codificador: 'codificador', revisor: 'revisor' },
-    complexa: { planejador: 'planejador-high', codificador: 'codificador-high', revisor: 'revisor-high' },
+  variants: {
+    planejador: ['planejador', 'planejador-medium'],
+    codificador: ['codificador', 'codificador-medium'],
+    revisor: ['revisor', 'revisor-medium', 'revisor-low'],
   },
   agents: {
     orchestrator: { name: 'orquestrador', enabled: true },
@@ -182,11 +182,11 @@ async function has(view: { find: (q: { type: 'Text'; text: RegExp }) => Promise<
 const why = (r: { deny?: string; text?: string; isError?: boolean }) => r.deny ?? (r.isError ? (r.text ?? '') : '')
 
 const START = (id: string) => ({ cwd: `C:/wt/${id}/repo`, surface: 'terminal' as const, isInteractive: true })
-const delegation = (over: { subagent_type?: string; level?: string } = {}) => ({
+const delegation = (over: { subagent_type?: string } = {}) => ({
   tool: 'Agent' as const,
   description: 'Codificar rota',
   subagent_type: over.subagent_type ?? 'aidw:codificador',
-  prompt: `Tarefa: ${STATE}/us-1/tarefa-codificador-rota.md. Pasta da demanda: ${STATE}/us-1. Nível: ${over.level ?? 'padrao'}.`,
+  prompt: `Tarefa: ${STATE}/us-1/tarefa-codificador-rota.md. Pasta da demanda: ${STATE}/us-1.`,
 })
 
 test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a demanda', async ($, on) => {
@@ -230,7 +230,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     }
     // Geral: título, mapa (critérios, tokens, tempo, etapa) e o último agente
     await has(pane, /^Rota fast$/)
-    await has(pane, /etapa 5 de 9/)
+    await has(pane, /etapa 5 de 11/)
     await has(pane, /^117k$/)
     await has(pane, /último: codificador \(rota\), concluído/)
     await pane.press({ key: 'tab-metricas' })
@@ -238,7 +238,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     await has(pane, /arquivos na pasta da demanda/)
     await pane.press({ key: 'tab-criterios' })
     await has(pane, /^abre a rota$/)
-    await has(pane, /A cobertura ainda não foi registrada/)
+    expect(await pane.find({ type: 'Text', text: /Ainda não há plano/ })).toBeUndefined()
     // Revisão: rodada como seletor, abas de decisão; decidir leva ao prompt
     await pane.press({ key: 'tab-revisao' })
     await pane.press({ key: 'review-round-review-us-1-r4.md' })
@@ -267,11 +267,11 @@ test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:o
   await pane.unmount()
 })
 
-test('travas: célula errada da tabela e model sem pedido são recusados', async ($, on) => {
+test('travas: variante fora da tabela e model sem pedido são recusados', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1' })
   await $.session.start(START('us-1'))
   const wrong = await $.tool.call(delegation({ subagent_type: 'aidw:codificador-high' }))
-  expect(why(wrong)).toContain('é `codificador`')
+  expect(why(wrong)).toContain('não está na tabela Agents and effort')
   const model = await $.tool.call({ ...delegation(), model: 'sonnet' })
   expect(why(model)).toContain('não passe `model`')
   expect(f.runs).toEqual([])

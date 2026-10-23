@@ -25,37 +25,44 @@ const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ s
 
 describe('progresso do Mapa da demanda', () => {
   test('etapas do AiDW e de fora, com a atual', async () => {
-    const p = progress('desenvolvimento', steps('UNDERSTAND', 'IMPLEMENT', 'REVIEW', 'FINAL_REVIEW'))
-    expect([p.current, p.index, p.total]).toEqual(['Revisão final', 6, 9])
-    expect(p.stages.map(s => s.state)).toEqual(['feito', 'feito', 'feito', 'feito', 'feito', 'atual', 'pendente', 'pendente', 'pendente'])
+    const p = progress('desenvolvimento', steps('UNDERSTAND', 'IMPLEMENT', 'REVIEW', 'PR'))
+    expect([p.current, p.index, p.total]).toEqual(['PR', 8, 11])
+    expect(p.stages.map(s => s.name)).toEqual([
+      'Entender', 'Plano', 'Sua aprovação', 'Implementar', 'Revisão', 'Sua revisão', 'Testes', 'PR', 'Code review', 'Testes QA', 'Pronto',
+    ])
+    expect(p.stages.map(s => s.state)).toEqual([...Array(7).fill('feito'), 'atual', 'pendente', 'pendente', 'pendente'])
+    // as etapas antigas caem na fase equivalente (demandas abertas antes do fluxo v3)
+    expect(progress('desenvolvimento', steps('FINAL_REVIEW')).current).toBe('PR')
+    expect(progress('desenvolvimento', steps('TICKETS')).current).toBe('Sua aprovação')
   })
 
   test('com o time e de volta do Code review', async () => {
-    const withTeam = progress('desenvolvimento', steps('IMPLEMENT', 'FINAL_REVIEW', 'CODE_REVIEW'))
+    const withTeam = progress('desenvolvimento', steps('IMPLEMENT', 'PR', 'CODE_REVIEW'))
     expect(withTeam.stages.find(s => s.name === 'Code review')?.state).toBe('com-time')
-    const back = progress('desenvolvimento', steps('IMPLEMENT', 'FINAL_REVIEW', 'CODE_REVIEW', 'CODER_FIX'))
-    expect([back.current, back.returnedFrom, back.returns['Code review']]).toEqual(['Revisar', 'Code review', 1])
+    const back = progress('desenvolvimento', steps('IMPLEMENT', 'PR', 'CODE_REVIEW', 'CODER_FIX'))
+    expect([back.current, back.returnedFrom, back.returns['Code review']]).toEqual(['Revisão', 'Code review', 1])
     expect(back.stages.find(s => s.name === 'Code review')?.state).toBe('voltou')
-    const qa = progress('desenvolvimento', steps('FINAL_REVIEW', 'CODE_REVIEW', 'CODER_FIX', 'CODE_REVIEW', 'QA_TEST'))
+    const qa = progress('desenvolvimento', steps('PR', 'CODE_REVIEW', 'CODER_FIX', 'CODE_REVIEW', 'QA_TEST'))
     expect([qa.current, qa.returnedFrom, qa.returns['Code review']]).toEqual(['Testes QA', null, 1])
   })
 
   test('pronto marca tudo como feito', async () => {
-    const p = progress('desenvolvimento', steps('FINAL_REVIEW', 'DONE'))
+    const p = progress('desenvolvimento', steps('PR', 'DONE'))
     expect(p.stages.every(s => s.state === 'feito')).toBe(true)
   })
 
   test('etapa de fora do contexto: só na demanda que passa por ela, antes da etapa indicada', async () => {
-    const ux = [{ step: 'UX_VALIDATION', name: 'Validação UX', before: 'CODE_REVIEW', who: 'o UX' }]
+    // fluxo v3: o UX valida pelos prints depois dos testes e antes da PR
+    const ux = [{ step: 'UX_VALIDATION', name: 'Validação UX', before: 'PR', who: 'o UX' }]
     const names = (p: ReturnType<typeof progress>) => p.stages.map(s => s.name)
     expect(names(progress('desenvolvimento', steps('IMPLEMENT'), ux))).not.toContain('Validação UX')
     const marked = progress('desenvolvimento', { ...steps('IMPLEMENT'), extra_steps: ['UX_VALIDATION'] }, ux)
-    expect(names(marked).slice(5, 8)).toEqual(['Revisão final', 'Validação UX', 'Code review'])
-    expect(marked.total).toBe(10)
-    const withUx = progress('desenvolvimento', steps('FINAL_REVIEW', 'UX_VALIDATION'), ux)
+    expect(names(marked).slice(6, 9)).toEqual(['Testes', 'Validação UX', 'PR'])
+    expect(marked.total).toBe(12)
+    const withUx = progress('desenvolvimento', steps('TEST', 'UX_VALIDATION'), ux)
     expect(withUx.stages.find(s => s.name === 'Validação UX')).toEqual({ name: 'Validação UX', group: 'fora', who: 'o UX', state: 'com-time' })
-    const back = progress('desenvolvimento', steps('FINAL_REVIEW', 'UX_VALIDATION', 'CODER_FIX'), ux)
-    expect([back.current, back.returnedFrom, back.returns['Validação UX']]).toEqual(['Revisar', 'Validação UX', 1])
+    const back = progress('desenvolvimento', steps('TEST', 'UX_VALIDATION', 'CODER_FIX'), ux)
+    expect([back.current, back.returnedFrom, back.returns['Validação UX']]).toEqual(['Revisão', 'Validação UX', 1])
     expect(progress('pr-review', steps('UX_VALIDATION'), ux).stages.map(s => s.name)).not.toContain('Validação UX')
   })
 })
@@ -71,19 +78,31 @@ describe('critérios, regras e cenários', () => {
     expect(cov).toEqual({ CA1: 'coberto', RN1: 'implementado' })
   })
 
-  test('snapshot junta plano e cobertura; sem cobertura tudo é "falta"', async () => {
-    const files = {
-      'demand.json': JSON.stringify({ id: 'us-1', step: 'IMPLEMENT', summary: 'Resumo' }),
-      'plano-us-1.md': '# Plano v1\n## Critérios de aceite\n- CA1: abre\n- CA2: fecha\n## Regras de negócio\n- RN1: regra\n',
-    }
-    const build = (extra: Record<string, string>) => {
-      const all: Record<string, string> = { ...files, ...extra }
+  test('snapshot junta plano e cobertura: o arquivo antigo ou o status derivado (fluxo v3)', async () => {
+    const plan = [
+      '# Plano v1', '## Critérios de aceite', '- CA1: abre', '- CA2: fecha', '## Regras de negócio', '- RN1: regra',
+      '## Deliveries', '### E1 — Front: abre e fecha', '- Covers: CA1, RN1 · Depends on: —',
+    ].join('\n')
+    const build = (step: string, extra: Record<string, string> = {}) => {
+      const all: Record<string, string> = {
+        'demand.json': JSON.stringify({ id: 'us-1', step, summary: 'Resumo' }), 'plano-us-1.md': plan, ...extra,
+      }
       return buildSnapshot({ dir: 'C:/x/us-1', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all, maxRetries: 3 })
     }
-    const none = build({})
-    expect([none.summary, none.coverageRecorded, none.coverage.map(c => c.status)]).toEqual(['Resumo', false, ['falta', 'falta', 'falta']])
-    const some = build({ 'cobertura-us-1.md': '| CA1 | coberto | e2e |\n| RN1 | implementado | — |' })
-    expect(some.coverage.map(c => `${c.id}:${c.status}`)).toEqual(['CA1:coberto', 'CA2:falta', 'RN1:implementado'])
+    const status = (s: ReturnType<typeof build>) => s.coverage.map(c => `${c.id}:${c.status}`)
+    const before = build('IMPLEMENT')
+    expect([before.summary, before.coverageRecorded, status(before)]).toEqual(['Resumo', true, ['CA1:falta', 'CA2:falta', 'RN1:falta']])
+    // passou da implementação: o que as entregas cobrem está implementado
+    expect(status(build('REVIEW'))).toEqual(['CA1:implementado', 'CA2:falta', 'RN1:implementado'])
+    // um passo do roteiro com ✅ cobre o critério dele
+    const roteiro = '## Login\n| Passo | Critério | Como | O que fazer | Esperado | Evidência | Resultado |\n|---|---|---|---|---|---|---|\n' +
+      '| P01 | CA1 | auto-browser | abrir | abre | print | ✅ abriu |\n| P02 | CA2 | manual | fechar | fecha | print | |\n'
+    const tested = build('MANUAL_TEST', { 'roteiro-testes-us-1.md': roteiro })
+    expect(status(tested)).toEqual(['CA1:coberto', 'CA2:falta', 'RN1:implementado'])
+    expect(tested.manual.map(m => `${m.id}:${m.criteria.join(',')}:${m.how}`)).toEqual(['P01:CA1:auto-browser', 'P02:CA2:manual'])
+    // demanda antiga: o cobertura-<id>.md continua valendo
+    const old = build('REVIEW', { 'cobertura-us-1.md': '| CA1 | coberto | e2e |\n| RN1 | implementado | — |' })
+    expect(status(old)).toEqual(['CA1:coberto', 'CA2:falta', 'RN1:implementado'])
   })
 })
 
