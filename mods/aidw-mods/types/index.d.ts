@@ -61,6 +61,8 @@ export type Finding = {
   id: string
   round: number
   source: 'revisão' | 'plano' | 'bugs' | 'segurança'
+  /** A categoria no título do achado (fluxo v3: o revisor cobre qualidade, bugs e segurança numa passada). */
+  category: 'qualidade' | 'bug' | 'seguranca' | ''
   /** Arquivo da rodada (review-us-1-r2.md, review-otimizacao-…-r1.md): separa Código de Otimização. */
   file: string
   severity: 'CRITICO' | 'IMPORTANTE' | 'SUGESTAO' | 'ELOGIO' | 'DUVIDA' | null
@@ -96,6 +98,10 @@ export type ManualStep = {
   section: string
   /** Passo marcado como removido no roteiro: fica escondido. */
   removed: boolean
+  /** Os critérios e regras que o passo prova (coluna `Critério`: CA1, RN2). */
+  criteria: string[]
+  /** Como prova (coluna `Como`): auto-api, auto-browser, auto-suite ou manual. */
+  how: string
 }
 export type Point = { id: string; text: string; verdict: string; evidence: string }
 /** Uma linha do "Card × código" do levantamento. */

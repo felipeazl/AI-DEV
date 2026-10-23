@@ -57,7 +57,7 @@ const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
 const PANE = 'aidw'
 // Etapas em que um ajuste de teste pode estar aplicado (ou já devia ter saído).
-const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'ORCHESTRATOR_TEST', 'PREPARE_REVIEW', 'REVIEW', 'MANUAL_TEST', 'DOCS', 'FINAL_REVIEW'])
+const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'PR', 'ORCHESTRATOR_TEST', 'PREPARE_REVIEW', 'REVIEW', 'DOCS', 'FINAL_REVIEW'])
 const CODE_FILE = /\.(cs|ts|tsx|js|jsx|mjs|vue|py|java|kt|go|rs|cpp|c|h|vb|sql|xaml|cshtml|razor|html|scss|css)$/i
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 
@@ -94,18 +94,13 @@ async function stateDir($: EngineInterface): Promise<string | null> {
 /** A tabela de níveis e os agentes ligados, para as travas da delegação. */
 async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
   const r = await runtimeJson($)
-  const levels = r.levels as Runtime['levels'] | undefined
-  if (!levels) return null
+  // sem `variants` (um runtime.json de antes do fluxo v3), a trava fica desligada até o próximo `aidw.py apply`
+  const variants = r.variants as Runtime['variants'] | undefined
+  if (!variants) return null
   const agents = Object.values((r.agents ?? {}) as Record<string, { name: string; enabled: boolean }>)
     .filter(a => a.enabled && a.name !== 'orquestrador')
     .map(a => a.name)
-  return {
-    levels,
-    defaultLevel: String(r.default_level ?? 'padrao'),
-    maxRetries: Number(r.max_retries ?? 3),
-    maxRetriesPlan: Number(r.max_retries_plan ?? r.max_retries ?? 3),
-    agents,
-  }
+  return { variants, maxRetries: Number(r.max_retries ?? 3), agents }
 }
 
 /** Relê a demanda do disco e redesenha a faixa e o painel. */
@@ -153,7 +148,7 @@ async function ensureDiff($: EngineInterface, s: Snapshot): Promise<void> {
   if (sources[0] && !sources.some(x => x.value === current?.source)) await showDiff($, sources[0].value)
 }
 
-/** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes da revisão final. */
+/** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes do commit da PR. */
 async function testMarks($: EngineInterface, s: Snapshot): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   for (const repo of s.repos) {

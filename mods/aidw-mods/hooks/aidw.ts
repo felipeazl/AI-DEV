@@ -109,8 +109,11 @@ export function parseDelegations(text: string): MetricsRow[] {
  */
 export const CONTEXT_WARN = 250_000
 export const CONTEXT_COMPACT = 150_000
-/** Etapas em que a demanda fica parada com você ou com o time (o teste manual, passo a passo, não conta). */
-export const LONG_WAIT = new Set(['HUMAN_APPROVAL', 'FINAL_REVIEW', 'CODE_REVIEW', 'QA_TEST'])
+/**
+ * Etapas em que a demanda fica parada com você ou com o time: a leitura do plano, a sua revisão de código, o OK da PR
+ * e as etapas de fora (o teste manual, passo a passo, e a triagem dos achados, rápida, não contam).
+ */
+export const LONG_WAIT = new Set(['HUMAN_APPROVAL', 'PLAN_APPROVAL', 'USER_REVIEW', 'PR', 'FINAL_REVIEW', 'CODE_REVIEW', 'QA_TEST', 'UX_VALIDATION'])
 
 /** As linhas do metricas-orquestrador.md (`aidw.py record-orchestrator`): o chat principal por sessão e modelo. */
 export function parseOrchestrator(text: string): OrchestratorUsage {

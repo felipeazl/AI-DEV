@@ -132,6 +132,9 @@ ACTIONS = {"EXPLORE", "PLAN", "PLAN_APPROVAL", "PLAN_FIX", "IMPLEMENT", "TEST_PL
 # Etapas de fora do AiDW (o time revisa a PR, a QA testa): gravadas quando o usuário avisa; o painel as mostra à parte.
 # O contexto pode declarar outras ([[workflows.external_steps]]), cada uma antes de uma destas.
 EXTERNAL_STEPS = ("CODE_REVIEW", "QA_TEST")
+# Antes de quais etapas uma etapa de fora do contexto pode entrar: as de fora e a PR (ex.: a validação de UX, depois
+# dos testes e antes de abrir a PR — fluxo v3).
+EXTERNAL_BEFORE = (*EXTERNAL_STEPS, "PR")
 EXTERNAL_STEP_RE = re.compile(r"^[A-Z][A-Z0-9_]*[A-Z0-9]$")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MCP = ["playwright", "chrome-devtools", "figma", "context7"]
@@ -1117,8 +1120,8 @@ def check_external_steps(ctx: dict | None, rep: Report) -> None:
         step = s["step"]
         if step in ACTIONS or step == "UNDERSTAND" or step in seen:
             rep.error(f"{where} {step!r} repete uma etapa que já existe")
-        if s.get("before") not in EXTERNAL_STEPS:
-            rep.error(f"{where} {step!r}: `before` deve ser {' ou '.join(EXTERNAL_STEPS)} (atual: {s.get('before')!r})")
+        if s.get("before") not in EXTERNAL_BEFORE:
+            rep.error(f"{where} {step!r}: `before` deve ser {', '.join(EXTERNAL_BEFORE)} (atual: {s.get('before')!r})")
         for key in ("name", "when"):
             if not str(s.get(key, "")).strip():
                 rep.error(f"{where} {step!r} sem `{key}`")

@@ -6,7 +6,7 @@ import type { Elements, ThemeKey } from 'claude-code'
 import type { Delegation, DemandKind, DiffView, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { CONTEXT_WARN, compact } from './aidw'
 import { KIND_LABEL, VOTES, voteIn } from './artifacts'
-import { stateLabel } from './snapshot'
+import { LOOP_STEPS, stateLabel } from './snapshot'
 
 type Desktop = Elements['desktop']
 export type UI = Pick<Desktop, 'Box' | 'Text' | 'Button' | 'Select' | 'Input' | 'Code' | 'Markdown' | 'Link'> & {
@@ -68,7 +68,7 @@ export const TABS: Record<DemandKind, [string, string][]> = {
     ['criterios', 'Critérios e Regras'],
     ['revisao', 'Revisão'],
     ['diffs', 'Diffs'],
-    ['manual', 'Teste manual'],
+    ['manual', 'Testes'],
     ['metricas', 'Métricas'],
   ],
   'pr-review': [
@@ -592,7 +592,7 @@ function General(ui: UI, v: ViewState, act: Actions) {
               </Text>
             </Box>
           </Box>
-          {s.roundKind && s.round >= s.maxRetries + v.extraRounds && ['PLAN_REVIEW', 'PLAN_FIX', 'PREPARE_REVIEW', 'REVIEW', 'CODER_FIX'].includes(s.step) && (
+          {s.roundKind && s.round >= s.maxRetries + v.extraRounds && LOOP_STEPS.has(s.step) && (
             <Box gap={1}>
               <Text color={C.amber}>
                 O laço de {s.roundKind} chegou ao limite ({s.round} de {s.maxRetries + v.extraRounds}).
@@ -702,7 +702,7 @@ function Coverage(ui: UI, v: ViewState) {
               )
             })}
           </Box>
-          {!s.coverageRecorded && <Text color={C.amber}>A cobertura ainda não foi registrada (cobertura-{s.id}.md): tudo aparece como "Falta".</Text>}
+          {!s.coverageRecorded && <Text color={C.amber}>Ainda não há plano: os critérios vêm do card e tudo aparece como "Falta".</Text>}
         </Box>,
       )}
       {groups.map(g =>
@@ -768,6 +768,13 @@ export function reviewRounds(s: Snapshot): { file: string; label: string }[] {
 
 const isFixed = (f: Finding) => /corrig|fixed|resolv/.test(f.status)
 
+/** A categoria do achado: a do título (fluxo v3) ou a origem (as passadas de bugs e segurança de antes). */
+export function categoryOf(f: Finding): 'qualidade' | 'bug' | 'seguranca' {
+  if (f.category === 'bug' || f.source === 'bugs') return 'bug'
+  if (f.category === 'seguranca' || f.source === 'segurança') return 'seguranca'
+  return 'qualidade'
+}
+
 function codeBlock(ui: UI, key: string, f: Finding) {
   if (!f.before && !f.after) return null
   const lines = [
@@ -819,7 +826,7 @@ function Review(ui: UI, v: ViewState, act: Actions) {
   const shown = inRound
     .filter(f => tab?.has(f))
     .filter(f => !f0.severities.length || f0.severities.includes(f.severity ?? ''))
-    .filter(f => !f0.sources.length || f0.sources.includes(f.source))
+    .filter(f => !f0.sources.length || f0.sources.includes(categoryOf(f)))
     .filter(f => !f0.statuses.length || f0.statuses.includes(isFixed(f) ? 'corrigido' : 'aberto'))
   const marked = Object.keys(v.decisions).filter(k => k.startsWith(`${file}:`)).length
   const filterButton = (kind: keyof Omit<ReviewFilter, 'open'>, value: string, label: string) => {
@@ -847,10 +854,10 @@ function Review(ui: UI, v: ViewState, act: Actions) {
             {filterButton('severities', 'DUVIDA', 'Dúvida')}
           </Box>
           <Box gap={1} flexWrap="wrap">
-            <Text color={C.dim}>Origem</Text>
-            {filterButton('sources', 'revisão', 'Revisor')}
-            {filterButton('sources', 'segurança', 'Segurança')}
-            {filterButton('sources', 'bugs', 'Bugs')}
+            <Text color={C.dim}>Categoria</Text>
+            {filterButton('sources', 'qualidade', 'Qualidade')}
+            {filterButton('sources', 'bug', 'Bug')}
+            {filterButton('sources', 'seguranca', 'Segurança')}
             <Text color={C.dim}> Status</Text>
             {filterButton('statuses', 'aberto', 'Aberto')}
             {filterButton('statuses', 'corrigido', 'Corrigido')}
