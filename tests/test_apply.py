@@ -921,11 +921,13 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual([x["id"] for x in lst["demands"]], ["us-5"])
             code, show = wt.aidw_json(root, "demand", "show", "us-5")
             self.assertEqual(show["title"], "Teste")
-            self.assertEqual(lst["demands"][0]["mode"], "auto", "sem modo gravado vale o automático")
-            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--mode", "interativo", "--json")
-            self.assertEqual((code, d["mode"], d["step"]), (0, "interativo", "IMPLEMENT"), d)
-            code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
-            self.assertEqual(lst["demands"][0]["mode"], "interativo")
+            self.assertNotIn("mode", lst["demands"][0], "o modo da sessão saiu no fluxo v3")
+            proc = run_aidw(root, "demand", "set", "us-5", "--note", "esperando")
+            self.assertEqual((proc.returncode, proc.stdout.strip()), (0, "us-5: IMPLEMENT (active)"),
+                             "sem --json, uma linha: o demand.json inteiro só pesaria no chat do orquestrador")
+            proc = run_aidw(root, "demand", "set", "us-5", "--step", "QUALQUER")
+            self.assertEqual(proc.returncode, 1)
+            self.assertTrue(proc.stdout.startswith("erro: etapa desconhecida"), proc.stdout)
             # painel V2: resumo, etapas de fora do AiDW e PR por repositório
             code, d = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "Linha 1\nLinha 2", "--step",
                                    "CODE_REVIEW", "--json")
@@ -1022,9 +1024,10 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual([p["name"] for p in market["plugins"]], ["aidw-mods", "aidw"])
             orq = files["plugins/aidw/skills/orquestrar/SKILL.md"].decode("utf-8")
             for step in ("project detect --json", "demand list --active --json", "não recomece",
-                         "demand set <id> --step <AÇÃO>", "EnterWorktree", "--mode <auto|interativo>",
-                         "AskUserQuestion", "## Modo interativo"):
+                         "demand set <id> --step <AÇÃO>", "EnterWorktree"):
                 self.assertIn(step, orq)
+            for gone in ("--mode", "AskUserQuestion", "## Modo interativo"):
+                self.assertNotIn(gone, orq, "sem a escolha de modo da sessão")
             self.assertLess(orq.index("Ao ser chamado"), orq.index("# ROLE"), "o protocolo vem antes do resto")
             sair = files["plugins/aidw/skills/sair/SKILL.md"].decode("utf-8")
             diff = files["plugins/aidw/skills/diff/SKILL.md"].decode("utf-8")
@@ -1037,8 +1040,15 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("name: levantamento", lev)
             self.assertIn("disable-model-invocation: true", lev)
             self.assertIn("**Levantamento:**", lev)
-            self.assertIn("**Levantamento** (`levantamento`", lev, "leva o contexto inteiro do orquestrador")
+            # o orquestrador enxuto do levantamento: só o explorador, o procedimento já dentro, sem o desenvolvimento
             self.assertLess(lev.index("**Levantamento:**"), lev.index("# ROLE"))
+            for part in ("# STEPS", "`UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `DONE`", "## 4. Estimar",
+                         "/aidw:orquestrar <id>", "`aidw:explorador`"):
+                self.assertIn(part, lev)
+            for gone in ("# WORKFLOW", "## Workflows", "**Panel**", "`aidw:codificador`", "EnterWorktree",
+                         "*levantamento* `"):
+                self.assertNotIn(gone, lev)
+            self.assertLess(len(lev), len(orq), "menor que a skill orquestrar, mesmo com o procedimento dentro")
             self.assertIn("plugins/aidw/reference/levantamento.md", files)
             self.assertIn("--status paused", sair)
             self.assertIn("disable-model-invocation: true", sair)
@@ -1168,6 +1178,25 @@ class ContextTest(unittest.TestCase):
             rows = [line for line in text.splitlines() if line.startswith("| 79aafeb8 |")]
             self.assertEqual(len(rows), 2, text)
             self.assertIn("| claude-opus-5-5 | 2 | 60s | 20 | 600,000 | 0 | 1,600 |", rows[0])
+
+    def test_record_nao_repete_a_delegacao_que_o_mod_gravou(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            wt = WorktreeTest()
+            demand = Path(tmp) / "us-9"
+            base = ["record", "--agent", "explorer", "--demand", str(demand), "--state", "exploration_complete"]
+            code, r = wt.aidw_json(root, *base, "--label", "lev", "--tokens", "1000", "--tool-uses", "5",
+                                   "--duration-ms", "60000")
+            self.assertEqual((code, r["tokens_in"]), (0, 1000), r)
+            f = demand / "metricas.md"
+            f.write_text(f.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")  # editado à mão, sem a quebra
+            code, r = wt.aidw_json(root, *base, "--label", "lev")
+            self.assertEqual((code, r["tokens_in"], r["turns"], r["duration_s"]), (0, 1000, 5, 60), r)
+            self.assertIn("1.000 tokens", r["resumo"])
+            self.assertTrue(any("já registrou" in w for w in r["warnings"]), r)
+            wt.aidw_json(root, *base, "--label", "outra", "--tokens", "50")
+            rows = [x for x in f.read_text(encoding="utf-8").splitlines() if x.startswith("| 2")]
+            self.assertEqual([x.split(" | ")[5] for x in rows], ["lev", "outra"], "sem linha repetida nem colada")
 
     def test_ciclo_de_contextos(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
@@ -1440,13 +1469,15 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("name: aidw-orquestrar", orq)
             self.assertIn("$aidw-sair", orq)
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
-            self.assertNotIn("AskUserQuestion", orq, "no Codex o modo é perguntado em texto")
+            self.assertNotIn("AskUserQuestion", orq)
             self.assertNotIn("perfil `aidw`", orq, "no Codex o AiDW não instala perfil")
             self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
-            self.assertIn("## Modo interativo", orq)
+            self.assertNotIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-orquestrar" / "agents" / "openai.yaml").read_text())
             lev = (skills / "aidw-levantamento" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-levantamento", lev)
+            self.assertIn("`$aidw-orquestrar <id>`", lev)
+            self.assertNotIn("# WORKFLOW", lev)
             self.assertNotIn("disable-model-invocation", lev)
             self.assertIn("allow_implicit_invocation: false",
                           (skills / "aidw-levantamento" / "agents" / "openai.yaml").read_text())

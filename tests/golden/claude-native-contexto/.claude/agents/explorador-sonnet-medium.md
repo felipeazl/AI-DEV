@@ -90,18 +90,17 @@ secret or personal data.
 
 In levantamento mode the report has, in this order: `## Pontos do card` (a table: point, verdict, evidence, one-line
 note), `## Fluxo de ponta a ponta`, `## Sinais de tamanho`, the extra questions (`## Q1`…), if any, and
-`## Dúvidas que o código não responde`. In the JSON, `answers` has one entry per point (`"q": "P01"`) and
-`open_points` holds the doubts.
+`## Dúvidas que o código não responde`.
 
-Then finish with a single JSON block:
+Your final message is only this JSON block — no text before or after it. Everything else is in the report, and the
+orchestrator reads it there (every line you return stays in its context for the rest of the demand):
 
 ```json
 {
   "state": "exploration_complete | environment_blocked",
   "report_file": "<the path the task gave>",
-  "answers": [{"q": 1, "short": "one-line answer", "refs": ["path/File.cs:42"]}],
-  "open_points": ["..."],
-  "knowledge": [{"note": "nome-da-nota or nova: <tipo>/<nome>", "kind": "corrige | novo", "fact": "...", "refs": ["path/File.cs:42"]}]
+  "summary": "<one line: what the report found>",
+  "open_points": ["<one line each: what the code does not answer>"]
 }
 ```
 
@@ -112,7 +111,6 @@ Then finish with a single JSON block:
 
 - Read-only: never edit code, build, run git write commands, or change data (no write SQL, no state-changing call).
   The only file you write is the report.
-- One line per `short` answer; the detail goes in the report.
 - Never print a secret found in code, configuration or a query: location and variable name only.
 - Obey the policies included in this definition.
 

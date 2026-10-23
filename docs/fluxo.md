@@ -147,8 +147,12 @@ Workflow `levantamento`: entender e estimar um card **antes** de implementar. S�
 O orquestrador numera o que o card pede em `pontos-<id>.md`; o explorador, na exceção do levantamento (Sonnet high),
 confirma cada ponto no código e mapeia o fluxo de ponta a ponta; o orquestrador estima pela régua (referência
 *levantamento*) e grava `levantamento-<id>.md` com horas, story points, complexidade, confiança, riscos e as dúvidas.
-O comentário no card só sai com o seu OK. Se o card for implementado depois, o fluxo começa pelo plano reaproveitando
-o levantamento.
+O comentário no card só sai com o seu OK. Se o card for implementado depois (`/aidw:orquestrar <id>`), o fluxo começa
+pelo plano reaproveitando o levantamento.
+
+A skill `/aidw:levantamento` carrega um orquestrador enxuto (`orchestrator/LEVANTAMENTO.md`): só o explorador, sem os
+workflows de desenvolvimento, com o procedimento e a régua já dentro. Assim o orquestrador não lê referência nenhuma e
+cada chamada dele relê um contexto menor.
 
 ## Quando você é chamado
 
@@ -158,8 +162,6 @@ o levantamento.
    e pede o OK.
 3. **Dúvida real ou mais de um caminho válido:** uma pergunta, com opções, a recomendação e o porquê.
 4. **Algo fora do plano:** escopo maior, ambiente bloqueado, voltas esgotadas.
-
-No modo `interativo`, ele também para antes de cada delegação.
 
 ## O que fica gravado
 
