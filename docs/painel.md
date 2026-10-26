@@ -12,7 +12,7 @@ A faixa e o painel valem em todo contexto; o painel some só no contexto que o d
 - **Simples, limpo e no padrão do app do Claude:** cartões com borda sutil e cantos arredondados, rótulos pequenos em
   cinza, espaço entre os blocos. O laranja do Claude só aparece no que está acontecendo agora.
 - **Feito para o app desktop.** O terminal recebe a mesma informação, num desenho mais simples.
-- **Nada sai sem você:** publicar, votar, comentar no card e decidir achados vão para o prompt e só valem quando você
+- **Nada sai sem você:** publicar, aprovar uma PR, comentar no card e decidir achados vão para o prompt e só valem quando você
   envia a mensagem.
 - **Sem orçamento de tokens** em nenhuma tela.
 - **O que os mods desenham:** caixas (fundo, borda arredondada, cor), texto, botões, campos, seletor e SVG (gráficos,
@@ -192,14 +192,13 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
   ("a decidir", "não publicado (r1)", "publicado (thread 23720), resolvido na r2"), o título, o **texto que vai para a
   PR** com **editar** e **ajustar no chat**, a recomendação e **Publicar** / **Não publicar** (a recomendada com
   "(recomendado)"). Publicados e recusados ficam recolhidos em "Ver comentário".
-- **Voto por PR:** a sugestão do revisor e a do AiDW lado a lado, com o porquê; vem marcada a do AiDW (senão a do
-  revisor). Sem sugestão na triagem, **nada vem marcado** e o rodapé pede o voto. As opções seguem a escala do contexto
-  (`[[mods.votes]]`, padrão Azure DevOps), mais **Sem voto**; Rejeitar fica em **Mais opções**.
+- **Aprovar a PR? (por PR):** **Manual** (o padrão: o AiDW não aprova, você decide na ferramenta), **Sim** (o AiDW
+  aprova) ou **Não**. Sem escala de voto nem sugestão: igual em qualquer ferramenta.
 - **Fora das PRs:** o que não vira comentário, recolhido.
-- Rodapé: o resumo PR a PR ("8197: aprovar · 8208: sem voto · 1 comentário para publicar") e **Levar decisão ao
-  prompt**, que manda, por PR, o que publicar, o que não, os textos editados e o voto.
+- Rodapé: o resumo PR a PR ("8197: aprovar sim · 8208: aprovar manual · 1 comentário para publicar") e **Levar decisão
+  ao prompt**, que manda, por PR, o que publicar, o que não, os textos editados e a aprovação.
 - **Sem triagem no formato *triagem-pr*** (demandas antigas), a aba cai no modelo anterior: os achados da última rodada
-  com o rascunho de cada um e um voto só, que também não vem marcado sem sugestão.
+  com o rascunho de cada um e um "Aprovar a PR?" só.
 
 ### Levantamento
 

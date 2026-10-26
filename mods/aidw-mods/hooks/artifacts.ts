@@ -15,12 +15,10 @@ import type {
   Point,
   PrComment,
   PrTriage,
-  PrVote,
   Progress,
   ProgressStage,
   SplitItem,
   TimelineItem,
-  VoteOption,
 } from '../types'
 
 export type { CardPoint, CoverageItem, Criterion, Doubt, EffortBlock, Estimate, Finding, ManualStep, Point, Progress, SplitItem, TimelineItem }
@@ -362,50 +360,18 @@ export function parseTriage(text: string): { decisions: Record<string, string>; 
   return { decisions, published: [...published] }
 }
 
-/** O voto sugerido de um review de PR. */
-export function parseVote(text: string): string {
-  return clean(/Voto sugerido:\s*([^\n]+)/i.exec(text)?.[1] ?? /\*\*Veredito[^\n]*\n((?:-[^\n]*\n?)+)/i.exec(text)?.[1] ?? '')
-}
-
-/** O voto único das revisões de PR sem triagem no formato *triagem-pr* (demandas antigas). */
-export const VOTES = [
-  { value: 'approve', label: 'Aprovar (10)' },
-  { value: 'approve_with_suggestions', label: 'Aprovar com sugestões (5)' },
-  { value: 'wait_for_author', label: 'Aguardar o autor (−5)' },
-  { value: 'reject', label: 'Rejeitar (−10)' },
-  { value: 'none', label: 'Sem voto' },
+/**
+ * "Aprovar a PR?", uma pergunta por PR, igual em qualquer ferramenta (Azure DevOps, GitHub, GitLab). Manual, o
+ * padrão: o AiDW não aprova e você decide na ferramenta. Sim: o AiDW aprova. Não: o AiDW não aprova.
+ */
+export const APPROVALS = [
+  { value: 'manual', label: 'Manual', text: 'manual (não aprove; eu decido na ferramenta)' },
+  { value: 'sim', label: 'Sim', text: 'sim (aprove a PR)' },
+  { value: 'nao', label: 'Não', text: 'não (não aprove)' },
 ] as const
 
-/** O voto sugerido como valor; vazio quando o revisor não sugeriu: nada vem marcado sem sugestão. */
-export function voteValue(suggested: string): string {
-  const s = suggested.toLowerCase()
-  if (/sem voto/.test(s)) return 'none'
-  if (/rejeit|-10/.test(s)) return 'reject'
-  if (/aguard|-5|wait/.test(s)) return 'wait_for_author'
-  if (/sugest|ajuste|\b5\b/.test(s)) return 'approve_with_suggestions'
-  if (/aprov|approve|10/.test(s)) return 'approve'
-  return ''
-}
-
-/** A escala de voto do Azure DevOps, quando o contexto não declara outra (`[[mods.votes]]`). */
-export const DEFAULT_VOTES: VoteOption[] = [
-  { value: '10', label: 'Aprovar' },
-  { value: '5', label: 'Aprovar com sugestões' },
-  { value: '-5', label: 'Aguardar o autor' },
-  { value: '-10', label: 'Rejeitar', more: true },
-]
-
-/** Uma célula de voto da triagem ("5", "-5 (aguardar o autor)", "Aprovar", "sem voto") como valor da escala. */
-export function voteIn(cell: string, votes: VoteOption[]): string {
-  const c = clean(cell).toLowerCase().replace(/[−–]/g, '-')
-  if (!c || /^[-—]$/.test(c)) return ''
-  if (/sem voto|n[aã]o votar|nenhum/.test(c)) return 'none'
-  const n = /^[+]?(-?\d+)\b/.exec(c)?.[1]
-  const byValue = votes.find(v => v.value.toLowerCase() === (n ?? c))
-  if (byValue) return byValue.value
-  // pela palavra: o rótulo mais longo que aparece (Aprovar com sugestões antes de Aprovar)
-  return [...votes].sort((a, b) => b.label.length - a.label.length).find(v => c.includes(v.label.toLowerCase()))?.value ?? ''
-}
+/** A escolha de aprovação de uma PR; sem escolha, manual. */
+export const approvalOf = (chosen: Record<string, string>, pr: string): string => chosen[pr] || 'manual'
 
 /** As linhas de uma tabela Markdown, cada uma como {coluna: célula} pelo cabeçalho (em minúsculas). */
 function tableRows(section: string): Record<string, string>[] {
@@ -456,10 +422,7 @@ export function parsePrTriage(text: string, file = '', round = 0): PrTriage | nu
       draft: quote.join('\n').trim(),
     }
   })
-  const votes: PrVote[] = tableRows(parseSection(t, /^##\s+Votos/i))
-    .filter(r => clean(col(r, /^pr$/)))
-    .map(r => ({ pr: clean(col(r, /^pr$/)), reviewer: clean(col(r, /revisor/)), aidw: clean(col(r, /aidw|orquestrador/)), why: clean(col(r, /por qu/)) }))
-  return { file, round, comments, votes, outside: parseSection(t, /Fora das PRs/i) }
+  return { file, round, comments, outside: parseSection(t, /Fora das PRs/i) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -5,10 +5,10 @@ steps:
     agent: orchestrator
   - id: prepare_pr      # `aidw.py worktree create --pr <n>` por PR (só leitura, PR mesclada no destino) e o build nele
     agent: orchestrator
-  - id: review          # revisor no modo PR (qualidade, bugs e segurança): achados com o rascunho do comentário e o voto
+  - id: review          # revisor no modo PR (qualidade, bugs e segurança): achados com o rascunho do comentário
     agent: reviewer
     skill: code-review
-  - id: final_review    # o usuário escolhe os comentários e o voto; publicar é ação travada
+  - id: final_review    # o usuário escolhe os comentários e se o AiDW aprova a PR (manual, sim, não); publicar é ação travada
     agent: orchestrator
 gates:
   - before: publish

@@ -13,9 +13,7 @@ import {
   parseTestMatrix,
   parseTriage,
   parseVerdicts,
-  parseVote,
   timeline,
-  voteValue,
 } from '../hooks/artifacts'
 
 describe('tipo de uso e linha do tempo', () => {
@@ -85,12 +83,6 @@ describe('achados e triagem', () => {
     expect(f[2]?.title).toBe('token vai para o log.')
     expect(f[3]?.status).toBe('aberto')
     expect(f[4]?.title).toContain('Critério 4')
-  })
-
-  test('voto sugerido', async () => {
-    expect(parseVote(review)).toContain('aguardar autor')
-    expect(voteValue(parseVote(review))).toBe('wait_for_author')
-    expect(voteValue('aprovar com ajustes de processo')).toBe('approve_with_suggestions')
   })
 
   test('triagem em tabela, em lista e o que já foi publicado', async () => {
