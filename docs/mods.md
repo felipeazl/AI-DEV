@@ -67,7 +67,7 @@ isso está em **[painel.md](painel.md)**:
 
 Aba sem dados fica oculta. No app, as abas são só clique; no terminal, as teclas aparecem e funcionam.
 
-Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e votar numa PR, comentar
+Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e aprovar uma PR, comentar
 no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta
 a uma dúvida vão como mensagem sua. `/aidw-painel fluxo`, `agentes` e `pontos` (nomes antigos) abrem Geral,
 Métricas e Card × código.

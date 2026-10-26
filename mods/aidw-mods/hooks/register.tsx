@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register, TurnUsage } from 'claude-code'
 
-import type { DiffView, Pending, ReviewFilter, Snapshot, VoteOption } from '../types'
+import type { DiffView, Pending, ReviewFilter, Snapshot } from '../types'
 import {
   CONTEXT_COMPACT,
   CONTEXT_WARN,
@@ -14,7 +14,6 @@ import {
   parseMaxRetries,
   parseState,
 } from './aidw'
-import { voteValue } from './artifacts'
 import type { DemandFile, ExternalStep } from './artifacts'
 import { diffSummary, splitDiff } from './diffs'
 import type { DiffFile } from './diffs'
@@ -39,8 +38,7 @@ const tab = atom({ plugin: 'aidw-mods', key: 'tab' } as const, 'geral')
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
 const extraRounds = atom({ plugin: 'aidw-mods', key: 'extraRounds' } as const, {})
 const publish = atom({ plugin: 'aidw-mods', key: 'publish' } as const, {})
-const vote = atom({ plugin: 'aidw-mods', key: 'vote' } as const, '')
-const votes = atom({ plugin: 'aidw-mods', key: 'votes' } as const, {})
+const approvals = atom({ plugin: 'aidw-mods', key: 'approvals' } as const, {})
 const drafts = atom({ plugin: 'aidw-mods', key: 'drafts' } as const, {})
 const diff = atom({ plugin: 'aidw-mods', key: 'diff' } as const, null)
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
@@ -123,14 +121,12 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
       : parseMaxRetries(await $.fs.read(`${root}/orchestrator/config/routing.toml`).catch(() => ''))
   const maxRetriesPlan = typeof r.max_retries_plan === 'number' ? r.max_retries_plan : maxRetries
   const externalSteps = Array.isArray(r.external_steps) ? (r.external_steps as ExternalStep[]) : []
-  const scale = Array.isArray(r.votes) ? (r.votes as VoteOption[]) : []
-  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps, votes: scale })
+  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps })
   if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)
   if (before?.id !== next.id) {
-    await update($, vote, () => voteValue(next.vote))
-    await update($, votes, () => ({}))
+    await update($, approvals, () => ({}))
     await update($, publish, () => ({}))
     await update($, diff, () => null)
     await update($, reviewRound, () => next.round)
@@ -695,13 +691,12 @@ export const register: Register = (on, options) => {
           else out[id] = value
           return out
         }),
-      vote: value => void update($, vote, () => value),
-      votePr: (pr, value) => void update($, votes, x => ({ ...x, [pr]: value })),
+      approve: (pr, value) => void update($, approvals, x => ({ ...x, [pr]: value })),
       sendPrDecision: () =>
         void (async () => {
           const text = s.prTriage
-            ? prTriageDecisionText(s, await read($, publish), await read($, votes), await read($, drafts))
-            : prDecisionText(s, await read($, publish), await read($, vote), await read($, drafts))
+            ? prTriageDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
+            : prDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
           await fill(text, 'AiDW: a decisão está no prompt; revise e envie')
         })(),
       adjustInChat: text => void fill(text, 'AiDW: o texto está no prompt; diga o que ajustar e envie'),
@@ -742,8 +737,7 @@ export const register: Register = (on, options) => {
         now: await $.clock.now(),
         tab: await read($, tab),
         publish: await read($, publish),
-        vote: await read($, vote),
-        votes: await read($, votes),
+        approvals: await read($, approvals),
         drafts: await read($, drafts),
         diff: await read($, diff),
         usage: await read($, usage),

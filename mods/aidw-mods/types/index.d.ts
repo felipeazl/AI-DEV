@@ -150,11 +150,7 @@ export type PrComment = {
   title: string
   draft: string
 }
-/** O voto de uma PR: o que o revisor e o AiDW sugerem (o valor da escala, ou `none` para sem voto). */
-export type PrVote = { pr: string; reviewer: string; aidw: string; why: string }
-export type PrTriage = { file: string; round: number; comments: PrComment[]; votes: PrVote[]; outside: string }
-/** Uma opção de voto do contexto (`[[mods.votes]]`); `more` fica em "Mais opções". */
-export type VoteOption = { value: string; label: string; more?: boolean }
+export type PrTriage = { file: string; round: number; comments: PrComment[]; outside: string }
 
 export type Repo ={ name: string; path: string; branch: string; base: string; pr: string; source: string }
 
@@ -188,11 +184,8 @@ export type Snapshot = {
   orchestrator: OrchestratorUsage
   budget: number
   findings: Finding[]
-  vote: string
   /** A triagem da última rodada de uma revisão de PR no formato *triagem-pr*; null sem ela (o painel cai nos achados). */
   prTriage: PrTriage | null
-  /** A escala de voto do contexto (`runtime.json` → `votes`), ou a do Azure DevOps. */
-  votes: VoteOption[]
   criteria: Criterion[]
   coverage: CoverageItem[]
   /** Há `cobertura-<id>.md`: sem ele, tudo aparece como "falta" com um aviso. */
@@ -247,9 +240,8 @@ declare module 'claude-code' {
       tick: number
       extraRounds: Record<string, number>
       publish: Record<string, boolean>
-      vote: string
-      /** O voto escolhido por PR (revisão de PR com triagem *triagem-pr*). */
-      votes: Record<string, string>
+      /** "Aprovar a PR?" por PR (`manual`, `sim`, `nao`); sem escolha, manual. A revisão antiga, sem triagem, usa `''`. */
+      approvals: Record<string, string>
       drafts: Record<string, string>
       diff: DiffView | null
       reviewRound: number
