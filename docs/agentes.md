@@ -78,8 +78,8 @@ Cada achado tem ID estável, severidade, categoria, a correção mínima dentro 
 **recomendação** (manter ou descartar, e por quê): você decide cada um. Na re-revisão, confere só os achados mantidos e
 as regressões. Não altera código. Sonnet high; medium/low na re-revisão.
 
-No **modo PR** (a PR de outra pessoa), cada achado que vale contar ao autor vem com o rascunho do comentário, e a
-revisão traz um voto sugerido. Ele nunca comenta, vota nem conclui a PR.
+No **modo PR** (a PR de outra pessoa), cada achado que vale contar ao autor vem com o rascunho do comentário; ele não
+sugere voto (aprovar a PR é escolha sua). Ele nunca comenta, aprova nem conclui a PR.
 
 ### QA
 Entra em dois momentos:

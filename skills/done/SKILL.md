@@ -74,7 +74,7 @@ tema.
 Toda demanda fechada ganha `demandas/<id>.md` — desenvolvimento, revisão de PR ou levantamento —, curta (até ~20
 linhas), no formato do `README.md` da base: o que o card pediu (uma linha), o que mudou e onde (`[[sistema]]`,
 arquivos principais), as decisões, o que se aprendeu com o link da nota que recebeu cada fato, a PR. Revisão de PR:
-o que a PR fazia, os achados que importam para o sistema e o voto. Levantamento: a estimativa e as dúvidas.
+o que a PR fazia, os achados que importam para o sistema e se a PR foi aprovada. Levantamento: a estimativa e as dúvidas.
 
 - **Ligue, não copie:** a nota da demanda aponta para as notas que tocou; cada nota atualizada ganha a fonte
   (`fontes:` com o id da demanda) e `atualizado:` com a data. Um fato novo vai numa nota só; as outras citam com

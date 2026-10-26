@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
-  DEFAULT_VOTES,
+  APPROVALS,
+  approvalOf,
   decisionOf,
   parseCardAsk,
   parseCardPoints,
@@ -16,7 +17,6 @@ import {
   parseSection,
   parseSplit,
   progress,
-  voteIn,
 } from '../hooks/artifacts'
 import { buildSnapshot, stateLabel } from '../hooks/snapshot'
 import { C, diffSources, patchLabel, reviewRounds, roundName, svgDoc, visibleTabs } from '../hooks/views'
@@ -280,16 +280,13 @@ describe('painel v3', () => {
     expect(parseSection(text, /Riscos/)).toBe('')
   })
 
-  test('voto da triagem pela escala: número, rótulo ou sem voto', async () => {
-    expect(voteIn('5', DEFAULT_VOTES)).toBe('5')
-    expect(voteIn('-5 (aguardar o autor)', DEFAULT_VOTES)).toBe('-5')
-    expect(voteIn('−10', DEFAULT_VOTES)).toBe('-10')
-    expect(voteIn('Aprovar com sugestões', DEFAULT_VOTES)).toBe('5')
-    expect(voteIn('sem voto', DEFAULT_VOTES)).toBe('none')
-    expect(voteIn('', DEFAULT_VOTES)).toBe('')
+  test('aprovar a PR: manual sem escolha', async () => {
+    expect(approvalOf({}, '8')).toBe('manual')
+    expect(approvalOf({ '8': 'sim' }, '8')).toBe('sim')
+    expect(APPROVALS.map(o => o.label)).toEqual(['Manual', 'Sim', 'Não'])
   })
 
-  test('triagem de PR: comentários, publicados pela seção Publicado e votos', async () => {
+  test('triagem de PR: comentários e publicados pela seção Publicado', async () => {
     const t = parsePrTriage(
       [
         '## Comentários propostos', '| C | Origem | Sev. | PR | Arquivo:linha | Recomendação |', '|---|---|---|---|---|---|',
@@ -303,7 +300,6 @@ describe('painel v3', () => {
       ['C1', '8197', 'IMPORTANTE', 'x.cs:5183', 'R1-01,B1-01', true],
       ['C5', '8197', 'PENDENCIA', 'geral', 'R1 pendências', false],
     ])
-    expect(t?.votes).toEqual([])
     expect(parsePrTriage('## Votos sugeridos\n- 8197: -5')).toBeNull()
   })
 

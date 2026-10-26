@@ -34,13 +34,6 @@ e as palavras abaixo como estão.
 ### C2 — <…>
 > <…>
 
-## Votos
-
-| PR | Revisor | AiDW | Por quê |
-|---|---|---|---|
-| 8197 | 5 | 10 | C1 e C2 resolvidos; nada novo |
-| 8208 | 5 | sem voto | só a sugestão C3, que não vai |
-
 ## Fora das PRs
 
 - **S1-01 (Tech Lead):** <o que é e por que não vira comentário: padrão antigo, outro sistema, decisão de outra pessoa>
@@ -48,7 +41,7 @@ e as palavras abaixo como estão.
 ## Publicado
 
 - C1: PR 8197, thread 23720 (<quem aprovou, data>).
-- Voto PR 8197: 10 (<quem aprovou, data>). PR 8208: sem voto.
+- Aprovar PR 8197: sim, aprovada (<quem aprovou, data>). PR 8208: manual.
 ```
 
 ## As colunas
@@ -61,11 +54,13 @@ e as palavras abaixo como estão.
 - **Situação:** `a decidir`; `não publicado (rN)`, quando a decisão foi não publicar; `publicado (thread <id>)`; e, em
   rodada seguinte, `resolvido na rN` ou `continua aberto na rN` depois do publicado. Comentário novo de uma rodada
   seguinte entra com o próximo id livre.
-- **Votos:** o voto que o revisor sugeriu e o seu, na escala do contexto (no Azure DevOps, `10`, `5`, `-5`, `-10`), ou
-  `sem voto`. Uma linha por PR, inclusive a que não mudou na rodada.
+
+Não há voto nem escala de voto na triagem. A única pergunta além dos comentários é, por PR, **"Aprovar a PR?"**:
+`manual` (o padrão: o AiDW não aprova e o usuário decide na ferramenta), `sim` (o AiDW aprova) ou `não` (o AiDW não
+aprova). O painel pergunta; a triagem não sugere.
 
 ## Depois da revisão final
 
-Com o OK, publique exatamente o que foi aprovado (a referência do contexto diz como) e atualize a triagem: a
-*Situação* de cada comentário e a seção *Publicado*, com o id de cada thread e o voto dado. O painel conta como
-publicado o que esta tabela disser.
+Com o OK, publique exatamente o que foi aprovado e aprove só as PRs com `sim` (a referência do contexto diz como em
+cada ferramenta). Depois atualize a triagem: a *Situação* de cada comentário e a seção *Publicado*, com o id de cada
+thread e a aprovação de cada PR. O painel conta como publicado o que esta tabela disser.

@@ -41,8 +41,7 @@ worth telling the author, add `comment` — the draft of the PR comment: the fil
 line, the side (`right` = the PR's version, `git show <source>:<file>`; `left` = the target's, for removed code) and
 the text, in the user's language, at most ~5 lines, no greeting, stating the problem and the suggested fix. A finding
 that is not a regression of this PR (the pattern already existed) gets no comment unless the PR makes it worse.
-Suggest a `vote`: `approve` (nothing blocks), `approve_with_suggestions` (only SUGESTAO), `wait_for_author`
-(CRITICO or IMPORTANTE open). Later rounds (the author updated the PR) get the previous review and the diff of
+No vote: whether to approve the PR is the user's choice. Later rounds (the author updated the PR) get the previous review and the diff of
 only what changed: keep the IDs, set each `status` (`fixed` when the author fixed it) and review the new code.
 
 # PROCESS
@@ -67,20 +66,19 @@ Always finish with a single JSON block:
      "recommendation": "manter | descartar", "recommendation_why": "...",
      "comment": {"file": "src/WebSocketClient.ts", "line": 142, "side": "right | left", "text": "..."}}
   ],
-  "doubts": [{"id": "R1-D1", "question": "...", "options": ["..."], "recommendation": "..."}],
-  "vote": "approve | approve_with_suggestions | wait_for_author"
+  "doubts": [{"id": "R1-D1", "question": "...", "options": ["..."], "recommendation": "..."}]
 }
 ```
 
 - `state`: `review_findings` when any CRITICO, IMPORTANTE or SUGESTAO is `open` or any doubt is open (the user
-  decides them); otherwise `review_approved`. In a PR review, always `pr_review_done`; `comment` and `vote` only there.
+  decides them); otherwise `review_approved`. In a PR review, always `pr_review_done`; `comment` only there.
 - Severities, stable IDs and the rules for each finding: skill `code-review`. In later rounds keep the previous IDs
   and set `status` for each kept one.
 
 # RULES
 
 - Do not change code. Report only. The only file you write is the review file the task names.
-- Never comment on, vote on or complete a pull request, and never change a work item.
+- Never comment on, approve or complete a pull request, and never change a work item.
 - Every issue must point to a file and line, and cite the plan or the team standard when relevant.
 - At the end of the review, `## Base de conhecimento` with a trap of the system worth keeping for the next demand
   (same format as the explorer's), when there is one.

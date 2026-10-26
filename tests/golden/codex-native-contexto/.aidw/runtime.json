@@ -188,6 +188,5 @@
   },
   "max_retries": 3,
   "panel": true,
-  "external_steps": [],
-  "votes": []
+  "external_steps": []
 }

@@ -141,7 +141,7 @@ No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
   progresso, inclusive Code review e QA, agentes rodando e links), as abas de cada uso e Métricas.
   - **Desenvolver:** critérios, regras e cenários com a cobertura; revisão em cartões (antes e depois do código,
     recomendação do AiDW, decisão); diffs por arquivo com os achados; teste manual passo a passo.
-  - **Revisar PR:** achados com o comentário de cada um, o que publicar e o voto.
+  - **Revisar PR:** achados com o comentário de cada um, o que publicar e "Aprovar a PR?" (manual, sim, não).
   - **Levantamento:** card × código, estimativa e dúvidas.
 - **Métricas sozinhas:** cada delegação vira linha do `metricas.md` quando o agente termina.
 - **Travas da delegação:** a célula da tabela, o `model` sem pedido e o insumo colado são recusados; o laço de revisão
@@ -215,7 +215,7 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
 - **Limite de voltas:** o laço revisar ⇄ corrigir tem `max_retries`; esgotou, o orquestrador para e pergunta.
 
 Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
-comentário e um voto sugerido, e você escolhe o que é publicado ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
+comentário, e você escolhe o que é publicado e se o AiDW aprova a PR ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
 
 Para estimar um card antes de implementar, `/aidw:levantamento 1234`: um explorador valida cada ponto do card no código e
 mapeia o fluxo, e o orquestrador estima horas, story points e complexidade e lista as dúvidas em linguagem simples

@@ -139,28 +139,15 @@ when = "quando a demanda passa por ela e o que acontece antes e depois"   # vai 
 ```toml
 [mods]
 panel = false                     # desliga o painel lateral do aidw-mods (padrão: ligado)
-
-[[mods.votes]]                    # a escala de voto de PR (padrão: a do Azure DevOps, abaixo)
-value = "10"
-label = "Aprovar"
-[[mods.votes]]
-value = "5"
-label = "Aprovar com sugestões"
-[[mods.votes]]
-value = "-5"
-label = "Aguardar o autor"
-[[mods.votes]]
-value = "-10"
-label = "Rejeitar"
-more = true                       # fica em "Mais opções"
 ```
 
 O painel fica ligado em todo contexto: as abas mostram os artefatos do fluxo do AiDW (cobertura, revisão, roteiro
 manual, levantamento) e a que não tem dados some. Com `panel = false`, o contexto fica só com a faixa acima do prompt e
 o resto dos mods ([mods.md](mods.md#quando-ficam-ligados)).
-A escala de voto vale para a aba Comentários da revisão de PR: um voto por PR, as opções na ordem declarada, mais
-"Sem voto"; a triagem escreve o voto pelo `value` ou pelo `label` (referência *triagem-pr*). Um contexto no GitHub,
-por exemplo, declara `approve`/Aprovar, `comment`/Só comentar e `request_changes`/Pedir mudanças.
+Não há escala de voto para declarar: na revisão de PR o painel pergunta só "Aprovar a PR?" (Manual, o padrão; Sim;
+Não), igual em qualquer ferramenta. Como aprovar de fato fica na referência de revisão de PR do contexto (no Azure
+DevOps, o voto `10`; no GitHub, um review `APPROVE`; no GitLab, o approve do merge request). Um `[[mods.votes]]` que
+sobrou no `context.toml` só gera um aviso no `apply`.
 
 ### O que cada agente recebe
 
