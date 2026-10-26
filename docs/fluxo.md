@@ -129,9 +129,11 @@ autor; você escolhe o que é publicado. O procedimento completo está na refer�
 2. **Worktree da PR:** `aidw.py worktree create --repo <repo> --demand <id> --pr <n>` busca a PR já mesclada no destino,
    cria um worktree só leitura e grava `diff-pr<n>-<repo>.patch`. O orquestrador roda o build nele uma vez.
 3. **Revisão:** um revisor no modo PR (qualidade, bugs e segurança), com todas as PRs da demanda; cada achado vem com o
-   rascunho do comentário e a revisão traz um voto sugerido.
-4. **Revisão final:** por PR, os comentários propostos e o voto. Você escolhe, ajusta o texto e decide o voto; publicar
-   e votar são ações travadas. O estado do card nunca muda.
+   rascunho do comentário.
+4. **Revisão final:** por PR, os comentários propostos. Você escolhe o que publicar, ajusta o texto (ou pede para
+   melhorar) e responde "Aprovar a PR?": **Manual** (o padrão: você aprova ou não na ferramenta), **Sim** (o AiDW
+   aprova) ou **Não**. Não há escala de voto, o que vale igual no Azure DevOps, no GitHub e no GitLab. Publicar e
+   aprovar são ações travadas. O estado do card nunca muda.
 5. **O autor atualizou a PR:** o mesmo `worktree create --pr <n>` grava o diff só do que mudou, e um revisor novo
    confere com os mesmos IDs.
 

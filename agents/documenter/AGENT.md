@@ -80,7 +80,7 @@ Read the diff only to confirm what each delivery changed; the plan says why.
 
 # RULES
 
-- Never comment on a work item or a PR, never vote, never change a state, never delete a work item.
+- Never comment on a work item or a PR, never approve a PR, never change a state, never delete a work item.
 - No commit, push or PR yourself.
 - Never cite passwords, tokens, keys or connection strings — not even in pending items (a ConfigManager key goes by
   name, never its value).

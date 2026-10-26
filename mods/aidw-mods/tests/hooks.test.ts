@@ -277,7 +277,7 @@ test('travas: variante fora da tabela e model sem pedido são recusados', async 
   expect(f.runs).toEqual([])
 })
 
-test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, on) => {
+test('revisão de PR: achados, aprovação e a decisão vai para o prompt', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'pr-7' })
   await $.session.start(START('pr-7'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
@@ -291,17 +291,19 @@ test('revisão de PR: achados, voto e a decisão vai para o prompt', async ($, o
   await pane.press({ key: 'pp-R1-01' })
   await pane.press({ key: 'pp-R1-02' })
   expect(await pane.find({ key: 'pt-publicar' })).toBeDefined()
-  await pane.press({ key: 'vote-approve_with_suggestions' })
   await pane.press({ key: 'pr-decision' })
   expect(f.fills.at(-1)).toContain('Publicar: R1-01, R1-02')
-  expect(f.fills.at(-1)).toContain('Voto: Aprovar com sugestões (5)')
+  expect(f.fills.at(-1)).toContain('Aprovar a PR: manual (não aprove; eu decido na ferramenta).')
+  await pane.press({ key: 'ap-unica-sim' })
+  await pane.press({ key: 'pr-decision' })
+  expect(f.fills.at(-1)).toContain('Aprovar a PR: sim (aprove a PR).')
   await pane.press({ key: 'tab-diffs' })
   await pane.press({ key: 'diff-source-patch:diff-pr7-Hope-r2.patch' })
   await has(pane, /1 arquivo · \+1 −1/)
   await pane.unmount()
 })
 
-test('revisão de PR com triagem: comentários por PR, voto por PR e a decisão vai para o prompt', async ($, on) => {
+test('revisão de PR com triagem: comentários por PR, aprovação por PR e a decisão vai para o prompt', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'pr-8' })
   await $.session.start(START('pr-8'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
@@ -312,13 +314,13 @@ test('revisão de PR com triagem: comentários por PR, voto por PR e a decisão 
   await pane.press({ key: 'pt-todos' })
   await has(pane, /^publicado \(thread 1\), resolvido na r2$/)
   await has(pane, /^junta R1-01 · B1-01$/)
-  // o voto de cada PR vem da triagem: as duas sugestões, e o AiDW pré-marcado
-  await has(pane, /^Revisor: Aprovar com sugestões · AiDW: Aprovar · C1 resolvido$/)
+  // "Aprovar a PR?" por PR, manual quando você não escolhe
+  await has(pane, /^Aprovar a PR 8\?$/)
   await pane.press({ key: 'pp-C2' })
-  await pane.press({ key: 'vote-8-5' })
+  await pane.press({ key: 'ap-8-sim' })
   await pane.press({ key: 'pr-decision' })
-  expect(f.fills.at(-1)).toContain('PR 8: publicar C2; não publicar nenhum; voto: Aprovar com sugestões (5).')
-  expect(f.fills.at(-1)).toContain('PR 9: publicar nenhum; não publicar C3; voto: sem voto.')
+  expect(f.fills.at(-1)).toContain('PR 8: publicar C2; não publicar nenhum; aprovar: sim (aprove a PR).')
+  expect(f.fills.at(-1)).toContain('PR 9: publicar nenhum; não publicar C3; aprovar: manual (não aprove; eu decido na ferramenta).')
   await pane.unmount()
 })
 

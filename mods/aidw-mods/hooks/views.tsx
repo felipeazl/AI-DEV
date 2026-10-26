@@ -5,7 +5,7 @@ import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, DiffView, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { CONTEXT_WARN, compact } from './aidw'
-import { KIND_LABEL, VOTES, voteIn } from './artifacts'
+import { APPROVALS, KIND_LABEL, approvalOf } from './artifacts'
 import { LOOP_STEPS, stateLabel } from './snapshot'
 
 type Desktop = Elements['desktop']
@@ -24,8 +24,8 @@ export type Actions = {
   toggleFilters: () => void
   sendReviewDecisions: () => void
   togglePublish: (id: string, value: boolean) => void
-  vote: (value: string) => void
-  votePr: (pr: string, value: string) => void
+  /** "Aprovar a PR?": `manual`, `sim` ou `nao`; `pr` vazio na revisão antiga, sem triagem. */
+  approve: (pr: string, value: string) => void
   sendPrDecision: () => void
   adjustInChat: (text: string) => void
   draft: (key: string, value: string) => void
@@ -44,9 +44,8 @@ export type ViewState = {
   now: number
   tab: string
   publish: Record<string, boolean>
-  vote: string
-  /** O voto escolhido por PR; sem escolha, vale a sugestão da triagem. */
-  votes: Record<string, string>
+  /** "Aprovar a PR?" por PR; sem escolha, manual. */
+  approvals: Record<string, string>
   drafts: Record<string, string>
   diff: DiffView | null
   usage: Usage | null
@@ -1446,7 +1445,7 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   )
 }
 
-// --- Revisão de PR sem triagem no formato triagem-pr (demandas antigas): achados e um voto ---------------------
+// --- Revisão de PR sem triagem no formato triagem-pr (demandas antigas): achados e uma aprovação ---------------
 
 /** Os achados da última rodada de uma revisão de PR (sem plano nem elogio). */
 function prList(s: Snapshot): Finding[] {
@@ -1470,7 +1469,6 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
   const tab = tabs.find(t => t.id === v.decisionTab) ?? tabs[0]
   const shown = inRound.filter(f => tab?.has(f))
   const toPublish = inRound.filter(f => choice(f) === true).length
-  const suggested = VOTES.find(o => o.value === v.vote)
   return (
     <Box flexDirection="column" gap={1}>
       <Box gap={1} flexWrap="wrap">
@@ -1543,33 +1541,10 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
           </Box>
         )
       })}
-      {card(
-        ui,
-        'vote',
-        'Voto',
-        <Box flexDirection="column" gap={1}>
-          <Box gap={1}>
-            {VOTES.map(o =>
-              o.value === v.vote ? (
-                <Button key={`vote-${o.value}`} label={`● ${o.label}`} onPress={() => act.vote(o.value)} />
-              ) : (
-                <Button key={`vote-${o.value}`} label={o.label} plain dimColor onPress={() => act.vote(o.value)} />
-              ),
-            )}
-          </Box>
-          {s.vote && (
-            <Text>
-              <Text color={C.claude} bold>
-                Sugerido pelo revisor{' '}
-              </Text>
-              {s.vote}
-            </Text>
-          )}
-        </Box>,
-      )}
+      {approvalCard(ui, v, act, '')}
       <Box justifyContent="space-between" alignItems="center">
         <Text color={C.dim}>
-          {toPublish} comentário(s) para publicar · voto: {suggested?.label ?? 'escolha um'} · nada sai até você enviar
+          {toPublish} comentário(s) para publicar · aprovar: {approvalLabel(approvalOf(v.approvals, '')).toLowerCase()} · nada sai até você enviar
         </Text>
         <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />
       </Box>
@@ -1585,21 +1560,14 @@ const PR_SEV: Record<string, { label: string; color: string }> = {
   PENDENCIA: { label: 'Pendências QA', color: C.dim },
 }
 
-/** O voto de uma PR: o escolhido; sem escolha, a sugestão do AiDW, senão a do revisor; sem nenhuma, vazio. */
-export function prVoteOf(s: Snapshot, chosen: Record<string, string>, pr: string): string {
-  if (chosen[pr] !== undefined) return chosen[pr] ?? ''
-  const v = s.prTriage?.votes.find(x => x.pr === pr)
-  return v ? voteIn(v.aidw, s.votes) || voteIn(v.reviewer, s.votes) : ''
-}
-
-const voteLabel = (s: Snapshot, value: string) => (value === 'none' ? 'Sem voto' : s.votes.find(o => o.value === value)?.label ?? value)
+const approvalLabel = (value: string) => APPROVALS.find(o => o.value === value)?.label ?? value
+const approvalText = (value: string) => APPROVALS.find(o => o.value === value)?.text ?? value
 
 /** As PRs da demanda: as da triagem e as do demand.json, sem repetir. */
 function prsOf(s: Snapshot): { pr: string; repo: string }[] {
   const out = new Map<string, string>()
   for (const r of s.repos) if (r.pr) out.set(r.pr, r.name)
   for (const c of s.prTriage?.comments ?? []) if (c.pr && !out.has(c.pr)) out.set(c.pr, '')
-  for (const v of s.prTriage?.votes ?? []) if (v.pr && !out.has(v.pr)) out.set(v.pr, '')
   return [...out].map(([pr, repo]) => ({ pr, repo }))
 }
 
@@ -1617,7 +1585,6 @@ function PrComments(ui: UI, v: ViewState, act: Actions) {
   const pending = tri.comments.filter(c => filters[0]?.has(c)).length
   const filter = filters.find(f => f.id === v.decisionTab) ?? (pending ? filters[0] : filters[2])
   const prs = prsOf(s)
-  const missingVote = prs.filter(p => !prVoteOf(s, v.votes, p.pr))
   const toPublish = tri.comments.filter(c => !c.published && (choice(c.id) ?? false))
   return (
     <Box flexDirection="column" gap={1}>
@@ -1647,7 +1614,7 @@ function PrComments(ui: UI, v: ViewState, act: Actions) {
               </Text>
             </Box>
             {list.map(c => prCommentCard(ui, v, act, c))}
-            {prVoteCard(ui, v, act, pr)}
+            {approvalCard(ui, v, act, pr)}
           </Box>
         )
       })}
@@ -1676,13 +1643,11 @@ function PrComments(ui: UI, v: ViewState, act: Actions) {
         )}
       <Box justifyContent="space-between" alignItems="center" gap={2}>
         <Box flexShrink={1}>
-          <Text color={missingVote.length ? C.amber : C.dim}>
-            {missingVote.length
-              ? `Escolha o voto da PR ${missingVote.map(p => p.pr).join(' e da PR ')}.`
-              : `${prs.map(p => `${p.pr}: ${voteLabel(s, prVoteOf(s, v.votes, p.pr)).toLowerCase()}`).join(' · ')} · ${toPublish.length} comentário(s) para publicar · nada sai até você enviar`}
+          <Text color={C.dim}>
+            {`${prs.map(p => `${p.pr}: aprovar ${approvalLabel(approvalOf(v.approvals, p.pr)).toLowerCase()}`).join(' · ')} · ${toPublish.length} comentário(s) para publicar · nada sai até você enviar`}
           </Text>
         </Box>
-        {!missingVote.length && <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />}
+        <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />
       </Box>
     </Box>
   )
@@ -1757,42 +1722,26 @@ function prCommentCard(ui: UI, v: ViewState, act: Actions, c: PrComment) {
   )
 }
 
-function prVoteCard(ui: UI, v: ViewState, act: Actions, pr: string) {
+/** "Aprovar a PR?": Manual (o padrão: você decide na ferramenta), Sim (o AiDW aprova) ou Não. */
+function approvalCard(ui: UI, v: ViewState, act: Actions, pr: string) {
   const { Box, Text, Button } = ui
-  const s = v.snap
-  const sug = s.prTriage?.votes.find(x => x.pr === pr)
-  const reviewer = sug ? voteIn(sug.reviewer, s.votes) : ''
-  const aidw = sug ? voteIn(sug.aidw, s.votes) : ''
-  const current = prVoteOf(s, v.votes, pr)
-  const more = v.expanded[`more:${pr}`] || s.votes.some(o => o.more && o.value === current)
-  const options = [...s.votes.filter(o => !o.more || more), { value: 'none', label: 'Sem voto' }]
-  const tag = (value: string) => [aidw === value && 'AiDW', reviewer === value && 'revisor'].filter(Boolean).join(' e ')
+  const current = approvalOf(v.approvals, pr)
+  const id = pr || 'unica'
   return card(
     ui,
-    `pv-${pr}`,
-    `Voto na PR ${pr}`,
+    `apr-${id}`,
+    pr ? `Aprovar a PR ${pr}?` : 'Aprovar a PR?',
     <Box flexDirection="column" gap={1}>
-      {sug ? (
-        <Text color={C.dim}>
-          {[reviewer && `Revisor: ${voteLabel(s, reviewer)}`, aidw && `AiDW: ${voteLabel(s, aidw)}`, sug.why].filter(Boolean).join(' · ')}
-        </Text>
-      ) : (
-        <Text color={C.amber}>A triagem não sugere voto para esta PR: escolha um.</Text>
-      )}
       <Box gap={1} flexWrap="wrap">
-        {options.map(o => {
-          const t = tag(o.value)
-          const label = `${o.value === current ? '● ' : ''}${o.label}${t ? ` (${t})` : ''}`
-          return o.value === current ? (
-            <Button key={`vote-${pr}-${o.value}`} label={label} onPress={() => act.votePr(pr, o.value)} />
+        {APPROVALS.map(o =>
+          o.value === current ? (
+            <Button key={`ap-${id}-${o.value}`} label={`● ${o.label}`} onPress={() => act.approve(pr, o.value)} />
           ) : (
-            <Button key={`vote-${pr}-${o.value}`} label={label} plain dimColor onPress={() => act.votePr(pr, o.value)} />
-          )
-        })}
-        {!more && s.votes.some(o => o.more) && (
-          <Button key={`vote-more-${pr}`} label="Mais opções" plain dimColor onPress={() => act.expand(`more:${pr}`)} />
+            <Button key={`ap-${id}-${o.value}`} label={o.label} plain dimColor onPress={() => act.approve(pr, o.value)} />
+          ),
         )}
       </Box>
+      <Text color={C.dim}>Manual: o AiDW não aprova, você decide na ferramenta. Sim: o AiDW aprova. Não: não aprova.</Text>
     </Box>,
   )
 }
@@ -2064,26 +2013,25 @@ function rangeBar(ui: UI, key: string, from: number, to: number) {
 // ---------------------------------------------------------------------------------------------------------------
 // Textos que os botões mandam ao orquestrador
 
-export function prDecisionText(s: Snapshot, publish: Record<string, boolean>, vote: string, drafts: Record<string, string> = {}): string {
+export function prDecisionText(s: Snapshot, publish: Record<string, boolean>, approvals: Record<string, string>, drafts: Record<string, string> = {}): string {
   const list = s.findings.filter(f => f.source !== 'plano' && f.severity !== 'ELOGIO')
   const round = Math.max(0, ...list.map(f => f.round))
   const shown = list.filter(f => f.round === round && !f.published)
   const yes = shown.filter(f => publish[f.id] === true)
   const no = shown.filter(f => publish[f.id] === false).map(f => f.id)
   const edited = yes.filter(f => drafts[`comentario-${f.id}`] && drafts[`comentario-${f.id}`] !== f.comment)
-  const label = VOTES.find(o => o.value === vote)?.label ?? 'nenhum escolhido (não vote)'
   return [
     `Revisão final da PR (${s.id}, rodada ${round}):`,
     `- Publicar: ${yes.map(f => f.id).join(', ') || 'nenhum'} (com o texto dos rascunhos${edited.length ? ', exceto os editados abaixo' : ' como está'}).`,
     ...edited.map(f => `  - ${f.id}, texto editado: ${drafts[`comentario-${f.id}`]}`),
     `- Não publicar: ${no.join(', ') || 'nenhum'}.`,
-    `- Voto: ${label}.`,
-    'Pode publicar e votar exatamente isso.',
+    `- Aprovar a PR: ${approvalText(approvalOf(approvals, ''))}.`,
+    'Pode publicar exatamente isso.',
   ].join('\n')
 }
 
-/** A decisão da revisão de PR, PR por PR: o que publicar (com os textos editados) e o voto. */
-export function prTriageDecisionText(s: Snapshot, publish: Record<string, boolean>, chosen: Record<string, string>, drafts: Record<string, string> = {}): string {
+/** A decisão da revisão de PR, PR por PR: o que publicar (com os textos editados) e se o AiDW aprova. */
+export function prTriageDecisionText(s: Snapshot, publish: Record<string, boolean>, approvals: Record<string, string>, drafts: Record<string, string> = {}): string {
   const tri = s.prTriage
   if (!tri) return ''
   const lines = [`Revisão final da PR (${s.id}, rodada ${tri.round}):`]
@@ -2092,18 +2040,16 @@ export function prTriageDecisionText(s: Snapshot, publish: Record<string, boolea
     const yes = open.filter(c => publish[c.id] === true)
     const no = open.filter(c => publish[c.id] === false || (publish[c.id] === undefined && c.declined)).map(c => c.id)
     const undecided = open.filter(c => publish[c.id] === undefined && !c.declined).map(c => c.id)
-    const vote = prVoteOf(s, chosen, pr)
-    const voteText = vote === 'none' ? 'sem voto' : `${voteLabel(s, vote)} (${vote})`
     lines.push(
       `- PR ${pr}: publicar ${yes.map(c => c.id).join(', ') || 'nenhum'}; não publicar ${no.join(', ') || 'nenhum'}` +
-        `${undecided.length ? `; sem decisão, não publicar: ${undecided.join(', ')}` : ''}; voto: ${voteText}.`,
+        `${undecided.length ? `; sem decisão, não publicar: ${undecided.join(', ')}` : ''}; aprovar: ${approvalText(approvalOf(approvals, pr))}.`,
     )
     for (const c of yes) {
       const text = drafts[`comentario-${c.id}`]
       if (text && text !== c.draft) lines.push(`  - ${c.id}, texto editado: ${text}`)
     }
   }
-  lines.push('Publique e vote exatamente isso; depois atualize a Situação e o Publicado na triagem.')
+  lines.push('Publique exatamente isso (e aprove só as PRs com "sim"); depois atualize a Situação e o Publicado na triagem.')
   return lines.join('\n')
 }
 

@@ -1,10 +1,9 @@
 // O retrato da demanda que os painéis e a faixa mostram, montado a partir dos arquivos da pasta. Puro: `wanted` diz
 // quais arquivos ler, o register.tsx lê e entrega os textos, `buildSnapshot` monta.
 
-import type { CoverageItem, Finding, ManualStep, PrTriage, Repo, Snapshot, VoteOption } from '../types'
+import type { CoverageItem, Finding, ManualStep, PrTriage, Repo, Snapshot } from '../types'
 import { budgetFor, parseDelegations, parseOrchestrator, roundFor } from './aidw'
 import {
-  DEFAULT_VOTES,
   decisionOf,
   groupArtifacts,
   kindOf,
@@ -27,7 +26,6 @@ import {
   parseTestMatrix,
   parseTriage,
   parseVerdicts,
-  parseVote,
   progress,
   timeline,
   waitingFor,
@@ -85,8 +83,6 @@ export type SnapshotInput = {
   maxRetriesPlan?: number
   /** Etapas de fora do contexto (`runtime.json` → `external_steps`). */
   externalSteps?: ExternalStep[]
-  /** A escala de voto do contexto (`runtime.json` → `votes`); sem ela, a do Azure DevOps. */
-  votes?: VoteOption[]
 }
 
 /** A triagem da última rodada de uma revisão de PR, quando segue a referência *triagem-pr*. */
@@ -192,7 +188,6 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     pr: r.pr ?? '',
     source: r.source ?? '',
   }))
-  const reviews = files.filter(f => REVIEW.test(f)).sort((a, b) => Number(REVIEW.exec(a)?.[1]) - Number(REVIEW.exec(b)?.[1]))
 
   return {
     dir,
@@ -220,9 +215,7 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     orchestrator: parseOrchestrator(text('metricas-orquestrador.md')),
     budget: budgetFor(level),
     findings,
-    vote: parseVote(text(reviews.at(-1))),
     prTriage: prTriageOf(kind, files, f => text(f)),
-    votes: input.votes?.length ? input.votes : DEFAULT_VOTES,
     criteria,
     coverage,
     coverageRecorded: !!coverageFile || !!planText,
@@ -318,7 +311,7 @@ export function nextStep(s: Snapshot, limit: number): { you: boolean; text: stri
         you: true,
         text:
           s.kind === 'pr-review'
-            ? 'Escolha o que publicar e o voto de cada PR na aba Comentários.'
+            ? 'Escolha o que publicar e se o AiDW aprova cada PR na aba Comentários.'
             : s.kind === 'levantamento'
               ? 'Confira a estimativa e as dúvidas e diga se publica o comentário no card.'
               : 'Confira a entrega (abas Critérios e Diffs) e diga no chat se aprova; depois, `/aidw:done` fecha a demanda.',
