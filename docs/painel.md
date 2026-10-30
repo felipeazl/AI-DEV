@@ -49,8 +49,8 @@ AiDW it-101662 Revisar   ● codificador · otimizacao-r2 · 2m10s   contexto �
 - **O que mostra:** AiDW, o id da demanda e a etapa atual (com o modelo na frente quando não é desenvolvimento:
   "Revisão de PR · Revisão final"); os agentes rodando (nome, tarefa, tempo), com o ponto laranja, antes das medidas;
   o contexto em tokens e o 7d e o 5h em %, cada um com barra fina. Sem agente rodando, essa parte some.
-- **Contexto:** em tokens, não em % da janela (1M): cada ação do orquestrador relê a conversa inteira, então o que
-  pesa é o tamanho. A barra enche em 250k e fica amarela daí em diante (o ponto em que o mod sugere `/compact`).
+- **Contexto:** em % da janela real do modelo, como o Claude mostra, com os tokens ao lado (`12% · 120k`); amarelo a
+  partir de 80%. A compactação é sua, ou a do mod depois de 50 min parado (docs/mods.md, *Contexto enxuto*).
 - **7d e 5h a partir de 80%:** a barra e o número ficam amarelos, com a hora local em que a janela renova
   ("91% · renova 18:10"; com o dia, quando não é hoje). **No limite (100%)**, vermelho: "limite · volta 18:10".
 - **Dados:** contexto e janelas de uso em `$.session.usage()` (`context`, `rateLimits` `five_hour`/`seven_day`, só em

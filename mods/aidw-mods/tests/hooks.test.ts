@@ -197,7 +197,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
   const blocked = await $.tool.call(delegation())
   expect(why(blocked)).toContain('Liberar +1 rodada')
   expect(f.runs).toEqual([])
-  const extra = { command: 'aidw-rodada', args: '' } as never
+  const extra = { command: 'rodada', args: '' } as never
   await $.command.run(extra)
   await $.command.run(extra)
 
@@ -215,7 +215,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     const band = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'AbovePrompt', props: PROPS_BAND })
     await has(band, /^us-1$/)
     await has(band, /contexto/)
-    await has(band, /^82k$/) // o contexto em tokens, não em % da janela
+    await has(band, /^41% · 82k$/) // o contexto em % da janela real, com os tokens
     await has(band, /^58%$/)
     // a hora é a local (o resetsAt vem em UTC), com o dia na frente quando não é hoje
     const reset = new Date('2026-10-14T16:40:00Z')
@@ -259,7 +259,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
   }
 })
 
-test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:orquestrar', async ($, on) => {
+test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:go', async ($, on) => {
   fake(on, { orchestrating: true, demand: 'us-1', argument: 'us-1', cwd: 'C:/AiDW/contexts/x' })
   await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW/contexts/x' })
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
@@ -342,15 +342,15 @@ test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   await pane.unmount()
 })
 
-test('contexto sem painel: a faixa aparece, o painel não abre e /aidw-painel explica', async ($, on) => {
+test('contexto sem painel: a faixa aparece, o painel não abre e /painel explica', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1', panel: false })
   await $.session.start(START('us-1'))
   expect(f.opens).toBe(0)
   const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
   await has(band, /^us-1$/)
-  await has(band, /^82k$/)
+  await has(band, /^41% · 82k$/)
   await band.unmount()
-  const r = await $.command.run({ command: 'aidw-painel', args: '' } as never)
+  const r = await $.command.run({ command: 'painel', args: '' } as never)
   expect(JSON.stringify(r)).toContain('painel está desligado')
   expect(f.opens).toBe(0)
   // as travas continuam: a us-1 está no limite de rodadas
@@ -380,7 +380,9 @@ const TURN = (cacheRead: number) => ({
   usage: { model: 'claude-opus-5-5', input_tokens: 3, output_tokens: 700, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 10_000 },
 })
 
-test('fim de turno numa espera longa: grava o turno do orquestrador e compacta uma vez', async ($, on) => {
+const IDLE = 50 * 60_000
+
+test('fim de turno parado: grava o turno do orquestrador e compacta uma vez depois de 50 min', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'pr-7', contextTokens: 300_000 })
   const compactions: string[] = []
   on('session.compact', ($, e) => {
@@ -393,16 +395,17 @@ test('fim de turno numa espera longa: grava o turno do orquestrador e compacta u
   for (const [flag, value] of [['--demand', `${STATE}/pr-7`], ['--session', SESSION], ['--model', 'claude-opus-5-5'], ['--cache-read', '290000'], ['--cache-write', '10000'], ['--output', '700']] as const) {
     expect(rec[rec.indexOf(flag) + 1]).toBe(value)
   }
-  expect(compactions).toEqual([]) // só entre turnos, logo depois deste
+  await f.clock.advance(IDLE - 1_000)
+  expect(compactions).toEqual([]) // ainda não deu o tempo
   await f.clock.advance(1_000)
   expect(compactions.length).toBe(1)
   expect(compactions[0]).toContain('FINAL_REVIEW')
-  await $.turn.complete(TURN(295_000))
-  await f.clock.advance(1_000)
-  expect(compactions.length).toBe(1) // a mesma espera não compacta de novo
+  expect(f.toasts.some(t => t.includes('compactado depois de um tempo parado'))).toBe(true)
+  await f.clock.advance(IDLE)
+  expect(compactions.length).toBe(1) // só uma vez por pausa
 })
 
-test('fim de turno com contexto alto fora de espera: sugere /compact uma vez, sem compactar', async ($, on) => {
+test('mensagem nova antes dos 50 min: não compacta', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1', contextTokens: 300_000 })
   const compactions: string[] = []
   on('session.compact', ($, e) => {
@@ -411,35 +414,23 @@ test('fim de turno com contexto alto fora de espera: sugere /compact uma vez, se
   })
   await $.session.start(START('us-1'))
   await $.turn.complete(TURN(290_000))
-  await $.turn.complete(TURN(295_000))
-  await f.clock.advance(1_000)
-  expect(f.toasts.filter(t => t.includes('/compact')).length).toBe(1)
-  expect(f.toasts.find(t => t.includes('/compact'))).toContain('300k tokens')
+  await f.clock.advance(IDLE / 2)
+  await $.prompt.submit({ text: 'segue', origin: { kind: 'composer' } } as never)
+  await f.clock.advance(IDLE)
   expect(compactions).toEqual([])
 })
 
-test('troca de etapa com contexto alto: compacta uma vez entre turnos', async ($, on) => {
-  const f = fake(on, { orchestrating: true, demand: 'us-1', contextTokens: 300_000 })
+test('contexto pequeno parado: não compacta', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', contextTokens: 60_000 })
   const compactions: string[] = []
   on('session.compact', ($, e) => {
     compactions.push(e.instructions ?? '')
-    return { messages: [{ role: 'user', text: 'resumo da conversa', toolUses: [] }] as never, tokensBefore: 300_000, tokensAfter: 40_000 }
+    return { messages: [] }
   })
   await $.session.start(START('us-1'))
-  await $.turn.complete(TURN(290_000)) // CODER_FIX: a primeira etapa vista não é troca
-  await f.clock.advance(1_000)
+  await $.turn.complete(TURN(55_000))
+  await f.clock.advance(IDLE)
   expect(compactions).toEqual([])
-  const file = `${STATE}/us-1/demand.json`
-  f.files[file] = JSON.stringify({ ...JSON.parse(f.files[file] ?? '{}'), step: 'REVIEW' })
-  await $.turn.complete(TURN(295_000))
-  await f.clock.advance(1_000)
-  expect(compactions.length).toBe(1)
-  expect(compactions[0]).toContain('troca de etapa')
-  expect(compactions[0]).toContain('REVIEW')
-  expect(f.toasts.some(t => t.includes('compactado na troca de etapa (REVIEW)'))).toBe(true)
-  await $.turn.complete(TURN(296_000))
-  await f.clock.advance(1_000)
-  expect(compactions.length).toBe(1) // a mesma etapa não compacta de novo
 })
 
 test('agente em segundo plano: grava o contexto da última resposta, não a soma do turno', async ($, on) => {
@@ -470,7 +461,7 @@ test('agente em segundo plano: grava o contexto da última resposta, não a soma
     return next(e)
   })
   await $.session.start(START('us-1'))
-  const extra = { command: 'aidw-rodada', args: '' } as never
+  const extra = { command: 'rodada', args: '' } as never
   await $.command.run(extra)
   await $.command.run(extra)
 
