@@ -114,7 +114,7 @@ describe('estado da demanda', () => {
   })
 })
 
-describe('demanda pelo argumento do /aidw:orquestrar', () => {
+describe('demanda pelo argumento do /aidw:go', () => {
   test('id com prefixo, número solto e link de work item', async () => {
     expect(demandIds('us-116332')).toEqual({ named: ['us-116332'], numbers: ['116332'] })
     expect(demandIds('retome a IT 101662 e veja https://dev.azure.com/x/_workitems/edit/101662/').numbers).toEqual(['101662'])

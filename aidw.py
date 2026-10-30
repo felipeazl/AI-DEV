@@ -1417,8 +1417,8 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "`model` the user did not ask for, missing task/folder, a pasted input, a loop past `max_retries`) comes back denied with "
             "`AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the "
             "limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or "
-            "`/aidw-rodada`).",
-            "  - The user may answer through the AiDW panel (`/aidw-painel`): a manual-test step arrives as "
+            "`/rodada`).",
+            "  - The user may answer through the AiDW panel (`/painel`): a manual-test step arrives as "
             "`Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and "
             "the PR decision or the card comment as a message they sent. They are the user's own words: record "
             "and act on them as if typed.",
@@ -1562,7 +1562,7 @@ def orchestrator_reference_section(refs: dict[str, dict], ref_dir: Path = GEN_RE
 def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
                         skills: dict, routing: dict, refs: dict[str, dict] | None = None, ns: str = "",
                         ref_dir: Path = GEN_REF_DIR, survey: bool = False) -> str:
-    """O CLAUDE.md/AGENTS.md (e a skill orquestrar); com `survey`, o prompt enxuto da skill levantamento: só o
+    """O CLAUDE.md/AGENTS.md (e a skill go); com `survey`, o prompt enxuto da skill lev: só o
     explorador, sem os workflows, com o procedimento e a régua já dentro (nada a ler sob demanda)."""
     orch = resolved[ORCHESTRATOR]
     refs = refs or {}
@@ -1593,7 +1593,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
     cmd = "install" if ns else "apply"
     parts = [
-        f"<!-- {GENERATED_MARK} {cmd} — {('skill levantamento' if survey else 'skill orquestrar') if ns else source_file + ' do orquestrador'}; "
+        f"<!-- {GENERATED_MARK} {cmd} — {('skill lev' if survey else 'skill go') if ns else source_file + ' do orquestrador'}; "
         f"não edite. Fontes: orchestrator/{SURVEY_MD.name if survey else ORCHESTRATOR_MD.name}, orchestrator/policies/ "
         "e o contexto ativo; rode "
         f"`python aidw.py {cmd}` após alterá-las. -->",
@@ -2173,11 +2173,11 @@ def guard_skill(text: str) -> str:
 
 def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
                        provider: str = "claude", survey: bool = False) -> str:
-    """`orquestrar`, ou `levantamento` (survey): o orquestrador só do levantamento (`orchestrator_md` enxuto)."""
+    """`go`, ou `lev` (survey): o orquestrador só do levantamento (`orchestrator_md` enxuto)."""
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-sair" if codex else f"/{plugin}:sair"
-    name = "levantamento" if survey else "orquestrar"
+    name = "lev" if survey else "go"
     request = "o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"
     workspace = "" if survey else ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
@@ -2208,7 +2208,7 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "Demanda que já existe: se está em andamento (tem plano), faça o levantamento sem mudar `step` nem `status` "
         "dela; se já tem `levantamento-<id>.md`, refaça-o sobre o card atual, reaproveitando a exploração no que não "
         "mudou. Terminado, o modo orquestrador acaba junto; para implementar, o usuário chama "
-        f"`{'$aidw-orquestrar' if codex else '/' + plugin + ':orquestrar'} <id>`.", ""] if survey else []
+        f"`{'$aidw-go' if codex else '/' + plugin + ':go'} <id>`.", ""] if survey else []
     return "\n".join([
         "---", f"name: {CODEX_NS + name if codex else name}",
         f"description: {json.dumps(description, ensure_ascii=False)}",
@@ -2253,7 +2253,7 @@ def exit_skill(plugin: str, provider: str = "claude") -> str:
         "Saia do modo orquestrador AiDW. Se há uma demanda aberta nesta sessão, grave onde parou: "
         f"`{aidw_command(True)} demand set <id> --status paused --note \"<próximo passo>\"` e, se ajudar, um "
         "`estado.md` curto na pasta dela. Depois responda normalmente, sem as regras do orquestrador, até "
-        f"`{'$aidw-orquestrar' if codex else '/' + plugin + ':orquestrar'}` ser chamado de novo (ele retoma da etapa "
+        f"`{'$aidw-go' if codex else '/' + plugin + ':go'}` ser chamado de novo (ele retoma da etapa "
         "gravada).", "",
     ])
 
@@ -2345,10 +2345,10 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 if f.name == "SKILL.md":
                     data = guard_skill(data.decode("utf-8")).encode("utf-8")
                 files[f"{base}/skills/{name}/{f.relative_to(src).as_posix()}"] = data
-    put(f"{base}/skills/orquestrar/SKILL.md",
-        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "orquestrar" / "SKILL.md"))
-    put(f"{base}/skills/levantamento/SKILL.md",
-        orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "levantamento" / "SKILL.md",
+    put(f"{base}/skills/go/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "go" / "SKILL.md"))
+    put(f"{base}/skills/lev/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "lev" / "SKILL.md",
                            survey=True))
     put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin))
@@ -2637,7 +2637,7 @@ def install(cfg: dict, catalog: dict, dry: bool, force: bool, skip_cli: bool, wi
         return False
     save_manifest(cli_done=True)
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}. Em qualquer pasta, abra um chat novo e "
-          f"chame /{plugin}:orquestrar <demanda>.")
+          f"chame /{plugin}:go <demanda>.")
     return True
 
 
@@ -3368,7 +3368,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
 
 def exclude_root_claude_md(folder: Path) -> None:
     """Pasta de demanda dentro da raiz do AiDW: o chat aberto nela carregaria o CLAUDE.md do modo projeto além da
-    skill orquestrar, as mesmas regras duas vezes. O `.claude/settings.json` da pasta (lido da pasta da sessão)
+    skill go, as mesmas regras duas vezes. O `.claude/settings.json` da pasta (lido da pasta da sessão)
     exclui o da raiz; o que já estiver no arquivo fica."""
     try:
         folder.resolve().relative_to(ROOT)
@@ -3507,7 +3507,7 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     (sem regras, hooks nem perfil; ver docs/claude-e-codex.md)."""
     ccfg = json.loads(json.dumps(cfg))
     ccfg["provider"]["name"], ccfg["delegation"]["mode"] = "codex", "native"
-    ref_dir = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar" / "reference"
+    ref_dir = CODEX_SKILLS_HOME / f"{CODEX_NS}go" / "reference"
     sub = Report(quiet=True)  # avisos de modelo de outro provedor são esperados aqui (vale o tier do Codex)
     b = build(ccfg, catalog, sub, ns=CODEX_NS, ref_dir=ref_dir)
     for e in sub.errors:
@@ -3532,11 +3532,11 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / f.relative_to(src)] = data
         if read_frontmatter(src / "SKILL.md")[0].get("disable-model-invocation") == "true":  # só quando chamada
             files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
-    orq = CODEX_SKILLS_HOME / f"{CODEX_NS}orquestrar"
+    orq = CODEX_SKILLS_HOME / f"{CODEX_NS}go"
     files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
                                                  provider="codex").encode("utf-8")
     files[orq / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
-    lev = CODEX_SKILLS_HOME / f"{CODEX_NS}levantamento"
+    lev = CODEX_SKILLS_HOME / f"{CODEX_NS}lev"
     files[lev / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["survey_md"], lev / "SKILL.md",
                                                  provider="codex", survey=True).encode("utf-8")
     files[lev / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
@@ -3591,7 +3591,7 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
     rep.info("no Codex o AiDW é só agentes e skills: sem regras, hooks, guard, perfil nem MCP por agente "
              "(docs/claude-e-codex.md)")
     print(f"\nConcluído{' (nada foi alterado: dry-run)' if dry else ''}. No Codex: `python aidw.py open --provider codex` "
-          "e chame $aidw-orquestrar <demanda>.")
+          "e chame $aidw-go <demanda>.")
     return not rep.errors
 
 
@@ -3699,7 +3699,7 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         manifest = load_manifest()
         installed = bool(manifest.get("codex")) if provider == "codex" else bool(manifest.get("plugins"))
         if orchestrate and installed:
-            prompt = f"$aidw-orquestrar {demand}" if provider == "codex" else f"/{plugin_name()}:orquestrar {demand}"
+            prompt = f"$aidw-go {demand}" if provider == "codex" else f"/{plugin_name()}:go {demand}"
         elif orchestrate:
             print(f"[aviso] o AiDW não está instalado no {provider} (`aidw.py install --provider {provider}`): "
                   "abrindo sem chamar o orquestrador")
@@ -3709,7 +3709,7 @@ def open_command(cfg: dict, provider: str, demand: str, path: str, print_only: b
         return 1
     if app:  # app desktop do Codex: abre a pasta como workspace; a conversa começa vazia
         cmd = [exe, "app", str(target)]
-        print(f"[ok]    no app, comece a conversa com `{prompt or '$aidw-orquestrar <demanda>'}`")
+        print(f"[ok]    no app, comece a conversa com `{prompt or '$aidw-go <demanda>'}`")
         print(f"Abrindo o app do Codex em {target}: {subprocess.list2cmdline([Path(exe).stem, *cmd[1:]])}")
         return 0 if print_only else subprocess.run(cmd, cwd=target).returncode
     if provider == "codex":  # sem perfil do AiDW: só o subagente e a pasta do AiDW (artefatos da demanda) liberados

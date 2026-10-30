@@ -13,7 +13,7 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 | | Claude Code | Codex |
 |---|---|---|
 | O que o `install` instala | plugin `aidw` (agentes, skills, comandos, hooks), plugin `aidw-mods` e as regras do AiDW no `~/.claude/settings.json` | **só** agentes `aidw-*` (`~/.codex/agents`) e skills `aidw-*` (`~/.agents/skills`) |
-| Chamar o orquestrador | `/aidw:orquestrar`, `/aidw:levantamento`, `/aidw:sair`, `/aidw:done` | `$aidw-orquestrar`, `$aidw-levantamento`, `$aidw-sair`, `$aidw-done` |
+| Chamar o orquestrador | `/aidw:go`, `/aidw:lev`, `/aidw:sair`, `/aidw:done` | `$aidw-go`, `$aidw-lev`, `$aidw-sair`, `$aidw-done` |
 | Agentes | `aidw:<agente>`, uma variante por modelo e effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |
 | Workflows (feature, bugfix, refactor, hotfix, `pr-review`, `levantamento`), QA, revisão | ✅ | ✅ (pelas skills) |

@@ -4,7 +4,7 @@ Comece sempre pelo `.\doctor.ps1`: ele mostra o que falta e termina com **PRONTO
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `/aidw:orquestrar` não aparece | Plugin não instalado, ou chat aberto antes do install | `python aidw.py install` e um chat novo |
+| `/aidw:go` não aparece | Plugin não instalado, ou chat aberto antes do install | `python aidw.py install` e um chat novo |
 | Mudei a config e nada mudou | O chat carrega a definição ao abrir | `python aidw.py apply` e `install`, e um chat novo |
 | O Claude pede aprovação para um comando do `aidw.py` | Caminho escrito numa forma não liberada | Use `python "<raiz>/aidw.py" …`; rode `install` se as regras sumiram |
 | O painel de diff está vazio numa demanda com vários repositórios | O chat está na pasta da demanda, que não é um repositório | `/aidw:diff` para ir a um repositório |
@@ -13,8 +13,8 @@ Comece sempre pelo `.\doctor.ps1`: ele mostra o que falta e termina com **PRONTO
 | No Codex, `npm`/`node` falham com `EPERM` em `C:\Users\<você>` | O `node` do PATH mora no perfil do usuário (ex.: nvm), que o sandbox não lê | Instale um Node fora do perfil (ex.: em Program Files) e ponha-o na frente do PATH |
 | No Codex, o orquestrador não consegue chamar os agentes | `multi_agent_v2` desligado | Abra com `python aidw.py open --provider codex` ou ligue `[features] multi_agent_v2 = true` no `~/.codex/config.toml` |
 | O `doctor` fala em sobras de instalação antiga no Codex | Perfil `aidw`, `aidw.rules` ou hooks do AiDW de um install anterior | `python aidw.py install --provider codex` remove (o AiDW no Codex é só agentes e skills) |
-| Uma delegação volta recusada com `AiDW (trava da delegação)` | O `Agent` quebrou uma regra (célula da tabela, `model`, formato do prompt, insumo colado) ou o laço chegou ao `max_retries` | O motivo diz o que corrigir; para o limite de rodadas, só você libera: botão **Liberar +1 rodada** do painel ou `/aidw-rodada` ([mods.md](mods.md#travas-da-delegação)) |
-| A faixa do AiDW não aparece acima do prompt | Sessão fora do modo orquestrador, demanda em `DONE`, faixa escondida ou `aidw-mods` não instalado | `/aidw:orquestrar`; `/aidw-faixa`; `python aidw.py install` e um chat novo ([mods.md](mods.md)) |
+| Uma delegação volta recusada com `AiDW (trava da delegação)` | O `Agent` quebrou uma regra (célula da tabela, `model`, formato do prompt, insumo colado) ou o laço chegou ao `max_retries` | O motivo diz o que corrigir; para o limite de rodadas, só você libera: botão **Liberar +1 rodada** do painel ou `/rodada` ([mods.md](mods.md#travas-da-delegação)) |
+| A faixa do AiDW não aparece acima do prompt | Sessão fora do modo orquestrador, demanda em `DONE`, faixa escondida ou `aidw-mods` não instalado | `/aidw:go`; `/faixa`; `python aidw.py install` e um chat novo ([mods.md](mods.md)) |
 | O agente segue regras do orquestrador | `CLAUDE.md` do modo projeto carregado no agente | Já tratado com `omitClaudeMd`/`claudeMdExcludes`; reinstale |
 | Chat na pasta de estado da demanda com as regras do orquestrador duas vezes | A pasta fica dentro da raiz do AiDW: o `CLAUDE.md` do modo projeto entrava junto com a skill `orquestrar` | O `demand set` grava `.claude/settings.json` na pasta da demanda com `claudeMdExcludes`; vale no próximo chat aberto nela |
 | `dubious ownership` num agente Codex | O AiDW não configura o Git do Codex (só agentes e skills) | `git config --global --add safe.directory <pasta>` para a pasta do repositório ou do worktree |

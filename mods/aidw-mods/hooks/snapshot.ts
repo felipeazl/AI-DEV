@@ -288,7 +288,7 @@ export const LOOP_STEPS = new Set(['REVIEW', 'TRIAGE', 'CODER_FIX', 'PLAN_REVIEW
 
 /** O próximo passo em uma frase: o que você faz, ou o que o AiDW está fazendo. */
 export function nextStep(s: Snapshot, limit: number): { you: boolean; text: string } {
-  if (s.status === 'paused') return { you: true, text: `Pausada. \`/aidw:orquestrar ${s.id}\` retoma de onde parou.` }
+  if (s.status === 'paused') return { you: true, text: `Pausada. \`/aidw:go ${s.id}\` retoma de onde parou.` }
   if (s.step === 'DONE' || s.status === 'done')
     return { you: false, text: 'Concluída. Se ainda não rodou, `/aidw:done` grava o que ela ensinou na base de conhecimento.' }
   if (s.kind === 'desenvolvimento' && s.roundKind && s.round >= limit && LOOP_STEPS.has(s.step))
