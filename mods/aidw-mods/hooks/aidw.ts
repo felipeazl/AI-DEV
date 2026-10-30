@@ -102,18 +102,12 @@ export function parseDelegations(text: string): MetricsRow[] {
 }
 
 /**
- * O contexto do orquestrador em tokens: cada ação relê a conversa inteira, então o que pesa é o tamanho, não a
- * fração da janela (1M). A partir de CONTEXT_COMPACT ele compacta sozinho numa espera longa por você (a volta depois
- * de 1h regravaria o contexto inteiro no cache) e na troca de etapa; a partir de CONTEXT_WARN, sem nenhuma das duas,
- * sugere /compact.
+ * Compactação por ociosidade: IDLE_MS depois do fim de um turno do orquestrador sem mensagem nova, com o contexto em
+ * IDLE_MIN tokens ou mais, ele compacta sozinho — antes do cache de 1h expirar, para a volta não regravar a conversa
+ * inteira (Felipe, 2026-10-30: a regra antiga, por etapa e espera, não disparava).
  */
-export const CONTEXT_WARN = 250_000
-export const CONTEXT_COMPACT = 150_000
-/**
- * Etapas em que a demanda fica parada com você ou com o time: a leitura do plano, a sua revisão de código, o OK da PR
- * e as etapas de fora (o teste manual, passo a passo, e a triagem dos achados, rápida, não contam).
- */
-export const LONG_WAIT = new Set(['HUMAN_APPROVAL', 'PLAN_APPROVAL', 'USER_REVIEW', 'PR', 'FINAL_REVIEW', 'CODE_REVIEW', 'QA_TEST', 'UX_VALIDATION'])
+export const IDLE_MS = 50 * 60_000
+export const IDLE_MIN = 100_000
 
 /** As linhas do metricas-orquestrador.md (`aidw.py record-orchestrator`): o chat principal por sessão e modelo. */
 export function parseOrchestrator(text: string): OrchestratorUsage {
@@ -188,7 +182,7 @@ export function demandSetId(command: string): string | null {
 }
 
 /**
- * Os ids de demanda num texto (o argumento do `/aidw:orquestrar`): `us-116332`, `bug-143560`, e os números de work
+ * Os ids de demanda num texto (o argumento do `/aidw:go`): `us-116332`, `bug-143560`, e os números de work
  * item soltos ou num link (`.../edit/101662`), que acham a pasta `<tipo>-<número>`.
  */
 export function demandIds(text: string): { named: string[]; numbers: string[] } {

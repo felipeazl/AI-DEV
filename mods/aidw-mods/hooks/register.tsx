@@ -1,11 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { BuiltinToolResults, EngineInterface, Register, TurnUsage } from 'claude-code'
+import type { BuiltinToolResults, EngineInterface, Register, Timer, TurnUsage } from 'claude-code'
 
 import type { DiffView, Pending, ReviewFilter, Snapshot } from '../types'
 import {
-  CONTEXT_COMPACT,
-  CONTEXT_WARN,
-  LONG_WAIT,
+  IDLE_MIN,
+  IDLE_MS,
   compact,
   demandIds,
   demandSetId,
@@ -26,7 +25,7 @@ import type { Actions, UI } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
 // Ligado só no modo orquestrador: a sessão está no state/sessions.json, que o guard do AiDW grava ao
-// `/aidw:orquestrar` e `/aidw:levantamento` e apaga no `/aidw:sair` e no `/aidw:done`.
+// `/aidw:go` e `/aidw:lev` e apaga no `/aidw:sair` e no `/aidw:done`.
 const active = atom({ plugin: 'aidw-mods', key: 'active' } as const, false)
 const snap = atom({ plugin: 'aidw-mods', key: 'snap' } as const, null)
 const running = atom({ plugin: 'aidw-mods', key: 'running' } as const, [])
@@ -45,7 +44,6 @@ const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
 const warned = atom({ plugin: 'aidw-mods', key: 'warned' } as const, {})
-const lastStep = atom({ plugin: 'aidw-mods', key: 'lastStep' } as const, {})
 const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
 const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
 const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], open: false }
@@ -69,6 +67,8 @@ const userPrompts: string[] = []
 // Diffs já calculados, por fonte (o estado guarda só o arquivo aberto).
 const diffCache = new Map<string, DiffFile[]>()
 let kbCache: { name: string; folder: string; path: string }[] | null = null
+// A compactação por ociosidade agendada no fim do último turno; uma mensagem nova a cancela.
+let idleTimer: Timer | null = null
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 const under = (path: string, dir: string) => norm(path).toLowerCase().startsWith(`${norm(dir).toLowerCase()}/`)
@@ -95,10 +95,11 @@ async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
   // sem `variants` (um runtime.json de antes do fluxo v3), a trava fica desligada até o próximo `aidw.py apply`
   const variants = r.variants as Runtime['variants'] | undefined
   if (!variants) return null
-  const agents = Object.values((r.agents ?? {}) as Record<string, { name: string; enabled: boolean }>)
-    .filter(a => a.enabled && a.name !== 'orquestrador')
-    .map(a => a.name)
-  return { variants, maxRetries: Number(r.max_retries ?? 3), agents }
+  const on = Object.entries((r.agents ?? {}) as Record<string, { name: string; enabled: boolean }>)
+    .filter(([role, a]) => a.enabled && role !== 'orchestrator')
+  const agents = on.map(([, a]) => a.name)
+  const roles = Object.fromEntries(on.map(([role, a]) => [a.name, role]))
+  return { variants, maxRetries: Number(r.max_retries ?? 3), agents, roles }
 }
 
 /** Relê a demanda do disco e redesenha a faixa e o painel. */
@@ -170,7 +171,7 @@ async function fromCwd($: EngineInterface, cwd: string): Promise<string | null> 
 }
 
 /**
- * A demanda pelo que foi passado ao `/aidw:orquestrar` (`us-116332`, ou só o número), para a sessão aberta fora da
+ * A demanda pelo que foi passado ao `/aidw:go` (`us-116332`, ou só o número), para a sessão aberta fora da
  * pasta da demanda (chat sem pasta, ou na pasta do contexto).
  */
 async function fromArgument($: EngineInterface, argument: string): Promise<string | null> {
@@ -308,31 +309,33 @@ async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: num
 }
 
 /**
- * Compacta a conversa entre turnos: antes de uma espera longa por você (na volta, depois de 1h, o cache expirou e o
- * contexto inteiro seria regravado) ou na troca de etapa (cada ação relê a conversa inteira; o que passou está nos
- * arquivos). Se você já mandou outra mensagem, não compacta.
+ * Compacta a conversa parada há IDLE_MS (o agendamento do fim do turno; uma mensagem nova o cancela). Mede de novo:
+ * abaixo de IDLE_MIN não compensa.
  */
-async function compactBetweenTurns($: EngineInterface, id: string, step: string, before: number, wait: boolean): Promise<void> {
+async function compactIdle($: EngineInterface): Promise<void> {
+  idleTimer = null
+  if (!(await read($, active))) return
+  const before = await measure($)
+  if (before === null || before < IDLE_MIN) return
+  const s = await read($, snap)
   try {
     const r = await $.session.compact({
-      instructions: wait
-        ? `Compactação do AiDW antes de esperar o usuário na etapa ${step} da demanda ${id}. Mantenha o que está com ele ` +
-          '(a pergunta, a aprovação ou o pacote, com as opções e a recomendação) e as decisões ainda não gravadas; o resto ' +
-          'está nos arquivos da pasta da demanda.'
-        : `Compactação do AiDW na troca de etapa da demanda ${id} (agora ${step}). Mantenha a próxima ação, os agentes ` +
-          'em andamento (o que cada um faz e o arquivo da tarefa) e as decisões ainda não gravadas; o resto está nos ' +
-          'arquivos da pasta da demanda.',
+      instructions:
+        'Compactação do AiDW depois de um tempo parado' + (s ? `, na etapa ${s.step} da demanda ${s.id}` : '') + '. ' +
+        'Mantenha o que está com o usuário (a pergunta, a aprovação ou o pacote, com as opções e a recomendação), a ' +
+        'próxima ação, os agentes em andamento (o que cada um faz e o arquivo da tarefa) e as decisões ainda não ' +
+        'gravadas; o resto está nos arquivos da pasta da demanda.',
     })
     if (r.skip !== undefined) return
     const after = r.tokensAfter ? ` → ${compact(r.tokensAfter)}` : ''
-    const why = wait ? 'antes de esperar você' : `na troca de etapa (${step})`
-    $.ui.toast(`AiDW: contexto compactado ${why} (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
+    $.ui.toast(`AiDW: contexto compactado depois de um tempo parado (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
+    await measure($)
   } catch {
-    // um turno começou antes: a compactação fica para a próxima espera ou troca de etapa
+    // um turno começou antes: a compactação fica para a próxima pausa
   }
 }
 
-/** O fim de um turno do orquestrador: métrica do turno, contexto e espera por você. */
+/** O fim de um turno do orquestrador: métrica do turno, contexto e a compactação por ociosidade. */
 async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs: number }): Promise<void> {
   await refresh($)
   const before = await read($, snap)
@@ -341,31 +344,10 @@ async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs:
     await refresh($)
   }
   const s = await read($, snap)
-  const tokens = await measure($)
+  await measure($)
+  idleTimer?.cancel()
+  idleTimer = $.clock.after(IDLE_MS, () => void compactIdle($))
   if (!s) return
-  const previous = (await read($, lastStep))[s.id]
-  if (previous !== s.step) await update($, lastStep, m => ({ ...m, [s.id]: s.step }))
-  const stepChanged = previous !== undefined && previous !== s.step
-  if (tokens !== null) {
-    const key = `ctx:${s.id}`
-    const wait = LONG_WAIT.has(s.step) || s.progress.stages.some(x => x.state === 'com-time')
-    if (tokens < CONTEXT_COMPACT) {
-      if ((await read($, warned))[key]) await update($, warned, w => ({ ...w, [key]: false })) // compactou: avisa de novo
-    } else if (wait || stepChanged) {
-      const once = `compact:${s.id}:${s.step}:${s.delegations.length}` // uma vez por espera ou troca de etapa
-      if (!(await read($, warned))[once]) {
-        await update($, warned, w => ({ ...w, [once]: true }))
-        $.clock.after(1_000, () => void compactBetweenTurns($, s.id, s.step, tokens, wait))
-      }
-    } else if (tokens >= CONTEXT_WARN) {
-      await warnOnce(
-        $,
-        key,
-        `AiDW: o contexto do orquestrador está em ${compact(tokens)} tokens e cada ação relê tudo — ao virar de etapa, ` +
-          'rode /compact (o estado da demanda está nos arquivos)',
-      )
-    }
-  }
   if (s.waiting) await warnOnce($, `wait:${s.id}:${s.step}:${s.delegations.length}`, `AiDW: ${s.id} espera você — ${s.waiting}`)
 }
 
@@ -469,9 +451,9 @@ export const register: Register = (on, options) => {
     await checkActive($)
     const panel = await panelOn($)
     for (const command of [
-      { name: 'aidw-faixa', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
-      ...(panel ? [{ name: 'aidw-painel', description: 'Abre o painel do AiDW (geral, critérios, revisão, diffs, métricas…)', argumentHint: '[aba]' }] : []),
-      { name: 'aidw-rodada', description: 'Libera mais uma rodada no laço de revisão travado pelo max_retries' },
+      { name: 'faixa', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
+      ...(panel ? [{ name: 'painel', description: 'Abre o painel do AiDW (geral, critérios, revisão, diffs, métricas…)', argumentHint: '[aba]' }] : []),
+      { name: 'rodada', description: 'Libera mais uma rodada no laço de revisão travado pelo max_retries' },
     ]) {
       await $.command.register(command).catch(() => undefined)
     }
@@ -483,6 +465,8 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    idleTimer?.cancel()
+    idleTimer = null
     if (USER_ORIGINS.has(e.origin.kind)) {
       userPrompts.push(e.text)
       if (userPrompts.length > 8) userPrompts.shift()
@@ -493,22 +477,22 @@ export const register: Register = (on, options) => {
     return ran
   })
 
-  on('command.run', { command: 'aidw-faixa' }, async $ => {
+  on('command.run', { command: 'faixa' }, async $ => {
     const now = !(await read($, hidden))
     await update($, hidden, () => now)
     return { text: now ? 'Faixa do AiDW escondida.' : 'Faixa do AiDW visível.' }
   })
 
-  on('command.run', { command: 'aidw-painel' }, async ($, e) => {
+  on('command.run', { command: 'painel' }, async ($, e) => {
     if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
     const s = await read($, snap)
-    if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:orquestrar).' }
+    if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:go).' }
     if (e.args.trim()) await update($, tab, () => tabFor(s.kind, e.args.trim().toLowerCase()))
     await openPanel($, true)
     return { text: `Painel do AiDW aberto (${s.id}).` }
   })
 
-  on('command.run', { command: 'aidw-rodada' }, async $ => {
+  on('command.run', { command: 'rodada' }, async $ => {
     const s = await read($, snap)
     if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão.' }
     const n = ((await read($, extraRounds))[s.id] ?? 0) + 1
@@ -652,7 +636,7 @@ export const register: Register = (on, options) => {
     }
     if (!s) {
       const { Text } = ui
-      return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:orquestrar ou /aidw:levantamento.</Text>
+      return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:lev.</Text>
     }
     await read($, tick)
     const fill = async (text: string, toast: string) => {

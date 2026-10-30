@@ -7,8 +7,10 @@ export type Runtime = {
   /** {agente: [subagent_type permitidos]} — o padrão e as exceções da tabela Agents and effort (fluxo v3). */
   variants: Record<string, string[]>
   maxRetries: number
-  /** Nomes dos agentes ligados (planejador, codificador…). */
+  /** Nomes dos agentes ligados (planejador, codificador…), como o aidw.config.toml os chama. */
   agents: string[]
+  /** O papel de cada agente ligado ({codificador: 'coder'}): o nome é configurável, o papel não. */
+  roles: Record<string, string>
 }
 
 export type DelegationCheck = {
@@ -22,7 +24,7 @@ export type DelegationCheck = {
   step: string | null
   round: number
   roundKind: 'plano' | 'revisão' | null
-  /** Rodadas extras liberadas pelo usuário (botão ou /aidw-rodada). */
+  /** Rodadas extras liberadas pelo usuário (botão ou /rodada). */
   extraRounds: number
   /** pr-review e levantamento não têm laço de correção. */
   kind: DemandKind | null
@@ -84,12 +86,12 @@ export function checkDelegation(check: DelegationCheck): string | null {
   }
   const limit = runtime.maxRetries + check.extraRounds
   if (check.kind === 'desenvolvimento' && check.round >= limit && check.step) {
-    if (check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['revisor', 'codificador'].includes(agent)) {
+    if (check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['reviewer', 'coder'].includes(runtime.roles[agent] ?? '')) {
       return fix(
         `a revisão já está na rodada ${check.round} e o limite é ${limit} (max_retries` +
           `${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
           'Pare e leve ao usuário (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
-          'botão "Liberar +1 rodada" do painel ou com /aidw-rodada.',
+          'botão "Liberar +1 rodada" do painel ou com /rodada.',
       )
     }
   }

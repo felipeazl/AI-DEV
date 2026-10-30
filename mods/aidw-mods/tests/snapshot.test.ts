@@ -20,7 +20,7 @@ describe('aba Geral', () => {
     const impl = nextStep(snap({ id: 'us-1', step: 'IMPLEMENT' }), 3)
     expect(impl.you).toBe(false)
     expect(impl.text).toContain('implementando')
-    expect(nextStep(snap({ id: 'us-1', step: 'REVIEW', status: 'paused' }), 3).text).toContain('/aidw:orquestrar us-1')
+    expect(nextStep(snap({ id: 'us-1', step: 'REVIEW', status: 'paused' }), 3).text).toContain('/aidw:go us-1')
     expect(nextStep(snap({ id: 'us-1', step: 'DONE' }), 3).text).toContain('Concluída')
   })
 

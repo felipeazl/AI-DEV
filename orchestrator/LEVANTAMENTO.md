@@ -31,7 +31,7 @@ more asking only for the missing JSON.
 **After the estimate**, the user answers doubts (the panel sends `Resposta à dúvida D<n> …`, the user's own words) or
 asks for adjustments: update `levantamento-<id>.md` (an answered doubt goes to *Respondidas*; say whether the estimate
 changed) and the note (`demand set <id> --note "levantamento: <SP> SP, <min>–<max> h"`). To implement the demand, the
-user calls `/aidw:orquestrar <id>`: this prompt is only the levantamento.
+user calls `/aidw:go <id>`: this prompt is only the levantamento.
 
 **Knowledge** (when the Runtime lists a knowledge base) — so nobody rediscovers what earlier demands learned.
 - **Start:** `python "{{root}}/aidw.py" kb search <2–3 terms of the card>` (a short list) and, in `resumo-<id>.md`, a
