@@ -98,13 +98,13 @@ para o diff, use o `/aidw:diff`.
 ## Abrir e retomar
 
 ```powershell
-python aidw.py open --demand 1234                    # abre o Claude na demanda já chamando /aidw:orquestrar
+python aidw.py open --demand 1234                    # abre o Claude na demanda já chamando /aidw:go
 python aidw.py open --demand 1234 --repo Front       # num repositório específico; os outros entram por --add-dir
 python aidw.py open --provider codex --demand 1234   # o Codex no worktree, com multi_agent_v2 e a pasta do AiDW
 python aidw.py open --demand 1234 --no-orchestrate   # só abre, sem chamar o orquestrador
 ```
 
-`1234` acha `us-1234`. No chat, `/aidw:orquestrar` sem argumento numa pasta de worktree acha a demanda e continua da
+`1234` acha `us-1234`. No chat, `/aidw:go` sem argumento numa pasta de worktree acha a demanda e continua da
 etapa gravada.
 
 ## Consultar e limpar

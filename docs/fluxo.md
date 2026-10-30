@@ -1,6 +1,6 @@
 # O fluxo de uma demanda
 
-Este documento explica o que acontece entre o `/aidw:orquestrar 1234` e a PR aberta: as etapas, quem faz cada uma,
+Este documento explica o que acontece entre o `/aidw:go 1234` e a PR aberta: as etapas, quem faz cada uma,
 onde você decide, como o orquestrador escolhe o agente e o effort, e o que fica gravado. É o fluxo v3 (2026-10-23):
 sem níveis de demanda, sete agentes e você nos pontos de decisão.
 
@@ -121,7 +121,7 @@ Workflow `pr-review`: o orquestrador revisa a PR que outra pessoa abriu, sem pla
 autor; você escolhe o que é publicado. O procedimento completo está na referência *pr-review* do orquestrador.
 
 ```text
-/aidw:orquestrar us-127508 pr 7639 7640     ← o card e as PRs (podem ser de repositórios diferentes)
+/aidw:go us-127508 pr 7639 7640     ← o card e as PRs (podem ser de repositórios diferentes)
 ```
 
 1. **Entender:** o `resumo-<id>.md` traz o card e, por PR, autor, descrição, destino, itens ligados e o que já foi
@@ -142,17 +142,17 @@ autor; você escolhe o que é publicado. O procedimento completo está na refer�
 Workflow `levantamento`: entender e estimar um card **antes** de implementar. Só leitura.
 
 ```text
-/aidw:levantamento 1234                  ← o card (id ou link)
-/aidw:levantamento "<texto da demanda>"   ← sem card: os pontos saem do texto
+/aidw:lev 1234                  ← o card (id ou link)
+/aidw:lev "<texto da demanda>"   ← sem card: os pontos saem do texto
 ```
 
 O orquestrador numera o que o card pede em `pontos-<id>.md`; o explorador, na exceção do levantamento (Sonnet high),
 confirma cada ponto no código e mapeia o fluxo de ponta a ponta; o orquestrador estima pela régua (referência
 *levantamento*) e grava `levantamento-<id>.md` com horas, story points, complexidade, confiança, riscos e as dúvidas.
-O comentário no card só sai com o seu OK. Se o card for implementado depois (`/aidw:orquestrar <id>`), o fluxo começa
+O comentário no card só sai com o seu OK. Se o card for implementado depois (`/aidw:go <id>`), o fluxo começa
 pelo plano reaproveitando o levantamento.
 
-A skill `/aidw:levantamento` carrega um orquestrador enxuto (`orchestrator/LEVANTAMENTO.md`): só o explorador, sem os
+A skill `/aidw:lev` carrega um orquestrador enxuto (`orchestrator/LEVANTAMENTO.md`): só o explorador, sem os
 workflows de desenvolvimento, com o procedimento e a régua já dentro. Assim o orquestrador não lê referência nenhuma e
 cada chamada dele relê um contexto menor.
 
@@ -191,7 +191,7 @@ No Claude Code, o mod `aidw-mods` roda o `record` sozinho e soma o chat do orque
 
 ### Retomar
 
-`/aidw:sair` grava a etapa e o próximo passo (`paused`). Depois, `/aidw:orquestrar` sem argumento na pasta do worktree
+`/aidw:sair` grava a etapa e o próximo passo (`paused`). Depois, `/aidw:go` sem argumento na pasta do worktree
 ou do repositório acha a demanda e continua da etapa gravada. `python aidw.py open --demand <id>` faz o mesmo pelo
 terminal.
 

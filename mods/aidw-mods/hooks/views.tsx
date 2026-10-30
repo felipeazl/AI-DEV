@@ -4,7 +4,7 @@
 import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, DiffView, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
-import { CONTEXT_WARN, compact } from './aidw'
+import { compact } from './aidw'
 import { APPROVALS, KIND_LABEL, approvalOf } from './artifacts'
 import { LOOP_STEPS, stateLabel } from './snapshot'
 
@@ -87,7 +87,7 @@ export const TABS: Record<DemandKind, [string, string][]> = {
   ],
 }
 
-/** Nomes antigos das abas (`/aidw-painel fluxo`) e apelidos. */
+/** Nomes antigos das abas (`/painel fluxo`) e apelidos. */
 const TAB_ALIAS: Record<string, string> = {
   fluxo: 'geral',
   agentes: 'metricas',
@@ -328,9 +328,8 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
     )
   }
   if (usage) {
-    // o contexto em tokens, com a barra cheia no ponto de compactar: cada ação relê a conversa inteira
-    const ctx = Math.round((usage.tokens / CONTEXT_WARN) * 100)
-    add('ctx', 'contexto', ctx, compact(usage.tokens), ctx >= 100 ? C.amber : C.dim)
+    // o contexto na janela real do modelo, como o Claude mostra (a compactação é sua, ou por ociosidade)
+    add('ctx', 'contexto', usage.percent, `${usage.percent}% · ${compact(usage.tokens)}`, usage.percent >= WARN ? C.amber : C.dim)
     for (const kind of ['7d', '5h'] as const) {
       const l = usage.limits.find(x => x.kind === kind)
       if (!l) continue

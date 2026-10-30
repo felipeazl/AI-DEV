@@ -11,13 +11,14 @@ const RUNTIME: Runtime = {
   },
   maxRetries: 3,
   agents: ['planejador', 'codificador', 'revisor'],
+  roles: { planejador: 'planner', codificador: 'coder', revisor: 'reviewer' },
 }
 const PROMPT = 'Tarefa: C:/d/us-1/plano-us-1.md, entrega E1. Pasta da demanda: C:/d/us-1.'
 const base = (over: Partial<DelegationCheck> = {}): DelegationCheck => ({
   subagentType: 'aidw:codificador',
   prompt: PROMPT,
   runtime: RUNTIME,
-  userPrompts: ['/aidw:orquestrar 1'],
+  userPrompts: ['/aidw:go 1'],
   step: 'IMPLEMENT',
   round: 0,
   roundKind: null,
@@ -76,6 +77,17 @@ describe('travas da delegação', () => {
     expect(at(3, 0, 'aidw:revisor-medium', 'TRIAGE')).toContain('rodada 3')
     expect(at(3, 1)).toBe(null)
     expect(checkDelegation(base({ step: 'CODER_FIX', round: 5, roundKind: 'revisão', kind: 'pr-review' }))).toBe(null)
+  })
+
+  test('limite de rodadas com os nomes curtos: vale o papel, não o nome', async () => {
+    const runtime: Runtime = {
+      variants: { dev: ['dev', 'dev-medium'], revisao: ['revisao', 'revisao-medium'] },
+      maxRetries: 3,
+      agents: ['dev', 'revisao'],
+      roles: { dev: 'coder', revisao: 'reviewer' },
+    }
+    const why = checkDelegation(base({ runtime, subagentType: 'aidw:dev-medium', step: 'CODER_FIX', round: 3, roundKind: 'revisão' }))
+    expect(why).toContain('Liberar +1 rodada')
   })
 
   test('sem laço do plano: o ajuste do plano não trava por rodada', async () => {

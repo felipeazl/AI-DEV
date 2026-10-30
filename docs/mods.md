@@ -9,7 +9,7 @@ terminou). O AiDW traz os dele no plugin **`aidw-mods`**, que o `install` instal
 ## Quando ficam ligados
 
 Os mods do AiDW ficam ligados **só no modo orquestrador**:
-- **Ligar:** `/aidw:orquestrar` ou `/aidw:levantamento` registram a sessão em `state/sessions.json` (o guard do AiDW grava), e o
+- **Ligar:** `/aidw:go` ou `/aidw:lev` registram a sessão em `state/sessions.json` (o guard do AiDW grava), e o
   `aidw-mods` confere esse registro a cada mensagem.
 - **Desligar:** `/aidw:sair` ou `/aidw:done` tiram a sessão do registro, e o painel fecha.
 
@@ -23,7 +23,7 @@ cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto pod
 panel = false
 ```
 
-Desligado, o painel não abre, o `/aidw-painel` não é registrado e a demanda fica só com a faixa acima do prompt
+Desligado, o painel não abre, o `/painel` não é registrado e a demanda fica só com a faixa acima do prompt
 (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
 segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
 
@@ -32,11 +32,11 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 | Mod | Para quê | Onde aparece |
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); desligado só no contexto com `[mods] panel = false` | painel lateral (`/aidw-painel`) |
+| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); desligado só no contexto com `[mods] panel = false` | painel lateral (`/painel`) |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
 | [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |
-| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho antes de uma espera longa e na troca de etapa (a partir de 150k tokens); sugere `/compact` a partir de 250k na mesma etapa | fim do turno |
+| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho a conversa parada há 50 min (a partir de 100k tokens), antes de o cache expirar | fim do turno |
 | [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
 | [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
 | [Notas no prompt](#notas-da-base-de-conhecimento) | `[[nota]]` numa mensagem leva a nota junto | contexto da mensagem |
@@ -48,14 +48,14 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 AiDW it-101662 · contexto ▬▬▬▭▭ 160k · 7d ▬▬▬▬▭ 58% · 5h ▬▬▬▬▬ 91% (renova 16:40) · ▶ codificador (otimizacao-r2) 2m10s
 ```
 
-O id da demanda, o contexto deste chat em tokens (a barra enche em 250k) e as janelas de uso do plano (7d e 5h) em %,
+O id da demanda, o contexto deste chat em % da janela do modelo, com os tokens e as janelas de uso do plano (7d e 5h) em %,
 cada um com barra fina, e os agentes rodando. O 7d e o 5h ficam amarelos a partir de 80% e mostram a hora local em
 que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
-`DONE`. **`/aidw-faixa`** esconde e mostra.
+`DONE`. **`/faixa`** esconde e mostra.
 
 ## Painel do AiDW
 
-Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/aidw-painel [aba]`**; no
+Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/painel [aba]`**; no
 terminal, as teclas `1`…`6` trocam de aba e `r` atualiza. O que cada aba mostra, de onde vem cada dado e o que os agentes gravam para
 isso está em **[painel.md](painel.md)**:
 
@@ -69,7 +69,7 @@ Aba sem dados fica oculta. No app, as abas são só clique; no terminal, as tecl
 
 Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e aprovar uma PR, comentar
 no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta
-a uma dúvida vão como mensagem sua. `/aidw-painel fluxo`, `agentes` e `pontos` (nomes antigos) abrem Geral,
+a uma dúvida vão como mensagem sua. `/painel fluxo`, `agentes` e `pontos` (nomes antigos) abrem Geral,
 Métricas e Card × código.
 
 ## Métricas sozinhas
@@ -108,7 +108,7 @@ Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Agents an
 Um `runtime.json` de antes do fluxo v3 (sem `variants`) desliga a trava até o próximo `aidw.py apply`.
 
 O limite de rodadas é uma trava de verdade: o orquestrador tem de parar e te perguntar. Só você libera mais uma
-rodada, pelo botão **Liberar +1 rodada** do painel ou com **`/aidw-rodada`**. Revisão de PR e levantamento não têm
+rodada, pelo botão **Liberar +1 rodada** do painel ou com **`/rodada`**. Revisão de PR e levantamento não têm
 esse laço.
 
 ## Avisos
@@ -116,23 +116,20 @@ esse laço.
 Toasts, cada um uma vez:
 - **A demanda espera você:** a aprovação do plano, a decisão dos achados, a sua revisão de código, os passos manuais, o OK da PR ou a revisão final de uma PR de outro dev.
 - **Agente terminou:** um agente em segundo plano terminou, com o `state` dele.
-- **Contexto:** o contexto do orquestrador passou de 250k tokens fora de uma espera longa (ver *Contexto enxuto*).
-- **Compactou:** o mod compactou a conversa antes de uma espera longa, com o tamanho antes e depois.
+- **Compactou:** o mod compactou a conversa parada, com o tamanho antes e depois.
 
 ## Contexto enxuto
 
-Cada ação do orquestrador relê a conversa inteira, e uma volta depois de 1h parado regrava tudo no cache, ao preço
-cheio. Por isso o mod mede o contexto em tokens no fim de cada turno:
-- **Espera longa** (`HUMAN_APPROVAL`, `FINAL_REVIEW`, `CODE_REVIEW`, `QA_TEST`) com 150k tokens ou mais: compacta
-  sozinho, logo depois do turno, uma vez por espera, pedindo ao resumo que guarde o que está com você (a pergunta, a
-  aprovação ou o pacote) e as decisões não gravadas; o estado da demanda volta em seguida (*Estado depois da
-  compactação*). Se você responder antes, a compactação não roda. O teste manual não conta: é passo a passo.
-- **Troca de etapa** (a etapa gravada no fim do turno é outra que a do turno anterior) com 150k tokens ou mais:
-  compacta sozinho, logo depois do turno, uma vez por etapa. Pede ao resumo que guarde a próxima ação, os agentes em
-  andamento e as decisões não gravadas. Como na espera, se você responder antes, não roda.
-- **Na mesma etapa por muito tempo** (um laço longo), a partir de 250k tokens: um toast sugere `/compact`. Depois que
-  o contexto cai abaixo de 150k, o aviso pode voltar.
-- Os limites ficam em `hooks/aidw.ts` (`CONTEXT_WARN`, `CONTEXT_COMPACT`, `LONG_WAIT`).
+Uma volta depois de 1h parado regrava a conversa inteira no cache, ao preço cheio. Por isso, no fim de cada turno do
+orquestrador, o mod agenda uma compactação para **50 minutos** depois (antes de o cache expirar):
+- Se você mandar qualquer mensagem antes, o agendamento cai e um novo começa no fim do próximo turno.
+- Quando o tempo passa, ele mede o contexto de novo e só compacta com **100k tokens ou mais**; o resumo guarda o que
+  está com você (a pergunta, a aprovação ou o pacote), a próxima ação, os agentes em andamento e as decisões não
+  gravadas, e o estado da demanda volta em seguida (*Estado depois da compactação*).
+- Fora disso, a compactação é sua (`/compact`) ou a nativa do Claude, perto do limite da janela. Uma demanda pode ser
+  retomada num chat novo: o estado está nos arquivos e o conhecimento na base.
+- Os limites ficam em `hooks/aidw.ts` (`IDLE_MS`, `IDLE_MIN`). A regra antiga (espera longa e troca de etapa, a partir
+  de 150k) saiu em 2026-10-30: não disparava.
 
 ## Economia do orquestrador
 
