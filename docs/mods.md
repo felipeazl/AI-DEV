@@ -45,7 +45,10 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 
 ```text
 AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
-● dev-medium · correção r1 · 2m10s
+╭──────────────────────────────────╮
+│ ● Dev Sonnet medium        2m10s │
+│ correção r1          184k tokens │
+╰──────────────────────────────────╯
                                                                           Geral  Métricas  Testes e Review 4
 ```
 
@@ -53,7 +56,8 @@ Três linhas (painel v4):
 1. **A demanda e o consumo:** o id, a etapa, **● espera você** em laranja quando a etapa é sua (aprovação, triagem,
    revisão de código, teste manual, PR, revisão final) e, do outro lado, o contexto deste chat em % da janela do
    modelo, com os tokens, e as janelas de uso do plano (7d e 5h) em %, cada um com barra fina.
-2. **Os agentes rodando**, com o tempo; sem agente, a linha não aparece.
+2. **Os agentes rodando**, um card por agente: nome, modelo e effort (da variante), o tempo, o label e os tokens da última
+   resposta (andam a cada passo; antes do primeiro, `começando`); sem agente, a linha não aparece.
 3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento; com o número do que espera decisão, em laranja), numa linha só,
    à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
 a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em

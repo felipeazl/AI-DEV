@@ -194,3 +194,32 @@ export function compact(n: number): string {
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`
   return String(n)
 }
+
+const MODELS = new Set(['haiku', 'sonnet', 'opus', 'fable'])
+const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+const cap = (x: string) => (x ? x[0]!.toUpperCase() + x.slice(1) : x)
+
+/** O agente do runtime.json, no que a faixa mostra. */
+export type AgentDef = { name: string; display?: string; model?: string; effort?: string }
+
+/**
+ * O nome, o modelo e o effort de uma variante (`busca`, `busca-sonnet-medium`, `dev-medium`): o que o nome não diz
+ * vem do agente base no runtime.json; um modelo trocado sem effort no nome fica sem effort.
+ */
+export function agentSpec(variant: string, agents: AgentDef[]): { display: string; model: string; effort: string } {
+  const v = variant.split(':').pop() ?? variant
+  const base = agents
+    .filter(a => v === a.name || v.startsWith(`${a.name}-`))
+    .sort((a, b) => b.name.length - a.name.length)[0]
+  if (!base) return { display: v, model: '', effort: '' }
+  let model = base.model ?? ''
+  let effort = base.effort ?? ''
+  const rest = v.slice(base.name.length).split('-').filter(Boolean)
+  const m = rest.find(x => MODELS.has(x))
+  if (m) {
+    model = m
+    effort = ''
+  }
+  effort = rest.find(x => EFFORTS.has(x)) ?? effort
+  return { display: base.display || cap(base.name), model: cap(model), effort }
+}
