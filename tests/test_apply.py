@@ -1042,7 +1042,7 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("**Levantamento:**", lev)
             # o orquestrador enxuto do levantamento: só o explorador, o procedimento já dentro, sem o desenvolvimento
             self.assertLess(lev.index("**Levantamento:**"), lev.index("# ROLE"))
-            for part in ("# STEPS", "`UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `DONE`", "## 4. Estimar",
+            for part in ("# STEPS", "`UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `FINAL_REVIEW`", "## 4. Estimar",
                          "/aidw:go <id>", "`aidw:explorador`"):
                 self.assertIn(part, lev)
             for gone in ("# WORKFLOW", "## Workflows", "**Panel**", "`aidw:codificador`", "EnterWorktree",
