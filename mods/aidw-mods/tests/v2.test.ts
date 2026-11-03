@@ -258,6 +258,24 @@ describe('levantamento V2', () => {
     ])
     expect(d[0]?.why).toBe('O título fala em A3, e a Feature em SafeID.')
   })
+
+  test('pergunta que quebra de linha e respondida só com o número em negrito', async () => {
+    const text = [
+      '## Dúvidas',
+      '**Escopo**',
+      '- **D1. O limite vale por protocolo, guardado no servidor, para que reabrir o link não',
+      '  zere a contagem?** Hoje recarregar zera. *Para:* Tech Lead *Muda a estimativa:* −8 SP',
+      '- **D2. Tablet conta como celular?** Dois jeitos hoje. *Para:* PO',
+      '**Respondidas em 03/11**',
+      '- **D3.** O limite é 10, fora da',
+      '  demanda (Alex, 03/11). *Para:* Tech Lead',
+    ].join('\n')
+    expect(parseDoubts(text).map(x => [x.id, x.group, x.question, x.why, x.to, x.affects])).toEqual([
+      ['D1', 'Escopo', 'O limite vale por protocolo, guardado no servidor, para que reabrir o link não zere a contagem?', 'Hoje recarregar zera.', 'Tech Lead', '−8 SP'],
+      ['D2', 'Escopo', 'Tablet conta como celular?', 'Dois jeitos hoje.', 'PO', ''],
+      ['D3', 'Respondidas em 03/11', 'O limite é 10, fora da demanda (Alex, 03/11).', '', 'Tech Lead', ''],
+    ])
+  })
 })
 
 describe('cores', () => {

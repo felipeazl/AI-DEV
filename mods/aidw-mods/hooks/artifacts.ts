@@ -745,18 +745,23 @@ export function parseDoubts(text: string): Doubt[] {
       group = clean(g[1] ?? '')
       continue
     }
-    const d = /^\s*[-*]\s+\*\*D(\d+)\.\s*(.+?)\*\*\s*(.*)$/.exec(line)
-    if (d) {
-      let rest = d[3] ?? ''
+    if (/^\s*[-*]\s+\*\*D\d+\./.test(line)) {
+      // A pergunta em negrito pode quebrar de linha: junta as linhas recuadas antes de procurar o `**` que a fecha.
+      let item = line.trim()
       while (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1] ?? '') && !/^\s*[-*]\s+\*\*D\d+/.test(lines[i + 1] ?? '')) {
         i += 1
-        rest += ` ${(lines[i] ?? '').trim()}`
+        item += ` ${(lines[i] ?? '').trim()}`
       }
+      const d = /^[-*]\s+\*\*D(\d+)\.\s*(.*?)\*\*\s*(.*)$/.exec(item)
+      if (!d) continue
+      const rest = d[3] ?? ''
+      const why = clean(rest.replace(/\*Para:\*.*$/i, '').replace(/\*Muda a estimativa:\*.*$/i, ''))
       out.push({
         n: Number(d[1]),
         id: `D${d[1]}`,
-        question: cut(clean(d[2] ?? ''), 240),
-        why: cut(clean(rest.replace(/\*Para:\*.*$/i, '').replace(/\*Muda a estimativa:\*.*$/i, '')), 320),
+        // Respondida (`**D3.** resposta`): o negrito só tem o número, e a resposta é o texto da linha.
+        question: cut(clean(d[2] ?? '') || why, 240),
+        why: d[2] ? cut(why, 320) : '',
         to: tail(rest, TO),
         group,
         affects: tail(rest, AFFECTS),
