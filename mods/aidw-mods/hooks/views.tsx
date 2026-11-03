@@ -362,7 +362,12 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
             </Text>
           )}
         </Box>
-        {parts as never}
+        {/* as métricas juntas, com espaço fixo entre elas; soltas no space-between, se espalhavam pela linha */}
+        {parts.length > 0 && (
+          <Box key="usage" gap={3} alignItems="center" flexWrap="wrap">
+            {parts as never}
+          </Box>
+        )}
       </Box>
       {running.length > 0 && (
         <Box key="running" flexWrap="wrap" columnGap={2}>
