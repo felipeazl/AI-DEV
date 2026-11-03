@@ -172,10 +172,6 @@ export function roundFor(step: string, files: string[], loop?: string | null): {
   return { round, kind: round ? 'revisão' : null }
 }
 
-export function parseMaxRetries(toml: string): number {
-  return Number(/^\s*max_retries\s*=\s*(\d+)/m.exec(toml)?.[1] ?? 3)
-}
-
 /** `aidw.py demand set <id>` num comando de shell: o id da demanda. */
 export function demandSetId(command: string): string | null {
   return /aidw\.py["']?\s+demand\s+set\s+["']?([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? null

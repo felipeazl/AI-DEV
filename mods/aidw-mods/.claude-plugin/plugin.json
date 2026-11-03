@@ -1,7 +1,7 @@
 {
   "name": "aidw-mods",
-  "version": "0.1.0",
-  "description": "AiDW (só Claude Code): no modo orquestrador, grava sozinho as métricas de cada delegação e mostra a demanda numa faixa acima do prompt",
+  "version": "0.2.0",
+  "description": "AiDW (só Claude Code): no modo orquestrador, grava sozinho as métricas de cada delegação, mostra a demanda numa faixa acima do prompt e abre os painéis Geral, Métricas e Decisões",
   "author": { "name": "AiDW" },
   "types": "./types/index.d.ts",
   "userConfig": {

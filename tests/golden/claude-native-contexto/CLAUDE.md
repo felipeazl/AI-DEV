@@ -17,7 +17,7 @@ into this chat.
 The user is in the loop at fixed points — **plan approval**, **review findings** (every round), **their code review**,
 the **manual test steps** and the **PR** — plus locked actions (policies), a real doubt or more than one valid path (one
 question, with options, your recommendation and why), and something outside the plan (scope grew, environment
-blocked, retries exhausted). Everything else you do without asking; batch pending decisions into a single question.
+blocked). Everything else you do without asking; batch pending decisions into a single question.
 
 # DELEGATION
 
@@ -78,8 +78,8 @@ is disabled (do them yourself, cheaply). `pr-review` and `levantamento` have the
    Before recommending to discard a CRITICO/IMPORTANTE, or accepting "can't be fixed here" / "covers every case",
    verify it (skill `verificar-premissa`). Record the decisions in `triagem-<id>-r<N>.md` (`| ID | Decisão | Motivo |`).
    Kept findings → a coder fixes them (task with the IDs), then a fresh reviewer re-reviews only the fixes (the
-   exception one level down). No finding left to decide → `USER_REVIEW`. The loop counts in `max_retries`.
-7. **User review** (`USER_REVIEW`) — the user reviews the code (the diff, the panel's Diffs tab). A change they ask for
+   exception one level down). No finding left to decide → `USER_REVIEW`. There is no round limit.
+7. **User review** (`USER_REVIEW`) — the user reviews the code (the diff in the app's Changes). A change they ask for
    → `CODER_FIX` and a review of only that change. Approved → `TEST`.
 8. **Test** (`TEST`) — a qa in test mode: it checks the script against the final diff, runs the approved
    writes, the automatic steps (API, E2E/browser) and the regression, and writes each result in the script. Then
@@ -136,8 +136,8 @@ procedure in the references *pr-review* and *levantamento* — read it when the 
 
 Every agent ends with `"state": "<key>"`, a key of `[rules]` in `orchestrator/config/routing.toml`; apply that rule
 exactly. A missing or unknown `state` is a failed result: delegate once more asking only for the missing JSON.
-`max_retries` counts rounds of the same loop (explore ⇄ plan, review ⇄ fix); when it runs out, stop and take it to the
-user. Actions: `EXPLORE`, `PLAN`, `PLAN_APPROVAL`, `PLAN_FIX`, `IMPLEMENT`, `TEST_PLAN`, `REVIEW`, `TRIAGE`,
+There is no round limit: a loop (explore ⇄ plan, review ⇄ fix) runs until its step is done, each new round with its
+named reason (*EFFORT*). Actions: `EXPLORE`, `PLAN`, `PLAN_APPROVAL`, `PLAN_FIX`, `IMPLEMENT`, `TEST_PLAN`, `REVIEW`, `TRIAGE`,
 `CODER_FIX`, `USER_REVIEW`, `TEST`, `TEST_ADJUST`, `MANUAL_TEST`, `PR`, `ESTIMATE`, `FINAL_REVIEW`, `DONE`,
 `HUMAN_APPROVAL`, `RETURN` (back to the step that asked for the agent; a qa or documenter running in parallel returns
 to `IMPLEMENT`), `CODE_REVIEW` and `QA_TEST` (outside the AiDW: wait for the user).
@@ -199,7 +199,7 @@ python aidw.py record --agent <name> [--effort <effort>] --label <label> --deman
   `--agent` is the `subagent_type` you used (the effort comes from it); the numbers are the ones in the Agent result (`subagent_tokens`, `tool_uses`, `duration_ms`). Never estimate.
 - With the `aidw-mods` plugin loaded (Claude Code only, on in orchestrator mode; docs/mods.md):
   - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run `record` for it; run it yourself only when that line is missing or says the mod could not record.
-  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, `model` the user did not ask for, missing task/folder, a pasted input, a loop past `max_retries`) comes back denied with `AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or `/rodada`).
+  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, `model` the user did not ask for, missing task/folder, a pasted input) comes back denied with `AiDW (trava da delegação)` and the reason: fix the call, never work around it.
   - The user may answer through the AiDW panel (`/painel`): a manual-test step arrives as `Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and the PR decision or the card comment as a message they sent. They are the user's own words: record and act on them as if typed.
 - Code exploration: the `explorador` agent (*Agents and effort*), not this chat and not a generic explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder (the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the next step needs; one exploration per topic, reused, not repeated.
 

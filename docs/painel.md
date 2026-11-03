@@ -1,230 +1,225 @@
-# Painel e faixa do AiDW (V2)
+# Painéis e faixa do AiDW (V4)
 
-Especificação da faixa acima do prompt e do painel do AiDW (mod `aidw-mods`, só Claude Code), desenhada tela por
-tela com mocks em 14/10/2026. Os mods em geral estão em [mods.md](mods.md); aqui fica o que cada tela mostra, de onde
-vem cada dado e o que os agentes passam a gravar para isso.
+Especificação da faixa acima do prompt e dos painéis do AiDW (mod `aidw-mods`, só Claude Code). A V4 (Alex,
+2026-11-03) parte de que o app do Claude já tem barra lateral própria (Ambiente, Contexto, Saídas, Alterações) e o
+diff: o AiDW fica com a faixa e três painéis que só abrem quando você pede. Os mods em geral estão em
+[mods.md](mods.md); aqui fica o que cada tela mostra, de onde vem cada dado e o que os agentes gravam para isso.
 
-A faixa e o painel valem em todo contexto; o painel some só no contexto que o desliga (`[mods] panel = false` no
-`context.toml`) e, dentro dele, cada aba só aparece quando há o arquivo que ela lê ([mods.md](mods.md#quando-ficam-ligados)).
+A faixa vale em todo contexto. Os painéis e os botões da faixa somem no contexto que os desliga (`[mods] panel = false`
+no `context.toml`); dentro deles, cada aba só aparece quando há o arquivo que ela lê
+([mods.md](mods.md#quando-ficam-ligados)).
 
 ## Princípios
 
 - **Simples, limpo e no padrão do app do Claude:** cartões com borda sutil e cantos arredondados, rótulos pequenos em
-  cinza, espaço entre os blocos. O laranja do Claude só aparece no que está acontecendo agora.
-- **Feito para o app desktop.** O terminal recebe a mesma informação, num desenho mais simples.
-- **Nada sai sem você:** publicar, aprovar uma PR, comentar no card e decidir achados vão para o prompt e só valem quando você
-  envia a mensagem.
-- **Sem orçamento de tokens** em nenhuma tela.
-- **O que os mods desenham:** caixas (fundo, borda arredondada, cor), texto, botões, campos, seletor e SVG (gráficos,
-  barras). Não há menu flutuante com caixas de seleção; os filtros são uma linha de botões que liga e desliga.
+  cinza, espaço entre os blocos. O laranja do Claude só aparece no que está acontecendo agora ou espera você.
+- **Nada abre sozinho:** os painéis abrem pelo botão da faixa ou pelo comando. Sem toasts nem notificações próprias.
+- **Feito para o app desktop.** O terminal recebe a mesma informação, num desenho mais simples (barras ▰▱, teclas).
+- **Nada sai sem você:** publicar, aprovar uma PR, comentar no card e decidir achados vão para o prompt e só valem
+  quando você envia a mensagem.
+- **Sem orçamento de tokens nem limite de rodadas** em nenhuma tela: a demanda itera até terminar.
+- **O que os mods desenham:** caixas (borda, cor), texto, botões, campos, seletor e SVG. Não há menu flutuante; os
+  filtros são uma linha de botões que liga e desliga.
 
 ## Cores
 
-A faixa e o painel usam as cores do tema do Claude (`C` em `hooks/views.tsx`), que o app pinta no tema claro ou escuro;
-nenhuma cor é fixa. Não há cor de tema para fundo neutro, então cartão é só borda e nada leva fundo.
+A faixa e os painéis usam as cores do tema do Claude (`C` em `hooks/views.tsx`), que o app pinta no tema claro ou
+escuro; nenhuma cor é fixa. Não há cor de tema para fundo neutro, então cartão é só borda.
 
 | Cor | Chave do tema | Significado |
 |---|---|---|
-| laranja (do Claude) | `claude` | o que está acontecendo agora: etapa atual, agente rodando, opção recomendada |
-| azul | `suggestion` | com o time ou a QA (fora do AiDW); barras de tokens |
-| amarelo | `warning` | atenção: voltou do time ou da QA, perto do limite, implementado sem teste, precisa mudar |
-| verde | `success` | coberto, corrigido, passou, linha adicionada |
-| vermelho | `error` | falhou, linha removida |
+| laranja (do Claude) | `claude` | o que está acontecendo agora ou espera você: etapa atual, agente rodando, "● espera você", contagens, opção recomendada |
+| azul | `suggestion` | com o time, a QA ou o UX (fora do AiDW); barras de tokens |
+| amarelo | `warning` | atenção: barra de 75% a 89%, voltou do time ou da QA, implementado sem teste, precisa mudar |
+| vermelho | `error` | barra a partir de 90%, limite, falhou, linha removida |
+| verde | `success` | coberto, corrigido, passou, concluída, linha adicionada |
 | roxo | `merged` | dúvida |
 | texto | `text` | o conteúdo |
-| cinza | `inactive` | rótulos e texto secundário |
+| cinza | `inactive` | rótulos, texto secundário e as barras abaixo de 75% |
 | cinza claro | `subtle` | feito, etapas de fora pendentes |
 | borda | `promptBorder` | cartões e trilhos das barras |
 
 O SVG (barras, progresso, gráfico por dia) é desenhado como imagem, fora do tema: `svgDoc` leva, para cada chave, a cor
-do tema escuro e a do claro, e o `prefers-color-scheme` do app escolhe. O tema do `/config` que o mod lê é o do CLI,
-não o do app, por isso não serve para escolher a paleta.
+do tema escuro e a do claro, e o `prefers-color-scheme` do app escolhe.
 
 ## Faixa acima do prompt
 
 ```text
-AiDW it-101662 Revisar   ● codificador · otimizacao-r2 · 2m10s   contexto ▬▬▬▭▭ 160k   7d ▬▬▬▬▭ 58%   5h ▬▬▭▭▭ 32%
+AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
+● dev-medium · correção r1 · 2m10s
+                                                                          Geral  Métricas  Decisões 4
 ```
 
-- **O que mostra:** AiDW, o id da demanda e a etapa atual (com o modelo na frente quando não é desenvolvimento:
-  "Revisão de PR · Revisão final"); os agentes rodando (nome, tarefa, tempo), com o ponto laranja, antes das medidas;
-  o contexto em tokens e o 7d e o 5h em %, cada um com barra fina. Sem agente rodando, essa parte some.
-- **Contexto:** em % da janela real do modelo, como o Claude mostra, com os tokens ao lado (`12% · 120k`); amarelo a
-  partir de 80%. A compactação é sua, ou a do mod depois de 50 min parado (docs/mods.md, *Contexto enxuto*).
-- **7d e 5h a partir de 80%:** a barra e o número ficam amarelos, com a hora local em que a janela renova
-  ("91% · renova 18:10"; com o dia, quando não é hoje). **No limite (100%)**, vermelho: "limite · volta 18:10".
-- **Dados:** contexto e janelas de uso em `$.session.usage()` (`context`, `rateLimits` `five_hour`/`seven_day`, só em
+Três linhas:
+
+1. **A demanda e o consumo:** AiDW, o id, a etapa atual (com o uso na frente quando não é desenvolvimento: "Revisão de
+   PR · Revisão final") e **● espera você** em laranja quando a etapa é sua (`HUMAN_APPROVAL`, aprovação do plano,
+   triagem, sua revisão de código, teste manual, PR, revisão final); do outro lado, o contexto em % da janela real do
+   modelo com os tokens, e o 7d e o 5h em %, cada um com barra fina.
+2. **Os agentes rodando** (nome, tarefa, tempo), com o ponto laranja. Sem agente, a linha não aparece.
+3. **Os botões**, numa linha só e à direita: **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
+   gravado); **Decisões** (quando a demanda tem tela de decisão), com o número do que espera você em laranja e apagado
+   quando não há nada.
+
+- **Cores das barras:** cor normal até 74%, amarela de 75% a 89%, vermelha a partir de 90%. O 7d e o 5h, a partir de
+  75%, mostram a hora local em que a janela renova ("91% · renova 16:40"; com o dia, quando não é hoje); **no limite
+  (100%)**: "limite · volta 16:40".
+- **Dados:** contexto e janelas de uso em `$.session.usage()` (`rateLimits` `five_hour`/`seven_day`, só em
   assinatura; sem leitura, o 7d e o 5h não aparecem); agentes rodando pelo próprio mod.
-- **Saíram:** fase, "espera você", orçamento, rodada e laço travado, AIDW-TESTE e código lido no chat (estão na Geral).
+- A faixa some em `DONE`; **`/faixa`** esconde e mostra.
 
-## Painel
+## Painéis
 
-Abas por uso:
-
-| Uso | Abas |
-|---|---|
-| Desenvolvimento | Geral · Critérios e Regras · Revisão · Diffs · Teste manual · Métricas |
-| Revisão de PR | Geral · Comentários · Diffs · Métricas |
-| Levantamento | Geral · Card × código · Estimativa · Dúvidas · Métricas |
+| Painel | Botão / comando | Desenvolvimento | Revisão de PR | Levantamento |
+|---|---|---|---|---|
+| Geral | **Geral** · `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
+| Métricas | **Métricas** · `/metricas` | consumo | consumo | consumo |
+| Decisões | **Decisões** · `/decisoes` | abas Revisão · Testes | Comentários | Dúvidas |
 
 O uso vem dos arquivos da demanda. Uma demanda que fechou o levantamento (`DONE` depois do `ESTIMATE`) e seguiu para
 outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado.
 
-- **Cabeçalho único**, acima das abas: tipo e número (`IT 101662 · Desenvolvimento`), a situação
-  (`● Revisão final · espera você`) e o título do card. As abas não repetem o cabeçalho.
-- **Abas em texto:** a ativa com moldura, as outras apagadas; ao lado do nome, em laranja, o que espera você
-  (achados da rodada, passos do roteiro, comentários a decidir, dúvidas abertas). **Aba sem dados fica oculta** e
-  volta quando o arquivo aparece; a Geral fica sempre. Atualizar é o ícone ↻.
-- **Teclas:** no terminal, `1` a `6` e `r` aparecem e funcionam; no app, onde a tecla apareceria no botão, as abas
-  são só clique.
-- **Escolher entre poucas opções** (rodadas, repositórios, PRs): botões lado a lado; uma opção só vira texto; mais de
-  4, o seletor do app.
-- **Texto dos artefatos** com `código` ou **negrito** é desenhado como Markdown (código em linha), não com crases.
+- **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Decisões"); com dois ou mais abertos,
+  o app mostra as abas entre eles. Ao sair do modo orquestrador, os três fecham. Numa janela estreita demais o painel
+  não abre e o comando diz por quê.
+- **`/painel <aba>`** abre o painel que tem a aba (`/painel revisao`, `/painel roteiro` e `/painel decisoes` abrem as
+  Decisões; `/painel criterios`, `estimativa` e `codigo` abrem a Geral).
+- **Cabeçalho único:** tipo e número (`US 128734 · Desenvolvimento`), a situação (`● Revisão · espera você`, ou
+  `Code review · com o time` em azul, `Pausada`, `Concluída` em verde) e o título do card.
+- **Abas** (só nas Decisões, e só com duas ou mais): a ativa com moldura, as outras apagadas; ao lado do nome, em
+  laranja, o que espera você. Aba sem dados fica oculta. As Decisões abrem na primeira aba que espera você. No
+  terminal, as teclas `1`, `2`… e `r` (↻, atualizar) aparecem e funcionam; no app, são só clique.
+- **Escolher entre poucas opções** (rodadas): botões lado a lado; uma opção só vira texto; mais de 4, o seletor do app.
+- **Texto dos artefatos** com `código` ou **negrito** é desenhado como Markdown.
 - **Botão principal:** só o de levar ao prompt (ou o de marcar o passo do roteiro). A opção recomendada é um botão
   comum com "(recomendado)" no nome.
 
-### Geral
+### Etapas
 
-1. **Mapa da demanda:** resumo de até 4 linhas e o **progresso** numa barra fina em dois grupos: **AiDW** (Entender,
-   Plano, Sua aprovação, Implementar, Revisão, Sua revisão, Testes, PR) e **Time e QA** (Code review, Testes QA, Pronto),
-   mais as etapas de fora que o contexto acrescenta, como a Validação UX antes da PR, só na demanda que passa por elas
-   (as ainda não alcançadas são pontos vazados), com o nome da etapa atual e "etapa N de 11". As etapas de antes do
-   fluxo v3 caem na fase equivalente. Quando o time ou a QA devolve, a etapa de fora
-   fica amarela com "↩ voltou do Code review · 1ª vez" e a barra volta para onde o ajuste é feito; um contador
-   discreto guarda as voltas ("voltas: Code review 1× · QA 1×").
-2. **Números**, os do modelo e o consumo:
-   - desenvolvimento: critérios de aceite cobertos (com medidor);
-   - revisão de PR: PRs e comentários publicados;
-   - levantamento: story points, horas, complexidade e confiança, dúvidas abertas;
-   - em todos: tokens dos agentes, do orquestrador ("sem registro" quando não há `metricas-orquestrador.md`) e tempo
-     de agentes trabalhando.
+O progresso tem dois grupos: **AiDW** e **Time e QA**. Os nomes são substantivos (painel v4):
+
+| Uso | AiDW | Time e QA |
+|---|---|---|
+| Desenvolvimento | Entendimento · Plano · Sua aprovação · Implementação · Revisão · Sua revisão · Testes · PR | as do contexto (ex.: Validação UX) · Code review · Testes QA · Concluída |
+| Revisão de PR | Entendimento · Preparação · Revisão · Revisão final · Concluída | — |
+| Levantamento | Entendimento · Exploração · Estimativa · Revisão final · Concluída | — |
+
+As etapas de fora que o contexto acrescenta (`[[workflows.external_steps]]`) entram só na demanda que passa por elas
+(`demand set --extra-step`). As etapas de antes do fluxo v3 caem na fase equivalente.
+
+## Geral
+
+Uma página só, sem abas:
+
+1. **Mapa da demanda:** o resumo de até 4 linhas e o **progresso** numa barra fina nos dois grupos (as etapas de fora
+   ainda não alcançadas são pontos vazados), com o nome da etapa atual e "etapa N de 11". Quando o time ou a QA
+   devolve, a etapa de fora fica amarela com "↩ voltou do Testes QA · 1ª vez"; um contador discreto guarda as voltas
+   ("voltas: Plano 2× · Revisão 2×").
+2. **Números**, só o que não está em outro bloco: na revisão de PR, as PRs e os comentários publicados; no
+   levantamento, as dúvidas abertas. No desenvolvimento não há (a cobertura está no bloco dos critérios).
 3. **Próximo passo:** a nota do `demand.json` (`demand set --note`), quando há.
-4. **Agentes:** os rodando (nome, tarefa e tempo); sem nenhum, "último: …".
-5. **Links:** pasta da demanda e, por repositório, a branch (ou "PR N · só leitura").
+4. **O bloco do uso:**
+   - desenvolvimento: **Critérios e regras** (abaixo);
+   - levantamento: **Card × código** e **Estimativa** (abaixo).
 
-- **Tempo de agentes:** soma da duração de cada delegação no `metricas.md`. Revisão de PR e teste da QA não entram:
-  nessas etapas nenhum agente roda.
-- **Resumo:** `demand.json` → `summary`, gravado pelo orquestrador ao entender o card. Sem ele, só o título.
-- **Etapas de fora:** `demand.json` → etapas `CODE_REVIEW` e `QA_TEST`, gravadas pelo orquestrador **quando você avisa**
-  no chat (PR aberta, voltou do Code review com ajustes, foi para a QA, a QA devolveu um bug). O automático pelo Azure
-  DevOps fica para depois.
-- **PRs:** `demand.json` → `repos[].pr`.
-- **Saíram:** bloco "Atenção" e contexto.
+Saíram na V4: os agentes (estão na faixa), os links da pasta e das branches (o app mostra) e os tokens e o tempo (estão
+em Métricas).
 
-### Critérios e Regras
+- **Resumo:** `demand.json` → `summary`, gravado pelo orquestrador ao entender o card. Sem ele: "Sem resumo gravado".
+- **Etapas de fora:** `demand.json` → `CODE_REVIEW`, `QA_TEST` e as do contexto, gravadas pelo orquestrador **quando
+  você avisa** no chat.
 
-- Três cartões: **Critérios de aceite** (`CA1…`), **Regras de negócio** (`RN1…`) e **Cenários** (`CN1…`).
-- Cada linha: identificador, texto e status. Não há "como provar".
-- **Status pelo nosso código e pelos nossos testes** (Code review e QA não contam), derivado sem trabalho do
-  orquestrador (fluxo v3):
+### Critérios e regras (desenvolvimento)
+
+- A cobertura por tipo no topo, com barra de duas cores (verde coberto, amarelo implementado), e três cartões:
+  **Critérios de aceite** (`CA1…`), **Regras de negócio** (`RN1…`) e **Cenários** (`CN1…`), uma linha por item com o
+  identificador, o texto e o status.
+- **Status pelo nosso código e pelos nossos testes** (Code review e QA não contam):
   - **Falta:** a demanda ainda não passou da implementação, ou o item não está em nenhuma entrega do plano;
   - **Implementado** (amarelo): a demanda passou da implementação e o item está numa entrega (`Covers:` do plano);
   - **Coberto** (verde): um passo do roteiro que prova o item (coluna `Critério`) tem ✅.
-- No topo, a cobertura por tipo com barra de duas cores (verde coberto, amarelo implementado).
-- **Dados:** o plano numera os itens com o texto do card (`CA1`, `RN1`) e diz em cada entrega o que ela cobre
-  (`Covers: CA1, RN2`); o roteiro do QA diz em cada passo o critério que ele prova (coluna `Critério`) e o resultado.
-  Demandas de antes do fluxo v3 com `cobertura-<id>.md` continuam lidas por ele. Sem plano, os critérios vêm do resumo
-  do card, todos em "Falta".
+- **Dados:** o plano numera os itens com o texto do card e diz em cada entrega o que ela cobre (`Covers: CA1, RN2`); o
+  roteiro do QA diz em cada passo o critério que ele prova. Sem plano, os critérios vêm do resumo do card, todos em
+  "Falta", com o aviso "Ainda não há plano".
 
-### Revisão
-
-- **Rodada** em botões (seletor com mais de 4), por tipo: Código r1…, Otimização r1… (e Plano r1… nas demandas antigas).
-- **Decisão** em abas de texto: Com você · Mantidos · Descartados · Todos. Abre em **Com você**; os decididos ficam
-  escondidos.
-- **Filtros:** botão que abre uma linha de botões liga/desliga por criticidade, categoria (qualidade, bug, segurança —
-  do título do achado, ou da passada nas demandas antigas) e status.
-- **Cada achado é um cartão:**
-  - criticidade, ID, `arquivo:linha` e status (com você, corrigido na rN);
-  - o que foi apontado;
-  - o código **antes e depois** (vermelho e verde), quando o achado propõe mudança;
-  - a **recomendação do AiDW**: manter ou descartar, e por quê;
-  - a decisão: Manter e Descartar, a recomendada com "(recomendado)"; nas dúvidas, as opções do próprio achado com o
-    texto inteiro numa lista ("(a) …", a primeira é a recomendada) e botões só com a letra.
-- Rodapé: **Levar decisões ao prompt**.
-- **Dados:** achados no `review-*-rN.md`, com a categoria no título (`R1-01 — IMPORTANTE — bug — `arquivo:linha``), os
-  blocos `Antes:` e `Depois:` (cercas de código) e a `**Recomendação:**` do revisor; a decisão vem do `triagem-*-rN.md`,
-  que o orquestrador grava a partir da mensagem do painel.
-
-### Diffs
-
-- A fonte em botões (worktrees da demanda e os `.patch`), e o diff da primeira **já abre carregado**; embaixo, a branch
-  contra a base, os arquivos e o `+N −M`. Cada `.patch` tem nome legível ("PR 8197 · só a rodada 2", "131192-01 · r1 →
-  r2", "ajustes de teste · front") e vem logo depois do worktree da sua PR; o patch inteiro de uma PR que tem worktree
-  sai, porque é o mesmo diff. O arquivo escolhido ganha "›"; os outros ficam apagados.
-- Duas colunas: a lista de arquivos (nome, pasta, `+/−`, etiqueta "N achados") e o diff do arquivo, com os números
-  de linha de antes e de depois.
-- Os achados da revisão aparecem abaixo da linha que apontam, com "ver na Revisão".
-- No app desktop, o painel de diff nativo (que se destaca numa janela à parte, para apontar linha a linha) mostra o
-  repositório da pasta da sessão; o mod não tem como abri-lo. Quando a sessão está em outra pasta, o botão **Levar o
-  diff do app para cá** roda `/aidw:diff <repo>` e leva a sessão para o worktree; quando já está nele, o painel diz onde
-  abrir o diff no app.
-
-### Testes
-
-- Progresso no topo (passaram, falharam, faltam), só com os passos ativos; os removidos do roteiro ficam escondidos.
-- Cartão **Agora** com o passo da vez: seção, o que fazer, esperado, evidência e **Passou / Falhou / Pular**.
-- Lista pelas seções do roteiro, uma linha por passo com o esperado embaixo; a preparação fica recolhida.
-- O resultado vai ao orquestrador como mensagem sua.
-
-### Métricas
-
-- **Resumo:** delegações, rodadas de revisão, tokens dos agentes e do orquestrador, tempo de agentes e o custo das
-  delegações quando o `metricas.md` traz.
-- **Por agente:** barras de tokens; o orquestrador entra como mais uma linha, em laranja, com os turnos e sem tempo
-  (o chat fica aberto, o tempo não diz nada).
-- **Orquestrador:** cache lido, cache escrito, saída, a parte dele no total da demanda, uma linha por sessão e modelo
-  (turnos, a parte que foi cache lido, os tokens e o custo equivalente) e o total. Vem do `metricas-orquestrador.md`, que o mod soma a cada turno (`aidw.py
-  record-orchestrator`). O custo é o preço de API (cache escrito a 2× a entrada, o TTL de 1h do chat): uma régua do
-  peso no limite do plano, não a conta. O effort do chat não chega ao mod; para comparar efforts, use um chat novo
-  para cada um (cada sessão é uma linha).
-- Tokens por dia (colunas, com tooltip de chamadas e tempo), só com dois dias ou mais; por modelo/effort em barras.
-- Resultado das chamadas e retrabalho como etiquetas com contagem (`missing_state` aparece como "sem state").
-- As 8 delegações mais recentes, com "ver todas"; os artefatos em grupos recolhidos.
-- Custo em US$ das delegações só quando o `metricas.md` traz.
-
-### Revisão de PR · Comentários
-
-- **Você decide sobre os comentários da triagem** (`C1`, `C2`…; referência *triagem-pr*), não sobre os achados soltos:
-  cada comentário junta os achados que dizem a mesma coisa (revisor, bugs, segurança), mostrados como "junta R1-01 ·
-  B1-01". Agrupados **por PR**.
-- Filtros: A decidir · Publicados · Todos (abre em A decidir quando há o que decidir).
-- **Cada comentário:** severidade (Pergunta para dúvida, Pendências QA), id, `arquivo:linha`, a situação da triagem
-  ("a decidir", "não publicado (r1)", "publicado (thread 23720), resolvido na r2"), o título, o **texto que vai para a
-  PR** com **editar** e **ajustar no chat**, a recomendação e **Publicar** / **Não publicar** (a recomendada com
-  "(recomendado)"). Publicados e recusados ficam recolhidos em "Ver comentário".
-- **Aprovar a PR? (por PR):** **Manual** (o padrão: o AiDW não aprova, você decide na ferramenta), **Sim** (o AiDW
-  aprova) ou **Não**. Sem escala de voto nem sugestão: igual em qualquer ferramenta.
-- **Fora das PRs:** o que não vira comentário, recolhido.
-- Rodapé: o resumo PR a PR ("8197: aprovar sim · 8208: aprovar manual · 1 comentário para publicar") e **Levar decisão
-  ao prompt**, que manda, por PR, o que publicar, o que não, os textos editados e a aprovação.
-- **Sem triagem no formato *triagem-pr*** (demandas antigas), a aba cai no modelo anterior: os achados da última rodada
-  com o rascunho de cada um e um "Aprovar a PR?" só.
-
-### Levantamento
+### Card × código e Estimativa (levantamento)
 
 - **Card × código:** o que o card pede; os pontos validados no código, uma linha cada com a situação na frente
   (precisa mudar, é a dor, não muda, nada a reaproveitar), o "hoje no código" e, apagado, o "para a demanda"; 5 à
-  vista e "Mostrar mais"; e **Onde a mudança toca** (a seção do levantamento: sistemas, contratos, banco).
-- **Estimativa:**
-  - os números (SP do card como está, SP quebrado, horas de dev, de QA, complexidade e confiança); o nível e as
-    passadas extras só aparecem nos levantamentos de antes do fluxo v3;
-  - esforço por bloco em barras de intervalo (mínimo a máximo);
-  - a recomendação de quebra em itens, com SP;
-  - **Riscos** (o tópico `**Riscos:**` da estimativa, com os subtópicos);
-  - rodapé: **Levar ao prompt: comentar no card**.
-- **Dúvidas:** as abertas por tema, cada uma com para quem é, o que muda na estimativa, o campo de resposta e
-  **ajustar no chat**; as de um grupo "Respondidas …" ficam numa linha cada, 3 à vista e "Mostrar mais".
-- **Dados:** o `levantamento-<id>.md` passa a seguir um modelo fixo (ver a referência *levantamento* do contexto):
-  tabela "Hoje no código | Para a demanda | Situação", blocos com dias mínimo e máximo, dúvidas com `Para:` e
-  `Muda a estimativa:`.
+  vista e "Mostrar mais"; e **Onde a mudança toca**.
+- **Estimativa:** os números (SP do card como está, SP quebrado, dias de dev, de QA, complexidade e confiança); o
+  esforço por bloco em barras de intervalo (mínimo a máximo); a recomendação de quebra em itens; **Riscos**; e
+  **Levar ao prompt: comentar no card**.
+- **Dados:** o `levantamento-<id>.md` no modelo fixo da referência *levantamento*.
+
+## Métricas
+
+- **Resumo:** delegações, rodadas de revisão, tokens dos agentes e do orquestrador ("sem registro" quando não há
+  `metricas-orquestrador.md`), tempo de agentes trabalhando e o custo das delegações quando o `metricas.md` traz.
+- **Por agente:** barras de tokens; o orquestrador entra como mais uma linha, em laranja, com os turnos e sem tempo.
+- **Orquestrador:** cache lido, cache escrito, saída, a parte dele no total da demanda e uma linha por sessão e modelo
+  (turnos, cache lido, tokens, custo equivalente). Vem do `metricas-orquestrador.md`, que o mod soma a cada turno
+  (`aidw.py record-orchestrator`). O custo é o preço de API: uma régua do peso no limite do plano, não a conta.
+- **Tokens por dia** (colunas, com tooltip de chamadas e tempo), só com dois dias ou mais; **por modelo e effort** em
+  barras.
+- **Resultado das chamadas e retrabalho:** etiquetas com contagem e as voltas.
+
+Saíram na V4: a lista das delegações recentes e a dos artefatos (o app mostra os arquivos em Saídas).
+
+## Decisões
+
+O que espera você, num painel só: os achados da revisão, o teste manual, os comentários de PR e as dúvidas do
+levantamento. O número no botão da faixa soma o que espera você em cada aba. Sem nada (pelo `/decisoes`): "Nada para
+decidir nesta demanda por enquanto."
+
+### Revisão (desenvolvimento)
+
+- **Rodada** em botões, por tipo: Plano r1, Código r1, Código r2… Abre na rodada com achado esperando você; senão, na
+  última do código.
+- **Decisão** em abas de texto: Com você · Mantidos · Descartados · Todos. Abre em **Com você**.
+- **Filtros:** um botão que abre uma linha de botões liga/desliga por criticidade, categoria (qualidade, bug,
+  segurança) e status.
+- **Cada achado é um cartão:** criticidade, ID, `arquivo:linha` e status (com você, corrigido); o que foi apontado; o
+  código **antes e depois**, quando o achado propõe mudança; a **recomendação do AiDW**; e Manter e Descartar, a
+  recomendada com "(recomendado)". Nas dúvidas, as opções do próprio achado numa lista ("(a) …", a primeira é a
+  recomendada) e botões só com a letra.
+- Rodapé: **Levar decisões ao prompt** (`Decisões da revisão (…)`).
+- **Dados:** achados no `review-*-rN.md` (categoria no título, `Antes:` e `Depois:`, `**Recomendação:**`); a decisão
+  vem do `triagem-*-rN.md`, que o orquestrador grava a partir da sua mensagem.
+
+### Testes (desenvolvimento)
+
+- Progresso no topo (passaram, falharam, faltam), só com os passos ativos.
+- Cartão **Agora** com o passo da vez: seção, o que fazer, esperado, evidência e **Passou / Falhou / Pular**. O
+  resultado vai ao orquestrador como mensagem sua (`Roteiro …, passo …`).
+- Lista pelas seções do roteiro; a preparação fica recolhida; os removidos do roteiro, escondidos.
+
+### Comentários (revisão de PR)
+
+- **Você decide sobre os comentários da triagem** (`C1`, `C2`…; referência *triagem-pr*): cada um junta os achados
+  que dizem a mesma coisa ("junta R1-01 · B1-01"). Agrupados **por PR**.
+- Filtros: A decidir · Publicados · Todos (abre em A decidir quando há o que decidir).
+- **Cada comentário:** severidade (Pergunta para dúvida, Pendências QA), id, `arquivo:linha`, a situação, o título, o
+  **texto que vai para a PR** com **editar** e **ajustar no chat**, a recomendação e **Publicar** / **Não publicar**.
+  Publicados e recusados ficam recolhidos em "Ver comentário".
+- **Aprovar a PR? (por PR):** **Manual** (o padrão), **Sim** ou **Não**.
+- **Fora das PRs:** o que não vira comentário, recolhido.
+- Rodapé: o resumo PR a PR e **Levar decisão ao prompt**.
+- **Sem triagem no formato *triagem-pr*** (demandas antigas): os achados da última rodada, com abas A decidir ·
+  Publicar · Não publicar · Já publicados, e um "Aprovar a PR?" só.
+
+### Dúvidas (levantamento)
+
+- As abertas por tema, cada uma com para quem é, o que muda na estimativa, o campo de resposta (**Responder** manda
+  `Resposta à dúvida …`) e **ajustar no chat**; as de um grupo "Respondidas …" ficam numa linha cada.
 
 ## O que muda fora do painel
 
-| Quem | Passa a gravar |
+| Quem | Grava |
 |---|---|
-| `aidw.py demand set` | `--summary` (resumo de até 4 linhas), `--pr <repo>=<n>` e as etapas `CODE_REVIEW` e `QA_TEST` |
+| `aidw.py demand set` | `--summary`, `--note`, `--pr <repo>=<n>`, `--extra-step` e as etapas `CODE_REVIEW` e `QA_TEST` |
 | Orquestrador | o resumo ao entender o card; as etapas de fora quando você avisa; as suas decisões dos achados no `triagem-*-rN.md` |
 | Planejador | critérios e regras do card numerados como `CA1`, `RN1`, e o `Covers:` de cada entrega |
 | Revisor | a categoria no título, `Antes:` e `Depois:` e a `Recomendação:` em cada achado |
 | QA | as colunas `Critério` e `Como` e o `Resultado` de cada passo do roteiro |
-| Explorador (levantamento) | o modelo novo do levantamento |
+| Explorador (levantamento) | o modelo do levantamento |

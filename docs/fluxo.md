@@ -38,7 +38,7 @@ Entender → Explorar → Plano → Sua aprovação
 | **Implementar** | codificador (um por entrega), documentador, qa | o código no worktree e `diff-<id>-<E>-r1.patch`; as Tasks no board (uma por entrega); `roteiro-testes-<id>.md` com a massa de dados | os blocos de escrita da massa, de uma vez |
 | **Revisão** | revisor | `review-<id>-r<N>.md`: qualidade, bugs e segurança numa passada, cada achado com a recomendação de manter ou descartar | **sim: você decide cada achado, a cada rodada** |
 | **Correção** | codificador → revisor | só os achados mantidos; a re-revisão olha só as correções | — |
-| **Sua revisão** | você | a revisão do código (aba Diffs do painel); um pedido seu vira correção e revisão só dela | **sim** |
+| **Sua revisão** | você | a revisão do código (o diff do app); um pedido seu vira correção e revisão só dela | **sim** |
 | **Testes** | qa, depois você + orquestrador | o qa confere o roteiro contra o diff final, roda os passos automáticos e marca o resultado no roteiro; os manuais você executa, um por vez | **sim, nos passos manuais** |
 | **PR** | documentador, depois o orquestrador | `pr-<id>.md` (commit, título, descrição, pendências para a QA); com o seu OK, commit, push, PR e o comentário de pendências | **sim: um OK único** |
 
@@ -52,9 +52,8 @@ Cada agente termina com `"state": "<chave>"`, e `orchestrator/config/routing.tom
 (`plan_ready` → `PLAN_APPROVAL`, `review_findings` → `TRIAGE`, `tests_passed` → `PR`…). O orquestrador aplica a regra;
 os agentes não escolhem o próximo passo. Um `state` ausente é falha: ele pede só o JSON de novo.
 
-`max_retries` (3) conta as rodadas do mesmo laço (explorar ⇄ planejar, revisar ⇄ corrigir); esgotou, ele para e
-traz para você. No Claude Code, o mod trava a delegação que passaria do limite até você liberar uma rodada
-([mods.md](mods.md)).
+Não há limite de rodadas (painel v4, Alex, 2026-11-03): um laço (explorar ⇄ planejar, revisar ⇄ corrigir) roda até
+a etapa terminar, e cada rodada nova precisa de um motivo nomeado. Você decide os achados de toda rodada.
 
 ## Agentes e effort
 
@@ -80,7 +79,7 @@ O revisor revisa a entrega contra o plano numa passada: padrões do time, **bugs
 a severidade, a correção mínima dentro do escopo, o código antes e depois e a recomendação (manter ou descartar, e por
 quê). Dúvidas de regra ou de arquitetura vêm como dúvida, não como achado.
 
-Os achados vão para **você** e para o orquestrador a cada rodada: no painel, a aba Revisão mostra cada um com a
+Os achados vão para **você** e para o orquestrador a cada rodada: no painel Decisões, a aba Revisão mostra cada um com a
 recomendação e os botões Manter/Descartar, e o botão do rodapé leva as decisões ao prompt. Antes de recomendar
 descartar um CRITICO/IMPORTANTE, o orquestrador confere a premissa (skill `verificar-premissa`). As decisões ficam em
 `triagem-<id>-r<N>.md`; os mantidos vão para o codificador, e um revisor novo confere só as correções. Sem achado a
@@ -97,7 +96,7 @@ decidir, a demanda vai para a sua revisão de código.
   escritas aprovadas, os passos automáticos — API e navegador, pelo Claude in Chrome (o seu Chrome, logado) ou pelo
   Playwright — e a regressão da área, e escreve ✅/❌ e a evidência no próprio roteiro.
 - **Passos manuais** (desktop/WPF, ou o que o qa não conseguiu no navegador): o orquestrador mostra um passo por vez,
-  você executa e manda a evidência (pela aba Testes do painel ou no chat), e ele marca o resultado.
+  você executa e manda a evidência (pela aba Testes do painel Decisões ou no chat), e ele marca o resultado.
 - **Ajustes de teste:** mudança de código só para testar (bypass, flag, mock, apontar para QA) é feita pelo
   codificador, marcada com `AIDW-TESTE`, num patch separado; sai antes do commit, e o hook recusa um commit com a
   marca.

@@ -264,7 +264,6 @@
       "documentador"
     ]
   },
-  "max_retries": 3,
   "panel": true,
   "external_steps": []
 }

@@ -6,7 +6,6 @@ import type { DemandKind } from '../types'
 export type Runtime = {
   /** {agente: [subagent_type permitidos]} — o padrão e as exceções da tabela Agents and effort (fluxo v3). */
   variants: Record<string, string[]>
-  maxRetries: number
   /** Nomes dos agentes ligados (planejador, codificador…), como o aidw.config.toml os chama. */
   agents: string[]
   /** O papel de cada agente ligado ({codificador: 'coder'}): o nome é configurável, o papel não. */
@@ -20,22 +19,12 @@ export type DelegationCheck = {
   runtime: Runtime
   /** As últimas mensagens do usuário nesta sessão (a mais nova por último). */
   userPrompts: string[]
-  /** Etapa gravada da demanda e a rodada do laço dela. */
-  step: string | null
-  round: number
-  roundKind: 'plano' | 'revisão' | null
-  /** Rodadas extras liberadas pelo usuário (botão ou /rodada). */
-  extraRounds: number
-  /** pr-review e levantamento não têm laço de correção. */
-  kind: DemandKind | null
 }
 
 export type { DemandKind }
 
 const MAX_PROMPT = 6000
 const MODEL_WORDS = /\b(opus|sonnet|haiku|fable|modelo)\b/i
-/** As etapas do laço revisão ⇄ correção (as antigas ficam pelas demandas abertas antes do fluxo v3). */
-const FIX_STEPS = new Set(['REVIEW', 'TRIAGE', 'CODER_FIX'])
 
 /** O agente da tabela a que a variante pertence (`aidw:codificador-medium` → `codificador`). */
 export function agentOf(subagentType: string, runtime: Runtime): string | null {
@@ -83,17 +72,6 @@ export function checkDelegation(check: DelegationCheck): string | null {
       `prompt de ${prompt.length} caracteres: insumos grandes (diff, plano, review) vão por caminho, ` +
         'num arquivo da pasta da demanda, nunca colados.',
     )
-  }
-  const limit = runtime.maxRetries + check.extraRounds
-  if (check.kind === 'desenvolvimento' && check.round >= limit && check.step) {
-    if (check.roundKind === 'revisão' && FIX_STEPS.has(check.step) && ['reviewer', 'coder'].includes(runtime.roles[agent] ?? '')) {
-      return fix(
-        `a revisão já está na rodada ${check.round} e o limite é ${limit} (max_retries` +
-          `${check.extraRounds ? ` + ${check.extraRounds} liberada(s)` : ''}). ` +
-          'Pare e leve ao usuário (HUMAN_APPROVAL) com o que ainda falta; só ele libera mais uma rodada, pelo ' +
-          'botão "Liberar +1 rodada" do painel ou com /rodada.',
-      )
-    }
   }
   return null
 }
