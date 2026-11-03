@@ -4,31 +4,24 @@ import { parseDelegations, usd } from '../hooks/aidw'
 import { buildSnapshot, nextStep, phaseOf, stateLabel } from '../hooks/snapshot'
 
 const snap = (demand: Record<string, unknown>, files: Record<string, string> = {}) =>
-  buildSnapshot({ dir: 'C:/x/us-1', demand, files: Object.keys(files), texts: files, maxRetries: 3 })
+  buildSnapshot({ dir: 'C:/x/us-1', demand, files: Object.keys(files), texts: files })
 
 describe('aba Geral', () => {
   test('próximo passo: o que você faz ou o que o AiDW está fazendo', async () => {
     const final = snap({ id: 'us-1', step: 'FINAL_REVIEW', history: [{ step: 'FINAL_REVIEW', at: '' }] })
-    expect(nextStep(final, 3).you).toBe(true)
-    expect(nextStep(final, 3).text).toContain('/aidw:done')
+    expect(nextStep(final).you).toBe(true)
+    expect(nextStep(final).text).toContain('/aidw:done')
     expect(phaseOf(final)).toBe('PR')
-    const plan = nextStep(snap({ id: 'us-1', step: 'PLAN_APPROVAL' }), 3)
+    const plan = nextStep(snap({ id: 'us-1', step: 'PLAN_APPROVAL' }))
     expect([plan.you, plan.text]).toEqual([true, expect.stringContaining('aprova')])
-    expect(nextStep(snap({ id: 'us-1', step: 'TRIAGE' }), 3).text).toContain('aba Revisão')
-    expect(nextStep(snap({ id: 'us-1', step: 'USER_REVIEW' }), 3).text).toContain('aba Diffs')
-    expect(nextStep(snap({ id: 'us-1', step: 'PR' }), 3).text).toContain('OK')
-    const impl = nextStep(snap({ id: 'us-1', step: 'IMPLEMENT' }), 3)
+    expect(nextStep(snap({ id: 'us-1', step: 'TRIAGE' })).text).toContain('painel Decisões')
+    expect(nextStep(snap({ id: 'us-1', step: 'USER_REVIEW' })).text).toContain('Alterações')
+    expect(nextStep(snap({ id: 'us-1', step: 'PR' })).text).toContain('OK')
+    const impl = nextStep(snap({ id: 'us-1', step: 'IMPLEMENT' }))
     expect(impl.you).toBe(false)
     expect(impl.text).toContain('implementando')
-    expect(nextStep(snap({ id: 'us-1', step: 'REVIEW', status: 'paused' }), 3).text).toContain('/aidw:go us-1')
-    expect(nextStep(snap({ id: 'us-1', step: 'DONE' }), 3).text).toContain('Concluída')
-  })
-
-  test('limite de rodadas só trava nas etapas do laço', async () => {
-    const files = { 'review-us-1-r3.md': '' }
-    expect(nextStep(snap({ id: 'us-1', step: 'CODER_FIX' }, files), 3).text).toContain('chegou ao limite')
-    expect(nextStep(snap({ id: 'us-1', step: 'CODER_FIX' }, files), 4).text).toContain('corrigindo')
-    expect(nextStep(snap({ id: 'us-1', step: 'FINAL_REVIEW' }, files), 3).text).toContain('Confira a entrega')
+    expect(nextStep(snap({ id: 'us-1', step: 'REVIEW', status: 'paused' })).text).toContain('/aidw:go us-1')
+    expect(nextStep(snap({ id: 'us-1', step: 'DONE' })).text).toContain('Concluída')
   })
 
   test('nota do demand.json', async () => {

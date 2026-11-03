@@ -129,25 +129,26 @@ PR), as ações travadas, as dúvidas reais e o que sair do plano. Não há modo
 | `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
 | `/aidw:contexto-listar` · `contexto-usar <nome>` · `contexto-criar` | `$aidw-contexto-*` | Administram os contextos (seção 6) |
 | `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
-| `/painel [aba]` | — | Abre o painel do AiDW: Geral (mapa da demanda), as abas de cada uso e Métricas ([painel](docs/painel.md)) |
-| `/rodada` | — | Libera mais uma rodada no laço de revisão travado pelo `max_retries` |
+| `/painel [aba]` | — | Abre o painel Geral da demanda, ou o da aba pedida ([painel](docs/painel.md)) |
+| `/metricas` | — | Abre o painel de métricas da demanda |
+| `/decisoes` | — | Abre o painel Decisões: o que espera você |
 
 ### Mods (só Claude Code)
 
 No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
 
-- **Faixa acima do prompt:** a demanda, o contexto e as janelas de 7d e 5h do plano, com barras, e os agentes rodando.
-- **Painel do AiDW** (`/painel`, [painel.md](docs/painel.md)): Geral (título, mapa da demanda com resumo, números e
-  progresso, inclusive Code review e QA, agentes rodando e links), as abas de cada uso e Métricas.
+- **Faixa acima do prompt:** a demanda, o contexto e as janelas de 7d e 5h do plano, com barras, os agentes rodando
+  e os botões dos painéis.
+- **Painéis do AiDW** ([painel.md](docs/painel.md)), só quando você abre: **Geral** (`/painel`: título, mapa da
+  demanda com resumo, números e progresso, inclusive Code review e QA), **Métricas** (`/metricas`) e **Decisões**
+  (`/decisoes`: o que espera você).
   - **Desenvolver:** critérios, regras e cenários com a cobertura; revisão em cartões (antes e depois do código,
-    recomendação do AiDW, decisão); diffs por arquivo com os achados; teste manual passo a passo.
+    recomendação do AiDW, decisão); teste manual passo a passo.
   - **Revisar PR:** achados com o comentário de cada um, o que publicar e "Aprovar a PR?" (manual, sim, não).
   - **Levantamento:** card × código, estimativa e dúvidas.
 - **Métricas sozinhas:** cada delegação vira linha do `metricas.md` quando o agente termina.
-- **Travas da delegação:** a célula da tabela, o `model` sem pedido e o insumo colado são recusados; o laço de revisão
-  para no `max_retries` até você liberar mais uma rodada.
-- **Avisos e proteções:** toasts quando a demanda espera você ou um agente termina, aviso quando o orquestrador lê
-  código no chat, filtro de segredos na conversa e o estado da demanda de volta depois de uma compactação.
+- **Travas da delegação:** a célula da tabela, o `model` sem pedido e o insumo colado são recusados.
+- **Proteções:** aviso ao modelo quando o orquestrador lê código no chat, filtro de segredos na conversa e o estado da demanda de volta depois de uma compactação.
 
 Eles ligam com `/aidw:go` ou `/aidw:lev` e desligam com `/aidw:sair` ou `/aidw:done`. Detalhes e como
 escrever um mod: [docs/mods.md](docs/mods.md).
@@ -212,7 +213,7 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
   resultado não fez sentido) estão na tabela *Agents and effort*, com o motivo de cada uma.
 - **Cada agente roda uma vez por etapa:** uma nova rodada precisa de um motivo nomeado (o seu ajuste, um achado
   mantido, um teste que falhou).
-- **Limite de voltas:** o laço revisar ⇄ corrigir tem `max_retries`; esgotou, o orquestrador para e pergunta.
+- **Sem limite de voltas:** o laço revisar ⇄ corrigir roda até não sobrar achado mantido; você decide cada rodada.
 
 Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
 comentário, e você escolhe o que é publicado e se o AiDW aprova a PR ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).

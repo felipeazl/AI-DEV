@@ -5,7 +5,6 @@ import type { CoverageItem, Finding, ManualStep, PrTriage, Repo, Snapshot } from
 import { budgetFor, parseDelegations, parseOrchestrator, roundFor } from './aidw'
 import {
   decisionOf,
-  groupArtifacts,
   kindOf,
   latest,
   parseCardAsk,
@@ -78,9 +77,6 @@ export type SnapshotInput = {
   demand: DemandFile
   files: string[]
   texts: Record<string, string>
-  maxRetries: number
-  /** Limite do laço revisão do plano ⇄ correção (routing.toml `max_retries_plan`); sem ele, o `maxRetries`. */
-  maxRetriesPlan?: number
   /** Etapas de fora do contexto (`runtime.json` → `external_steps`). */
   externalSteps?: ExternalStep[]
 }
@@ -105,7 +101,6 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
   const plan = parsePlanMeta(text(planFile(files)))
   const level = plan.level ?? delegations.at(-1)?.level ?? null
   const { round, kind: roundKind } = roundFor(step, files, demand.loop)
-  const maxRetries = roundKind === 'plano' ? (input.maxRetriesPlan ?? input.maxRetries) : input.maxRetries
 
   // achados: todas as rodadas, com a triagem de cada uma
   const findings: Finding[] = []
@@ -202,14 +197,11 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     timeline: timeline(kind, demand),
     progress: progress(kind, demand, input.externalSteps),
     repos,
-    artifacts: groupArtifacts(files),
-    patches: files.filter(f => f.endsWith('.patch')).sort(),
     level,
     passes: plan.passes,
     planVersion: plan.version,
     round,
     roundKind,
-    maxRetries,
     delegations,
     tokens: delegations.reduce((n, d) => n + d.tokens, 0),
     orchestrator: parseOrchestrator(text('metricas-orquestrador.md')),
@@ -283,27 +275,22 @@ const DOING: [string[], string][] = [
   [['RETURN'], 'O orquestrador está voltando a uma etapa anterior.'],
 ]
 
-/** As etapas do laço de revisão: só nelas o limite de rodadas trava (as antigas ficam pelas demandas abertas). */
-export const LOOP_STEPS = new Set(['REVIEW', 'TRIAGE', 'CODER_FIX', 'PLAN_REVIEW', 'PLAN_FIX', 'PREPARE_REVIEW'])
-
 /** O próximo passo em uma frase: o que você faz, ou o que o AiDW está fazendo. */
-export function nextStep(s: Snapshot, limit: number): { you: boolean; text: string } {
+export function nextStep(s: Snapshot): { you: boolean; text: string } {
   if (s.status === 'paused') return { you: true, text: `Pausada. \`/aidw:go ${s.id}\` retoma de onde parou.` }
   if (s.step === 'DONE' || s.status === 'done')
     return { you: false, text: 'Concluída. Se ainda não rodou, `/aidw:done` grava o que ela ensinou na base de conhecimento.' }
-  if (s.kind === 'desenvolvimento' && s.roundKind && s.round >= limit && LOOP_STEPS.has(s.step))
-    return { you: true, text: `O laço de ${s.roundKind} chegou ao limite (${s.round} de ${limit}): libere +1 rodada ou decida no chat.` }
   switch (s.step) {
     case 'HUMAN_APPROVAL':
       return { you: true, text: 'Responda no chat: o orquestrador espera sua aprovação ou resposta.' }
     case 'PLAN_APPROVAL':
       return { you: true, text: 'Leia o plano e diga no chat se aprova ou o que ajustar; nada vai para o código antes disso.' }
     case 'TRIAGE':
-      return { you: true, text: 'Decida cada achado na aba Revisão (manter ou descartar) e leve as decisões ao prompt.' }
+      return { you: true, text: 'Decida cada achado no painel Decisões (manter ou descartar) e leve as decisões ao prompt.' }
     case 'USER_REVIEW':
-      return { you: true, text: 'Revise o código na aba Diffs e diga no chat se aprova ou o que mudar.' }
+      return { you: true, text: 'Revise o código no diff do app (Alterações) e diga no chat se aprova ou o que mudar.' }
     case 'MANUAL_TEST':
-      return { you: true, text: 'Siga os passos manuais na aba Testes e marque cada um.' }
+      return { you: true, text: 'Siga os passos manuais no painel Decisões e marque cada um.' }
     case 'PR':
       return { you: true, text: 'Confira o commit, o texto da PR e as pendências para a QA e dê o OK no chat.' }
     case 'FINAL_REVIEW':
@@ -311,10 +298,10 @@ export function nextStep(s: Snapshot, limit: number): { you: boolean; text: stri
         you: true,
         text:
           s.kind === 'pr-review'
-            ? 'Escolha o que publicar e se o AiDW aprova cada PR na aba Comentários.'
+            ? 'Escolha o que publicar e se o AiDW aprova cada PR no painel Decisões.'
             : s.kind === 'levantamento'
               ? 'Confira a estimativa e as dúvidas e diga se publica o comentário no card.'
-              : 'Confira a entrega (abas Critérios e Diffs) e diga no chat se aprova; depois, `/aidw:done` fecha a demanda.',
+              : 'Confira a entrega (os critérios na Geral e o diff do app) e diga no chat se aprova; depois, `/aidw:done` fecha a demanda.',
       }
   }
   const doing = DOING.find(([steps]) => steps.includes(s.step))?.[1]
@@ -343,7 +330,7 @@ export function stateNote(s: Snapshot): string {
     `AiDW (mod aidw-mods): estado da demanda ${s.id} relido do disco depois da compactação.`,
     `- Uso: ${s.kind}; etapa gravada: ${s.step}${s.waiting ? ` (espera o usuário: ${s.waiting})` : ''}.`,
     `- Pasta da demanda: ${s.dir}${s.repos.length ? `; worktrees: ${s.repos.map(r => `${r.name} → ${r.path}`).join(', ')}` : ''}.`,
-    s.roundKind ? `- Laço de ${s.roundKind}: rodada ${s.round} de ${s.maxRetries}.` : '',
+    s.roundKind ? `- Laço de ${s.roundKind}: rodada ${s.round}.` : '',
     open.length ? `- Achados abertos da última rodada: ${open.map(f => `${f.id} ${f.severity}`).join(', ')}.` : '',
     `- Delegações: ${s.delegations.length} (${s.tokens} tokens). Releia a skill do orquestrador, o demand.json e os artefatos da etapa antes de seguir.`,
   ]

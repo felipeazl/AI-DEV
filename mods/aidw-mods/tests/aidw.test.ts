@@ -6,7 +6,6 @@ import {
   demandSetId,
   labelFor,
   parseDelegation,
-  parseMaxRetries,
   parseMetricas,
   parseOrchestrator,
   parseState,
@@ -95,11 +94,6 @@ describe('estado da demanda', () => {
     expect(roundFor('CODER_FIX', files, 'bug-1234')).toEqual({ round: 1, kind: 'revisão' })
     expect(roundFor('CODER_FIX', files, 'bug-1')).toEqual({ round: 0, kind: null })
     expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'revisão' })
-  })
-
-  test('max_retries do routing.toml', async () => {
-    expect(parseMaxRetries('[rules]\nmax_retries = 3\n')).toBe(3)
-    expect(parseMaxRetries('')).toBe(3)
   })
 
   test('demand set no shell', async () => {

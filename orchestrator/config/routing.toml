@@ -10,13 +10,11 @@
 # Contexto: contexts/<nome>/routing.toml, quando existe, vai por cima deste arquivo (tabelas se fundem, valores
 # substituem).
 
-max_retries = 3          # revisar ⇄ corrigir e explorar ⇄ planejar; no caminho curto, por item (demand set --loop)
-
 [rules]
 # Entender e plano
 existing_work_found = "HUMAN_APPROVAL"          # Tasks, PR ou branch já existem: continuação, correção ou retrabalho?
 exploration_complete = "RETURN"                 # o explorador volta para a etapa que o chamou
-plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece (conta em max_retries)
+plan_needs_exploration = "EXPLORE"              # o planejador precisa de código que não conhece
 plan_has_open_questions = "HUMAN_APPROVAL"      # dúvida real ou mais de um caminho válido
 plan_ready = "PLAN_APPROVAL"                    # o orquestrador lê o plano e o usuário aprova; ajuste → PLAN_FIX
 
@@ -30,7 +28,6 @@ environment_blocked = "HUMAN_APPROVAL"          # só quando o orquestrador não
 # Revisão (revisor: qualidade, bugs e segurança numa passada)
 review_findings = "TRIAGE"                      # os achados vão ao usuário e ao orquestrador; mantidos → CODER_FIX
 review_approved = "USER_REVIEW"                 # nenhum achado a decidir: a revisão de código do usuário
-max_retries_exceeded = "HUMAN_APPROVAL"
 
 # Testes (qa)
 test_plan_ready = "RETURN"                      # roteiro e massa prontos, em paralelo com o codificador

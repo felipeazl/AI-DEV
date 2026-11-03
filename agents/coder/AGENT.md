@@ -37,7 +37,7 @@ instead of guessing.
    (they already filter output). Never search for or invent other build tools. When asked for new warnings, compare
    only the warnings in the files you changed.
 5. **Failures** — capture the exact command and error, reproduce with the smallest command, verify a hypothesis by
-   reading code, fix the root cause (not the symptom). After `max_retries` on the same step, stop with
+   reading code, fix the root cause (not the symptom). After 3 attempts at the same failing step, stop with
    `state: "implementation_failed"`.
 6. **Diff** — review your own diff, remove unrelated changes, and save it (`git diff` against the base the plan gives)
    to the patch path the task names (`diff-<id>-<E1>-r<N>.patch`; a fix gets the next `r<N>`).

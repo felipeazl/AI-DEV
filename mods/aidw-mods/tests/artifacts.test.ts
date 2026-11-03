@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
-  groupArtifacts,
   kindOf,
   parseCriteria,
   parseDoubts,
@@ -180,17 +179,6 @@ describe('plano e arquivos', () => {
   test('nível, passadas e versão', async () => {
     expect(parsePlanMeta('# Rota única — Plano de Execução v7\n**Nível: complexa** — dois sistemas\nPassadas extras: bugs sim — UI thread; segurança não'))
       .toEqual({ level: 'complexa', passes: 'bugs sim — UI thread; segurança não', version: '7' })
-  })
-
-  test('artefatos agrupados', async () => {
-    const g = groupArtifacts(['resumo-1.md', 'plano-1.md', 'plano-testes-1.md', 'review-1-r1.md', 'diff-1-r1.patch', 'demand.json', 'x.png'])
-    expect(g).toEqual({
-      Card: ['resumo-1.md'],
-      Plano: ['plano-1.md'],
-      Testes: ['plano-testes-1.md'],
-      Revisão: ['review-1-r1.md'],
-      Diffs: ['diff-1-r1.patch'],
-    })
   })
 })
 

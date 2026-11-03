@@ -1,12 +1,12 @@
-// As telas da faixa e do painel (V2, docs/painel.md). Recebem a tabela de elementos da superfície (não o `$`), os
+// As telas da faixa e dos painéis (v4, docs/painel.md). Recebem a tabela de elementos da superfície (não o `$`), os
 // dados e as ações; o register.tsx monta as ações (que gravam o estado ou mandam a decisão do usuário ao orquestrador).
 
 import type { Elements, ThemeKey } from 'claude-code'
 
-import type { Delegation, DemandKind, DiffView, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
+import type { Delegation, DemandKind, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { compact } from './aidw'
 import { APPROVALS, KIND_LABEL, approvalOf } from './artifacts'
-import { LOOP_STEPS, stateLabel } from './snapshot'
+import { stateLabel } from './snapshot'
 
 type Desktop = Elements['desktop']
 export type UI = Pick<Desktop, 'Box' | 'Text' | 'Button' | 'Select' | 'Input' | 'Code' | 'Markdown' | 'Link'> & {
@@ -16,7 +16,6 @@ export type UI = Pick<Desktop, 'Box' | 'Text' | 'Button' | 'Select' | 'Input' | 
 export type Actions = {
   tab: (tab: string) => void
   refresh: () => void
-  extraRound: () => void
   reviewFile: (file: string) => void
   decisionTab: (tab: string) => void
   decide: (id: string, value: string) => void
@@ -32,13 +31,12 @@ export type Actions = {
   manualResult: (step: string, result: 'ok' | 'fail' | 'skip') => void
   answerDoubt: (id: string) => void
   postLevantamento: () => void
-  diffSource: (source: string) => void
-  diffFile: (path: string) => void
-  appDiff: (repo: string) => void
   expand: (key: string) => void
 }
 
 export type ViewState = {
+  /** Qual dos painéis está sendo desenhado. */
+  view: View
   snap: Snapshot
   running: RunningAgent[]
   now: number
@@ -47,15 +45,10 @@ export type ViewState = {
   /** "Aprovar a PR?" por PR; sem escolha, manual. */
   approvals: Record<string, string>
   drafts: Record<string, string>
-  diff: DiffView | null
   usage: Usage | null
-  extraRounds: number
   columns: number
   /** `terminal` mostra a tecla de cada aba (`1: Geral`); no app as teclas funcionam sem aparecer. */
   surface: string
-  canAppDiff: boolean
-  /** A pasta da sessão: o painel de diff do app desktop mostra o repositório dela. */
-  sessionCwd: string
   reviewFile: string
   decisionTab: string
   filter: ReviewFilter
@@ -63,28 +56,36 @@ export type ViewState = {
   expanded: Record<string, boolean>
 }
 
-export const TABS: Record<DemandKind, [string, string][]> = {
-  desenvolvimento: [
-    ['geral', 'Geral'],
-    ['criterios', 'Critérios e Regras'],
-    ['revisao', 'Revisão'],
-    ['diffs', 'Diffs'],
-    ['manual', 'Testes'],
-    ['metricas', 'Métricas'],
-  ],
-  'pr-review': [
-    ['geral', 'Geral'],
-    ['comentarios', 'Comentários'],
-    ['diffs', 'Diffs'],
-    ['metricas', 'Métricas'],
-  ],
-  levantamento: [
-    ['geral', 'Geral'],
-    ['codigo', 'Card × código'],
-    ['estimativa', 'Estimativa'],
-    ['duvidas', 'Dúvidas'],
-    ['metricas', 'Métricas'],
-  ],
+export type View = 'geral' | 'metricas' | 'decidir'
+
+/**
+ * Os painéis (painel v4): cada um é um pane próprio, aberto pelo botão da faixa ou pelo comando, nunca sozinho. Dentro
+ * de cada um, as abas do uso; com dois ou mais painéis abertos, o app mostra as abas entre eles.
+ */
+export const VIEWS: Record<View, { title: string; command: string; tabs: Record<DemandKind, [string, string][]> }> = {
+  geral: {
+    title: 'Geral',
+    command: 'painel',
+    tabs: {
+      desenvolvimento: [['geral', 'Geral']],
+      'pr-review': [['geral', 'Geral']],
+      levantamento: [['geral', 'Geral']],
+    },
+  },
+  metricas: {
+    title: 'Métricas',
+    command: 'metricas',
+    tabs: { desenvolvimento: [['metricas', 'Métricas']], 'pr-review': [['metricas', 'Métricas']], levantamento: [['metricas', 'Métricas']] },
+  },
+  decidir: {
+    title: 'Decisões',
+    command: 'decisoes',
+    tabs: {
+      desenvolvimento: [['revisao', 'Revisão'], ['manual', 'Testes']],
+      'pr-review': [['comentarios', 'Comentários']],
+      levantamento: [['duvidas', 'Dúvidas']],
+    },
+  },
 }
 
 /** Nomes antigos das abas (`/painel fluxo`) e apelidos. */
@@ -94,6 +95,8 @@ const TAB_ALIAS: Record<string, string> = {
   métricas: 'metricas',
   critérios: 'criterios',
   revisão: 'revisao',
+  roteiro: 'manual',
+  testes: 'manual',
   pontos: 'codigo',
   card: 'codigo',
   dúvidas: 'duvidas',
@@ -108,8 +111,6 @@ export function tabHasData(s: Snapshot, tab: string): boolean {
       return s.coverage.length > 0 || s.criteria.length > 0
     case 'revisao':
       return reviewRounds(s).length > 0
-    case 'diffs':
-      return diffSources(s).length > 0
     case 'manual':
       return s.manual.some(m => !m.removed)
     case 'metricas':
@@ -127,18 +128,21 @@ export function tabHasData(s: Snapshot, tab: string): boolean {
   }
 }
 
-/** As abas do uso que têm dados. */
-export function visibleTabs(s: Snapshot): [string, string][] {
-  return TABS[s.kind].filter(([id]) => tabHasData(s, id))
+/** As abas do painel, no uso da demanda, que têm dados. */
+export function visibleTabs(s: Snapshot, view: View): [string, string][] {
+  return VIEWS[view].tabs[s.kind].filter(([id]) => tabHasData(s, id))
 }
 
 /** Dúvida já respondida: o levantamento a põe num grupo "Respondidas …". */
 const answered = (d: Doubt) => /respondid/i.test(d.group)
 
-/** A tab pedida, ou a primeira do uso quando ela não existe nele. */
-export function tabFor(kind: DemandKind, tab: string): string {
-  const id = TAB_ALIAS[tab] ?? tab
-  return TABS[kind].some(([t]) => t === id) ? id : (TABS[kind][0]?.[0] ?? 'geral')
+/** O painel e a aba de um argumento (`/painel revisao`): um painel pelo nome, ou o painel que tem a aba; senão, a Geral. */
+export function viewFor(kind: DemandKind, arg: string): { view: View; tab: string } {
+  const id = TAB_ALIAS[arg] ?? arg
+  if (id === 'decidir' || id === 'metricas') return { view: id, tab: '' }
+  if (id === 'decisoes' || id === 'decisões') return { view: 'decidir', tab: '' }
+  const view = (Object.keys(VIEWS) as View[]).find(v => VIEWS[v].tabs[kind].some(([t]) => t === id))
+  return view ? { view, tab: id } : { view: 'geral', tab: '' }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -201,7 +205,6 @@ const secs = (s: number) =>
     : s >= 60
       ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`
       : `${s}s`
-const fileUrl = (p: string) => `file:///${encodeURI(p.replace(/\\/g, '/'))}`
 const ddmm = (iso: string) => (/^\d{4}-(\d{2})-(\d{2})/.exec(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso)
 const modelName = (m: string) => /opus|sonnet|haiku|fable/i.exec(m)?.[0]?.toLowerCase() ?? (m || '—')
 const two = (n: number) => String(n).padStart(2, '0')
@@ -313,10 +316,23 @@ function choices(ui: UI, key: string, options: { value: string; label: string }[
 // ---------------------------------------------------------------------------------------------------------------
 // Faixa acima do prompt
 
-const WARN = 80
+// as barras do contexto e do uso: cor normal, amarela a partir de 75% e vermelha a partir de 90% (painel v4)
+const WARN = 75
+const HIGH = 90
+const level = (p: number) => (p >= HIGH ? C.red : p >= WARN ? C.amber : C.dim)
 
-export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number) {
-  const { Box, Text } = ui
+/** Os botões dos painéis na faixa; sem eles (painel desligado no contexto), a faixa fica só com a demanda. */
+export type BandNav = {
+  open: (view: View) => void
+  /** Há tela de decisão nesta demanda (o botão Decisões aparece). */
+  canDecide: boolean
+  /** O que espera você nas telas de decisão (a contagem em laranja). */
+  pending: number
+  hasMetrics: boolean
+}
+
+export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number, nav?: BandNav) {
+  const { Box, Text, Button } = ui
   const parts: unknown[] = []
   const add = (key: string, label: string, percent: number, text: string, color: string) => {
     parts.push(
@@ -329,34 +345,60 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
   }
   if (usage) {
     // o contexto na janela real do modelo, como o Claude mostra (a compactação é sua, ou por ociosidade)
-    add('ctx', 'contexto', usage.percent, `${usage.percent}% · ${compact(usage.tokens)}`, usage.percent >= WARN ? C.amber : C.dim)
+    add('ctx', 'contexto', usage.percent, `${usage.percent}% · ${compact(usage.tokens)}`, level(usage.percent))
     for (const kind of ['7d', '5h'] as const) {
       const l = usage.limits.find(x => x.kind === kind)
       if (!l) continue
       const p = Math.round(l.percent)
       const at = p >= WARN && l.resetsAt ? localTime(l.resetsAt, now) : ''
       if (p >= 100) add(kind, kind, 100, `limite${at ? ` · volta ${at}` : ''}`, C.red)
-      else add(kind, kind, p, `${p}%${at ? ` · renova ${at}` : ''}`, p >= WARN ? C.amber : C.dim)
+      else add(kind, kind, p, `${p}%${at ? ` · renova ${at}` : ''}`, level(p))
     }
   }
   // a etapa atual ao lado do id; o modelo quando não é desenvolvimento
   const where = [s.kind === 'desenvolvimento' ? '' : KIND_LABEL[s.kind], s.progress.current].filter(Boolean).join(' · ')
+  // três linhas (painel v4): a demanda e o consumo; os agentes rodando, quando há; os botões, numa linha só, à direita
   return (
-    <Box flexWrap="wrap" alignItems="center" gap={2}>
-      <Box gap={1}>
-        <Text color={C.claude} bold>
-          AiDW
-        </Text>
-        <Text>{s.id}</Text>
-        {where && <Text color={C.dim}>{where}</Text>}
-      </Box>
-      {running.map(a => (
-        <Box key={`run-${a.key}`} gap={1}>
-          <Text color={C.claude}>●</Text>
-          <Text>{`${a.agent} · ${a.label} · ${secs(Math.max(0, Math.round((now - a.since) / 1000)))}`}</Text>
+    <Box flexDirection="column">
+      <Box key="info" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+        <Box gap={1}>
+          <Text color={C.claude} bold>
+            AiDW
+          </Text>
+          <Text>{s.id}</Text>
+          {where && <Text color={C.dim}>{where}</Text>}
+          {s.waiting && (
+            <Text key="waiting" color={C.claude} bold>
+              ● espera você
+            </Text>
+          )}
         </Box>
-      ))}
-      {parts as never}
+        {parts as never}
+      </Box>
+      {running.length > 0 && (
+        <Box key="running" flexWrap="wrap" columnGap={2}>
+          {running.map(a => (
+            <Box key={`run-${a.key}`} gap={1}>
+              <Text color={C.claude}>●</Text>
+              <Text>{`${a.agent} · ${a.label} · ${secs(Math.max(0, Math.round((now - a.since) / 1000)))}`}</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
+      {nav && (
+        <Box key="nav" justifyContent="flex-end" gap={1} flexWrap="nowrap">
+          <Button key="open-geral" label="Geral" plain dimColor onPress={() => nav.open('geral')} />
+          {nav.hasMetrics && <Button key="open-metricas" label="Métricas" plain dimColor onPress={() => nav.open('metricas')} />}
+          {nav.canDecide && (
+            <Button key="open-decidir" plain dimColor={!nav.pending} onPress={() => nav.open('decidir')}>
+              <Text>
+                {VIEWS.decidir.title}
+                {nav.pending > 0 && <Text color={C.claude}>{` ${nav.pending}`}</Text>}
+              </Text>
+            </Button>
+          )}
+        </Box>
+      )}
     </Box>
   )
 }
@@ -368,14 +410,17 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
 function situation(s: Snapshot): { text: string; color: string } {
   const outside = s.progress.stages.find(x => x.state === 'com-time')
   if (s.status === 'paused') return { text: 'Pausada', color: C.dim }
-  if (s.step === 'DONE') return { text: 'Pronto', color: C.green }
+  if (s.step === 'DONE') return { text: 'Concluída', color: C.green }
   if (outside) return { text: `${outside.name} · com ${outside.who ?? 'o time'}`, color: C.blue }
   if (s.waiting) return { text: `${s.progress.current} · espera você`, color: C.amber }
   return { text: s.progress.current, color: C.dim }
 }
 
+/** O que a contagem lê: a demanda e as decisões marcadas e ainda não enviadas. */
+export type Counted = Pick<ViewState, 'snap' | 'reviewFile' | 'decisions' | 'publish'>
+
 /** O que espera você em cada aba (a contagem ao lado do nome). */
-function tabCount(v: ViewState, tab: string): number {
+function tabCount(v: Counted, tab: string): number {
   const s = v.snap
   switch (tab) {
     case 'revisao': {
@@ -395,34 +440,34 @@ function tabCount(v: ViewState, tab: string): number {
   }
 }
 
+/** O que espera você no painel Decisões, somado (o número do botão na faixa). */
+export function pendingCount(v: Counted): number {
+  return VIEWS.decidir.tabs[v.snap.kind].reduce((n, [id]) => n + tabCount(v, id), 0)
+}
+
 export function Panel(ui: UI, v: ViewState, act: Actions) {
   const { Box, Text, Button } = ui
   const s = v.snap
-  const tabs = visibleTabs(s)
-  const wanted = tabFor(s.kind, v.tab)
-  const tab = tabs.some(([id]) => id === wanted) ? wanted : 'geral'
+  const tabs = visibleTabs(s, v.view)
   const terminal = v.surface === 'terminal'
   const sit = situation(s)
-  const body =
-    tab === 'metricas'
-      ? Metrics(ui, v, act)
-      : tab === 'criterios'
-        ? Coverage(ui, v)
-        : tab === 'revisao'
-          ? Review(ui, v, act)
-          : tab === 'diffs'
-            ? Diffs(ui, v, act)
-            : tab === 'manual'
-              ? Manual(ui, v, act)
-              : tab === 'comentarios'
-                ? s.prTriage ? PrComments(ui, v, act) : PrFindings(ui, v, act)
-                : tab === 'codigo'
-                  ? CardCode(ui, v, act)
-                  : tab === 'estimativa'
-                    ? EstimateView(ui, v, act)
-                    : tab === 'duvidas'
-                      ? Doubts(ui, v, act)
-                      : General(ui, v, act)
+  // a aba guardada; senão, nas Decisões, a primeira que espera você; senão, a primeira
+  const tab = tabs.some(([id]) => id === v.tab)
+    ? v.tab
+    : ((v.view === 'decidir' ? tabs.find(([id]) => tabCount(v, id) > 0)?.[0] : undefined) ?? tabs[0]?.[0] ?? '')
+  const body = !tab
+    ? <Text color={C.dim}>{v.view === 'decidir' ? 'Nada para decidir nesta demanda por enquanto.' : 'Ainda sem dados.'}</Text>
+    : tab === 'metricas'
+      ? Metrics(ui, v)
+      : tab === 'revisao'
+        ? Review(ui, v, act)
+        : tab === 'manual'
+          ? Manual(ui, v, act)
+          : tab === 'comentarios'
+            ? s.prTriage ? PrComments(ui, v, act) : PrFindings(ui, v, act)
+            : tab === 'duvidas'
+              ? Doubts(ui, v, act)
+              : General(ui, v, act)
   return (
     <Box flexDirection="column" gap={1}>
       <Box key="hdr" flexDirection="column">
@@ -439,18 +484,22 @@ export function Panel(ui: UI, v: ViewState, act: Actions) {
         </Text>
       </Box>
       <Box flexWrap="wrap" gap={1} alignItems="center">
-        {tabs.map(([id, label]) => {
+        {tabs.length > 1 && tabs.map(([id, label], i) => {
           const n = tabCount(v, id)
-          const hotkey = terminal ? String(TABS[s.kind].findIndex(([t]) => t === id) + 1) : undefined
+          const hotkey = terminal ? String(i + 1) : undefined
           return id === tab ? (
             <Button key={`tab-${id}`} hotkey={hotkey} onPress={() => act.tab(id)}>
-              {label}
-              {n > 0 && <Text color={C.claude}> {n}</Text>}
+              <Text>
+                {label}
+                {n > 0 && <Text color={C.claude}>{` ${n}`}</Text>}
+              </Text>
             </Button>
           ) : (
             <Button key={`tab-${id}`} hotkey={hotkey} plain dimColor onPress={() => act.tab(id)}>
-              {label}
-              {n > 0 && <Text color={C.claude}> {n}</Text>}
+              <Text>
+                {label}
+                {n > 0 && <Text color={C.claude}>{` ${n}`}</Text>}
+              </Text>
             </Button>
           )
         })}
@@ -528,48 +577,33 @@ function progressBar(ui: UI, s: Snapshot) {
   )
 }
 
-/** Os números da Geral: os do modelo da demanda e, em todos, o consumo. */
+/** Os números da Geral que não estão em outro bloco dela: as PRs e os comentários, as dúvidas abertas. */
 function numbers(ui: UI, s: Snapshot) {
-  const seconds = s.delegations.reduce((n, d) => n + d.seconds, 0)
   const rows: unknown[] = []
-  if (s.kind === 'desenvolvimento') {
-    const ca = s.coverage.filter(c => c.kind === 'CA')
-    const ok = ca.filter(c => c.status === 'coberto').length
-    if (ca.length) rows.push(stat(ui, 'n-ca', 'Critérios de aceite cobertos', `${ok} de ${ca.length}`, { meter: pct(ok, ca.length) }))
-    else if (s.criteria.length) rows.push(stat(ui, 'n-ca', 'Critérios de aceite', String(s.criteria.length)))
-  } else if (s.kind === 'pr-review') {
+  if (s.kind === 'pr-review') {
     const list = s.prTriage ? s.prTriage.comments : prList(s)
     const published = list.filter(f => f.published).length
     rows.push(stat(ui, 'n-pr', 'PRs', String(prsOf(s).length || '—')))
     if (list.length) rows.push(stat(ui, 'n-pub', 'Comentários publicados', `${published} de ${list.length}`, { meter: pct(published, list.length) }))
-  } else if (s.estimate) {
-    const e = s.estimate
+  } else if (s.kind === 'levantamento' && s.doubts.length) {
     const open = s.doubts.filter(d => !answered(d)).length
-    rows.push(stat(ui, 'n-sp', 'Story points', e.sp || e.spCard || '—'))
-    const hours = [e.devDays || e.hours, e.qaDays && `+ ${e.qaDays} QA`].filter(Boolean).join(' ')
-    if (hours) rows.push(stat(ui, 'n-h', 'Horas', hours))
-    const cc = [e.complexity, e.confidence].filter(Boolean).join(' · ')
-    if (cc) rows.push(stat(ui, 'n-cc', 'Complexidade · confiança', cc))
-    if (s.doubts.length) rows.push(stat(ui, 'n-d', 'Dúvidas abertas', `${open} de ${s.doubts.length}`, open ? { color: C.amber } : {}))
+    rows.push(stat(ui, 'n-d', 'Dúvidas abertas', `${open} de ${s.doubts.length}`, open ? { color: C.amber } : {}))
   }
-  rows.push(stat(ui, 'n-tk', 'Tokens dos agentes', compact(s.tokens)))
-  rows.push(
-    s.orchestrator.rows.length
-      ? stat(ui, 'n-or', 'Tokens do orquestrador', compact(s.orchestrator.tokens))
-      : stat(ui, 'n-or', 'Tokens do orquestrador', 'sem registro', { missing: true }),
-  )
-  rows.push(stat(ui, 'n-tm', 'Agentes trabalhando', secs(seconds)))
   return rows
 }
 
+/**
+ * A Geral é uma página só (painel v4): o mapa, os números e o próximo passo, e o bloco do uso — critérios e regras no
+ * desenvolvimento, card × código e estimativa no levantamento. Os agentes rodando ficam na faixa; o consumo, em Métricas.
+ */
 function General(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Link } = ui
+  const { Box, Text } = ui
   const s = v.snap
   const p = s.progress
   const outside = p.stages.find(x => x.state === 'com-time')
   const returns = Object.entries(p.returns).map(([k, n]) => `${k} ${n}×`).join(' · ')
-  const last = s.delegations.at(-1)
   const currentColor = outside ? C.blue : C.claude
+  const nums = numbers(ui, s)
   return (
     <Box flexDirection="column" gap={1}>
       {card(
@@ -592,65 +626,13 @@ function General(ui: UI, v: ViewState, act: Actions) {
               </Text>
             </Box>
           </Box>
-          {s.roundKind && s.round >= s.maxRetries + v.extraRounds && LOOP_STEPS.has(s.step) && (
-            <Box gap={1}>
-              <Text color={C.amber}>
-                O laço de {s.roundKind} chegou ao limite ({s.round} de {s.maxRetries + v.extraRounds}).
-              </Text>
-              <ui.Button key="extra-round" label="Liberar +1 rodada" onPress={() => act.extraRound()} />
-            </Box>
-          )}
         </Box>,
       )}
-      {card(ui, 'numeros', 'Números', <Box flexDirection="column">{numbers(ui, s) as never}</Box>)}
+      {nums.length > 0 && card(ui, 'numeros', 'Números', <Box flexDirection="column">{nums as never}</Box>)}
       {s.note && card(ui, 'proximo', 'Próximo passo', rich(ui, 'note', s.note), 'nota do orquestrador')}
-      {card(
-        ui,
-        'agentes',
-        'Agentes',
-        <Box flexDirection="column">
-          {v.running.length === 0 && (
-            <Text color={C.dim}>{last ? `último: ${last.agent} (${last.label}), ${stateLabel(last.state)}` : 'nenhuma delegação ainda'}</Text>
-          )}
-          {v.running.map(r => (
-            <Box key={`run-${r.key}`} gap={2}>
-              <Text color={C.claude}>●</Text>
-              <Text bold color={C.strong}>
-                {r.agent}
-              </Text>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text color={C.mid}>{r.label}</Text>
-              </Box>
-              <Text color={C.dim}>{secs(Math.max(0, Math.round((v.now - r.since) / 1000)))}</Text>
-            </Box>
-          ))}
-        </Box>,
-        v.running.length ? `${v.running.length} rodando` : 'nenhum rodando',
-      )}
-      {card(
-        ui,
-        'links',
-        'Links',
-        <Box flexDirection="column">
-          <Box gap={2}>
-            <Box width={10}>
-              <Text color={C.dim}>Pasta</Text>
-            </Box>
-            <Link key="lk-dir" href={fileUrl(s.dir)} label={`demandas/${s.id}`} />
-          </Box>
-          {s.repos.map(r => (
-            <Box key={`br-${r.path}`} gap={2}>
-              <Box width={10}>
-                <Text color={C.dim}>{r.pr ? `PR ${r.pr}` : 'Branch'}</Text>
-              </Box>
-              <Link key={`lk-${r.path}`} href={fileUrl(r.path)} label={r.name} />
-              <Box flexShrink={1}>
-                <Text color={C.dim}>{r.pr ? 'só leitura' : r.branch || '?'}</Text>
-              </Box>
-            </Box>
-          ))}
-        </Box>,
-      )}
+      {s.kind === 'desenvolvimento' && tabHasData(s, 'criterios') && Coverage(ui, v)}
+      {s.kind === 'levantamento' && tabHasData(s, 'codigo') && CardCode(ui, v, act)}
+      {s.kind === 'levantamento' && s.estimate && EstimateView(ui, v, act)}
     </Box>
   )
 }
@@ -767,10 +749,6 @@ export function reviewRounds(s: Snapshot): { file: string; label: string }[] {
 }
 
 const isFixed = (f: Finding) => /corrig|fixed|resolv/.test(f.status)
-
-/** Duas pastas iguais, sem diferenciar barra nem caixa (Windows). */
-export const samePath = (a: string, b: string) =>
-  a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 
 /** A categoria do achado: a do título (fluxo v3) ou a origem (as passadas de bugs e segurança de antes). */
 export function categoryOf(f: Finding): 'qualidade' | 'bug' | 'seguranca' {
@@ -956,111 +934,6 @@ export function reviewDecisionText(s: Snapshot, decisions: Record<string, string
     return `- ${id} (${f ? `${roundName(f)} r${f.round}` : file}): ${value}`
   })
   return [`Decisões da revisão (${s.id}):`, ...lines, 'Registre na triagem e siga com o que foi mantido.'].join('\n')
-}
-
-// --- Diffs -----------------------------------------------------------------------------------------------------
-
-/** O nome legível de um .patch da pasta: `diff-pr8197-GedarAC-r2.patch` → "PR 8197 · só a rodada 2". */
-export function patchLabel(name: string): string {
-  const base = name.replace(/\.patch$/, '')
-  const pr = /^diff-pr(\d+)-(.+?)(?:-r(\d+))?$/.exec(base)
-  if (pr) return pr[3] ? `PR ${pr[1]} · só a rodada ${pr[3]}` : `PR ${pr[1]} · ${pr[2]}`
-  if (base.startsWith('ambiente-teste')) return `ajustes de teste${base.slice('ambiente-teste'.length).replace(/^-/, ' · ')}`
-  const round = /^diff-(.+?)-r(\d+)(?:-(?:para-)?r(\d+))?$/.exec(base)
-  if (round) return round[3] ? `${round[1]} · r${round[2]} → r${round[3]}` : `${round[1]} · rodada ${round[2]}`
-  return base.replace(/^diff-/, '')
-}
-
-/**
- * De onde vem o diff: cada worktree da demanda, seguido dos .patch da sua PR, e os outros .patch da pasta. O patch
- * inteiro de uma PR que tem worktree sai: é o mesmo diff (o `worktree create --pr` o regrava a cada versão).
- */
-export function diffSources(s: Snapshot): { value: string; label: string }[] {
-  const prOf = (p: string) => /^diff-pr(\d+)-/.exec(p)?.[1] ?? ''
-  const withTree = new Set(s.repos.map(r => String(r.pr ?? '')).filter(Boolean))
-  const patches = s.patches.filter(p => !(withTree.has(prOf(p)) && !/-r\d+\.patch$/.test(p)))
-  const patch = (p: string) => ({ value: `patch:${p}`, label: patchLabel(p) })
-  return [
-    ...s.repos.flatMap(r => [
-      { value: `repo:${r.path}`, label: r.pr ? `PR ${r.pr} · ${r.name}` : r.name },
-      ...(r.pr ? patches.filter(p => prOf(p) === String(r.pr)).map(patch) : []),
-    ]),
-    ...patches.filter(p => !withTree.has(prOf(p))).map(patch),
-  ]
-}
-
-function Diffs(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Code, Button } = ui
-  const s = v.snap
-  const sources = diffSources(s)
-  if (!sources.length) return <Text color={C.dim}>Sem worktree nem patch nesta demanda.</Text>
-  // o diff guardado pode ser de outra demanda: só vale se a fonte é desta (o register carrega a primeira)
-  const d = v.diff && sources.some(x => x.value === v.diff?.source) ? v.diff : null
-  const repo = d?.source.startsWith('repo:') ? s.repos.find(r => `repo:${r.path}` === d.source) : undefined
-  const fileFindings = (path: string) =>
-    s.findings.filter(f => f.severity !== 'ELOGIO' && !isFixed(f) && f.where && path.endsWith(f.where.replace(/:\d.*$/, '').split('/').pop() ?? '#'))
-  const notes = d ? fileFindings(d.selected) : []
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Box justifyContent="space-between" alignItems="center" gap={2}>
-        {choices(ui, 'diff-source', sources, d?.source ?? sources[0]?.value ?? '', value => act.diffSource(value))}
-        {repo && v.canAppDiff && (samePath(repo.path, v.sessionCwd) ? (
-          // o mod não abre o painel de diff do app (não há API para isso): ele segue a pasta da sessão, que já é esta
-          <Text key="app-diff-here" color={C.dim}>No app: ícone de diff no topo da janela</Text>
-        ) : (
-          // leva a sessão para o worktree deste repositório (/aidw:diff), e o painel de diff do app vai junto
-          <Button key="app-diff" label="Levar o diff do app para cá ↗" plain dimColor onPress={() => act.appDiff(repo.name)} />
-        ))}
-      </Box>
-      {d && !d.error && (
-        <Text color={C.dim}>
-          {repo ? `${repo.pr ? 'só leitura' : repo.branch || '?'} · contra ${repo.base ? repo.base.slice(0, 12) : 'a base'} · ` : ''}
-          {d.summary}
-        </Text>
-      )}
-      {!d && <Text color={C.dim}>Carregando o diff…</Text>}
-      {d?.error && <Text color={C.red}>{d.error}</Text>}
-      {d && !d.error && (
-        <Box gap={2} alignItems="flex-start">
-          <Box flexDirection="column" width={34} flexShrink={0}>
-            {d.files.map(f => {
-              const on = f.path === d.selected
-              const name = f.path.split('/').pop() ?? f.path
-              const dir = f.path.slice(0, f.path.length - name.length).replace(/\/$/, '')
-              const n = fileFindings(f.path).length
-              return (
-                <Box key={`df-${f.path}`} flexDirection="column" paddingX={1}>
-                  <Box justifyContent="space-between">
-                    <Button key={`dfb-${f.path}`} label={on ? `› ${name}` : name} plain dimColor={!on} onPress={() => act.diffFile(f.path)} />
-                    <Text>
-                      <Text color={C.green}>+{f.added}</Text>
-                      {f.removed ? <Text color={C.red}> −{f.removed}</Text> : ''}
-                    </Text>
-                  </Box>
-                  <Box justifyContent="space-between">
-                    <Text color={C.dim}>{dir}</Text>
-                    {n > 0 && chip(ui, `dfn-${f.path}`, `${n} achado(s)`, C.blue)}
-                  </Box>
-                </Box>
-              )
-            })}
-          </Box>
-          <Box flexDirection="column" flexGrow={1} flexShrink={1} gap={1}>
-            {notes.map(f => (
-              <Box key={`dn-${f.id}`} gap={1} borderStyle="round" borderColor={C.line} paddingX={1}>
-                {chip(ui, `dns-${f.id}`, SEV[f.severity ?? '']?.label ?? '', SEV[f.severity ?? '']?.color ?? C.dim)}
-                <Box flexShrink={1}>
-                  {rich(ui, `dnt-${f.id}`, `**${f.id}** · ${f.title}`)}
-                </Box>
-                <Button key={`dnl-${f.id}`} label="ver na Revisão" plain onPress={() => act.tab('revisao')} />
-              </Box>
-            ))}
-            {d.hunks ? <Code key="diff-code" source={d.hunks} format="diff" path={d.selected} /> : <Text color={C.dim}>Escolha um arquivo.</Text>}
-          </Box>
-        </Box>
-      )}
-    </Box>
-  )
 }
 
 // --- Teste manual ----------------------------------------------------------------------------------------------
@@ -1278,8 +1151,8 @@ function hbars(ui: UI, key: string, label: string, groups: Group[]) {
   )
 }
 
-function Metrics(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Button, Link } = ui
+function Metrics(ui: UI, v: ViewState) {
+  const { Box, Text } = ui
   const s = v.snap
   const d = s.delegations
   const o = s.orchestrator
@@ -1295,9 +1168,6 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
   const output = o.rows.reduce((n, r) => n + r.output, 0)
   const results = groupBy(d, x => stateLabel(x.state)).sort((a, b) => b.n - a.n)
   const back = s.timeline.filter(t => t.visits > 1)
-  const recent = [...d].reverse().slice(0, v.expanded.delegations ? d.length : 8)
-  const artifacts = Object.entries(s.artifacts)
-  const files = artifacts.reduce((n, [, f]) => n + f.length, 0)
   return (
     <Box flexDirection="column" gap={1}>
       {card(
@@ -1380,66 +1250,6 @@ function Metrics(ui: UI, v: ViewState, act: Actions) {
             )}
           </Box>,
         )}
-      {d.length > 0 &&
-        card(
-          ui,
-          'dl',
-          'Delegações',
-          <Box flexDirection="column">
-            {recent.map((x, i) => (
-              <Box key={`dl-${i}`} gap={2}>
-                <Box width={6}>
-                  <Text color={C.dim}>{ddmm(x.date)}</Text>
-                </Box>
-                <Box width={13}>
-                  <Text>{x.agent}</Text>
-                </Box>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text color={C.mid}>{x.label}</Text>
-                </Box>
-                <Box width={16}>
-                  <Text color={C.dim}>{`${modelName(x.model)} · ${x.effort}`}</Text>
-                </Box>
-                <Box width={16}>
-                  <Text>{stateLabel(x.state)}</Text>
-                </Box>
-                <Box width={7} justifyContent="flex-end">
-                  <Text color={C.dim}>{secs(x.seconds)}</Text>
-                </Box>
-                <Box width={6} justifyContent="flex-end">
-                  <Text>{compact(x.tokens)}</Text>
-                </Box>
-              </Box>
-            ))}
-            {d.length > 8 && (
-              <Button key="dl-more" label={v.expanded.delegations ? 'ver só as 8 mais recentes' : `ver todas as ${d.length}`} plain onPress={() => act.expand('delegations')} />
-            )}
-          </Box>,
-          'mais recentes primeiro',
-        )}
-      {card(
-        ui,
-        'art',
-        'Artefatos',
-        <Box flexDirection="column">
-          {artifacts.map(([group, list]) => (
-            <Box key={`ag-${group}`} flexDirection="column">
-              <Box justifyContent="space-between">
-                <Text>{group}</Text>
-                <Button key={`agb-${group}`} label={`${list.length} ${v.expanded[`art:${group}`] ? '⌃' : '⌄'}`} plain onPress={() => act.expand(`art:${group}`)} />
-              </Box>
-              {v.expanded[`art:${group}`] && (
-                <Box flexWrap="wrap" gap={2} paddingX={2}>
-                  {list.map(f => (
-                    <Link key={`af-${f}`} href={fileUrl(`${s.dir}/${f}`)} label={f} />
-                  ))}
-                </Box>
-              )}
-            </Box>
-          ))}
-        </Box>,
-        `${files} arquivos na pasta da demanda`,
-      )}
     </Box>
   )
 }

@@ -10,7 +10,6 @@ const METRICAS =
 const RUNTIME = {
   state_dir: STATE,
   context: 'x',
-  max_retries: 3,
   variants: {
     planejador: ['planejador', 'planejador-medium'],
     codificador: ['codificador', 'codificador-medium'],
@@ -98,7 +97,7 @@ type Fake = {
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean },
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean; toolText?: string },
 ): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
@@ -165,7 +164,7 @@ function fake(
       status: 'async_launched', agentId: 'bg1', description: 'Revisar plano', prompt: e.tool === 'Agent' ? e.prompt : '', outputFile: 'C:/tmp/bg1.output',
     } : {
       status: 'completed', agentId: 'a1', prompt: 'p',
-      content: [{ type: 'text', text: 'feito\n{"state": "implementation_complete"}' }],
+      content: [{ type: 'text', text: opts.toolText ?? 'feito\n{"state": "implementation_complete"}' }],
       totalTokens: 1000, totalToolUseCount: 5, totalDurationMs: 9000,
       usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, server_tool_use: null, service_tier: null, cache_creation: null },
     },
@@ -192,15 +191,9 @@ const delegation = (over: { subagent_type?: string } = {}) => ({
 test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a demanda', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1' })
   await $.session.start(START('us-1'))
+  expect(f.opens).toBe(0) // painel v4: nada abre sozinho
 
-  // a demanda está na rodada 4 de 3: o codificador está travado até o Felipe liberar
-  const blocked = await $.tool.call(delegation())
-  expect(why(blocked)).toContain('Liberar +1 rodada')
-  expect(f.runs).toEqual([])
-  const extra = { command: 'rodada', args: '' } as never
-  await $.command.run(extra)
-  await $.command.run(extra)
-
+  // a demanda está na rodada 4: sem limite de rodadas, o codificador roda (painel v4)
   const ran = await $.tool.call(delegation())
   expect(f.runs.length).toBe(1)
   const argv = f.runs[0] ?? []
@@ -211,7 +204,7 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
   expect((ran.context ?? []).join('\n')).toContain('## Codificador - claude-opus Medium')
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    // faixa V2: demanda, contexto, 7d e 5h (amarelo a partir de 80%, com a hora de renovar)
+    // faixa V2: demanda, contexto, 7d e 5h (amarelo a partir de 75%, vermelho a partir de 90%, com a hora de renovar)
     const band = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'AbovePrompt', props: PROPS_BAND })
     await has(band, /^us-1$/)
     await has(band, /contexto/)
@@ -222,47 +215,64 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     const hm = `${String(reset.getHours()).padStart(2, '0')}:${String(reset.getMinutes()).padStart(2, '0')}`
     await has(band, new RegExp(`91% · renova (\\d\\d/\\d\\d )?${hm}`))
     expect(await band.find({ type: 'Text', text: /orçamento/ })).toBeUndefined()
+    expect(await band.find({ type: 'Text', text: /espera você/ })).toBeUndefined() // CODER_FIX: a vez é do agente
+    // os botões dos painéis: um clique abre o painel
+    expect(await band.find({ key: 'open-geral' })).toBeDefined()
+    expect(await band.find({ key: 'open-metricas' })).toBeDefined()
+    const opened = f.opens
+    await band.press({ key: 'open-decidir' })
+    expect(f.opens).toBe(opened + 1)
     await band.unmount()
 
-    const pane = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-    for (const key of ['tab-geral', 'tab-criterios', 'tab-revisao', 'tab-diffs', 'tab-manual', 'tab-metricas']) {
-      expect(await pane.find({ key })).toBeDefined()
-    }
-    // Geral: título, mapa (critérios, tokens, tempo, etapa) e o último agente
-    await has(pane, /^Rota fast$/)
-    await has(pane, /etapa 5 de 11/)
-    await has(pane, /^117k$/)
-    await has(pane, /último: codificador \(rota\), concluído/)
-    await pane.press({ key: 'tab-metricas' })
-    await has(pane, /^opus · medium$/)
-    await has(pane, /arquivos na pasta da demanda/)
-    await pane.press({ key: 'tab-criterios' })
-    await has(pane, /^abre a rota$/)
-    expect(await pane.find({ type: 'Text', text: /Ainda não há plano/ })).toBeUndefined()
-    // Revisão: rodada como seletor, abas de decisão; decidir leva ao prompt
-    await pane.press({ key: 'tab-revisao' })
-    await pane.press({ key: 'review-round-review-us-1-r4.md' })
-    await pane.press({ key: 'dt-mantido' })
-    await has(pane, /quebra o login/)
-    await pane.press({ key: 'review-round-review-us-1-r1.md' })
-    await pane.press({ key: 'dt-voce' })
-    await has(pane, /nome ruim/)
-    await pane.press({ key: 'dec-R1-01-0' })
-    await pane.press({ key: 'review-send' })
+    // Geral: uma página só, sem abas — título, mapa (etapa) e os critérios em bloco; nem agentes, nem links, nem tokens
+    const geral = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'Pane', requestId: 'aidw-geral', props: PROPS_PANE })
+    expect(await geral.find({ key: 'tab-criterios' })).toBeUndefined()
+    expect(await geral.find({ key: 'tab-diffs' })).toBeUndefined()
+    await has(geral, /^Rota fast$/)
+    await has(geral, /etapa 5 de 11/)
+    await has(geral, /^abre a rota$/)
+    expect(await geral.find({ type: 'Text', text: /Ainda não há plano/ })).toBeUndefined()
+    expect(await geral.find({ type: 'Text', text: /último: codificador/ })).toBeUndefined()
+    expect(await geral.find({ type: 'Text', text: /^117k$/ })).toBeUndefined()
+    await geral.unmount()
+
+    // Métricas: o consumo, sem a lista de delegações nem a de artefatos
+    const metricas = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'Pane', requestId: 'aidw-metricas', props: PROPS_PANE })
+    await has(metricas, /^opus · medium$/)
+    await has(metricas, /^117k$/)
+    expect(await metricas.find({ type: 'Text', text: /arquivos na pasta da demanda/ })).toBeUndefined()
+    await metricas.unmount()
+
+    // Decisões: rodada como seletor, abas de decisão; decidir leva ao prompt
+    const decidir = await $.ui.mount({ plugin: 'aidw-mods', surface, component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
+    await decidir.press({ key: 'tab-revisao' })
+    await decidir.press({ key: 'review-round-review-us-1-r4.md' })
+    await decidir.press({ key: 'dt-mantido' })
+    await has(decidir, /quebra o login/)
+    await decidir.press({ key: 'review-round-review-us-1-r1.md' })
+    await decidir.press({ key: 'dt-voce' })
+    await has(decidir, /nome ruim/)
+    await decidir.press({ key: 'dec-R1-01-0' })
+    await decidir.press({ key: 'review-send' })
     expect(f.fills.at(-1)).toContain('R1-01 (Código r1): mantido')
-    await pane.press({ key: 'tab-manual' })
-    await pane.input({ key: 'evidencia-T2', text: 'mensagem apareceu', kind: 'change' })
-    await pane.press({ key: 'manual-ok' })
+    await decidir.press({ key: 'tab-manual' })
+    await decidir.input({ key: 'evidencia-T2', text: 'mensagem apareceu', kind: 'change' })
+    await decidir.press({ key: 'manual-ok' })
     expect(f.submits.at(-1)).toContain('passo T2: ✅ passou — evidência: mensagem apareceu')
-    await pane.press({ key: 'tab-geral' })
-    await pane.unmount()
+    await decidir.unmount()
   }
+
+  // /painel com a aba leva ao painel dela
+  const before = f.opens
+  expect(JSON.stringify(await $.command.run({ command: 'painel', args: 'revisao' } as never))).toContain('painel Decisões aberto')
+  expect(JSON.stringify(await $.command.run({ command: 'metricas', args: '' } as never))).toContain('Métricas aberto')
+  expect(f.opens).toBe(before + 2)
 })
 
 test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:go', async ($, on) => {
   fake(on, { orchestrating: true, demand: 'us-1', argument: 'us-1', cwd: 'C:/AiDW/contexts/x' })
   await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW/contexts/x' })
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw-geral', props: PROPS_PANE })
   await has(pane, /^Rota fast$/)
   await pane.unmount()
 })
@@ -280,10 +290,13 @@ test('travas: variante fora da tabela e model sem pedido são recusados', async 
 test('revisão de PR: achados, aprovação e a decisão vai para o prompt', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'pr-7' })
   await $.session.start(START('pr-7'))
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  expect(await pane.find({ key: 'tab-comentarios' })).toBeDefined()
-  expect(await pane.find({ key: 'tab-criterios' })).toBeUndefined()
-  await pane.press({ key: 'tab-comentarios' })
+  // FINAL_REVIEW espera você: a faixa diz
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^● espera você$/)
+  await band.unmount()
+  // na revisão de PR, as Decisões só têm os comentários: abre neles, sem linha de abas
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
+  expect(await pane.find({ key: 'tab-comentarios' })).toBeUndefined()
   await has(pane, /^Isto quebra o contrato\.$/)
   await has(pane, /Comentário na PR 7/)
   await pane.press({ key: 'pa-R1-01' })
@@ -297,17 +310,13 @@ test('revisão de PR: achados, aprovação e a decisão vai para o prompt', asyn
   await pane.press({ key: 'ap-unica-sim' })
   await pane.press({ key: 'pr-decision' })
   expect(f.fills.at(-1)).toContain('Aprovar a PR: sim (aprove a PR).')
-  await pane.press({ key: 'tab-diffs' })
-  await pane.press({ key: 'diff-source-patch:diff-pr7-Hope-r2.patch' })
-  await has(pane, /1 arquivo · \+1 −1/)
   await pane.unmount()
 })
 
 test('revisão de PR com triagem: comentários por PR, aprovação por PR e a decisão vai para o prompt', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'pr-8' })
   await $.session.start(START('pr-8'))
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  await pane.press({ key: 'tab-comentarios' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
   // abre em "A decidir": só o C2; o publicado aparece em Todos, com a situação da rodada 2
   await has(pane, /^a modal reaparece a cada recarga$/)
   expect(await pane.find({ type: 'Text', text: /resolvido na r2/ })).toBeUndefined()
@@ -327,19 +336,19 @@ test('revisão de PR com triagem: comentários por PR, aprovação por PR e a de
 test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'lv-9' })
   await $.session.start(START('lv-9'))
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  await pane.press({ key: 'tab-codigo' })
+  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-geral', props: PROPS_PANE })
+  // card × código e estimativa são blocos da Geral
+  expect(await pane.find({ key: 'tab-codigo' })).toBeUndefined()
   await has(pane, /^aceitar CPF$/)
-  await pane.press({ key: 'tab-estimativa' })
   await has(pane, /^5$/)
-  await pane.press({ key: 'tab-duvidas' })
-  await pane.input({ key: 'duvida-D1', text: 'Só PF', kind: 'change' })
-  await pane.input({ key: 'duvida-D1', text: 'Só PF' })
-  expect(f.submits.at(-1)).toContain('Resposta à dúvida D1 do levantamento lv-9: Só PF')
-  await pane.press({ key: 'tab-estimativa' })
   await pane.press({ key: 'post-levantamento' })
   expect(f.fills.at(-1)).toContain('publique no card lv-9')
   await pane.unmount()
+  const decidir = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
+  await decidir.input({ key: 'duvida-D1', text: 'Só PF', kind: 'change' })
+  await decidir.input({ key: 'duvida-D1', text: 'Só PF' })
+  expect(f.submits.at(-1)).toContain('Resposta à dúvida D1 do levantamento lv-9: Só PF')
+  await decidir.unmount()
 })
 
 test('contexto sem painel: a faixa aparece, o painel não abre e /painel explica', async ($, on) => {
@@ -349,12 +358,13 @@ test('contexto sem painel: a faixa aparece, o painel não abre e /painel explica
   const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
   await has(band, /^us-1$/)
   await has(band, /^41% · 82k$/)
+  expect(await band.find({ key: 'open-geral' })).toBeUndefined() // sem painel, sem os botões
   await band.unmount()
   const r = await $.command.run({ command: 'painel', args: '' } as never)
   expect(JSON.stringify(r)).toContain('painel está desligado')
   expect(f.opens).toBe(0)
-  // as travas continuam: a us-1 está no limite de rodadas
-  expect(why(await $.tool.call(delegation()))).toContain('Liberar +1 rodada')
+  // as travas continuam: uma variante fora da tabela é recusada
+  expect(why(await $.tool.call(delegation({ subagent_type: 'aidw:codificador-high' })))).toContain('não está na tabela')
 })
 
 test('fora do modo orquestrador, o mod não trava, não grava nem mostra nada', async ($, on) => {
@@ -400,7 +410,7 @@ test('fim de turno parado: grava o turno do orquestrador e compacta uma vez depo
   await f.clock.advance(1_000)
   expect(compactions.length).toBe(1)
   expect(compactions[0]).toContain('FINAL_REVIEW')
-  expect(f.toasts.some(t => t.includes('compactado depois de um tempo parado'))).toBe(true)
+  expect(f.toasts).toEqual([]) // compacta calado: sem aviso
   await f.clock.advance(IDLE)
   expect(compactions.length).toBe(1) // só uma vez por pausa
 })
@@ -461,10 +471,6 @@ test('agente em segundo plano: grava o contexto da última resposta, não a soma
     return next(e)
   })
   await $.session.start(START('us-1'))
-  const extra = { command: 'rodada', args: '' } as never
-  await $.command.run(extra)
-  await $.command.run(extra)
-
   await $.tool.call(delegation()) // o Agent responde async_launched (fake com background)
   expect(f.runs).toEqual([]) // só grava quando o agente termina
 
@@ -511,29 +517,23 @@ test('filtro de segredos nas linhas da conversa', async ($, on) => {
   expect(row).toContain('segredo ocultado: Password, 13 caracteres')
 })
 
-test('desktop: o botão leva o diff do app para o repositório, ou diz onde abrir quando já está nele', async ($, on) => {
-  fake(on, { orchestrating: true, demand: 'us-1' })
-  const ran: string[] = []
-  on('command.run', { command: 'aidw:diff' }, ($, e) => {
-    ran.push(`/${e.command} ${e.args}`)
-    return { text: '' }
-  })
-  await $.session.start({ ...START('us-1'), surface: 'desktop' })
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  await pane.press({ key: 'tab-diffs' })
-  // a sessão está em outra pasta: o botão leva a sessão (e o painel de diff do app) para o worktree do Front
-  expect(await pane.find({ key: 'app-diff' })).toBeDefined()
-  await pane.press({ key: 'app-diff' })
-  expect(ran).toEqual(['/aidw:diff Front'])
-  await pane.unmount()
+test('filtro de segredos no resultado das ferramentas (o session.append pode não chegar: plugin da organização acima)', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'pr-7', toolText: 'appsettings: Server=a;Password=SuperSecreta1;' })
+  on('ui.status', () => ({ value: undefined }))
+  await $.session.start(START('pr-7'))
+  const ran = await $.tool.call({ tool: 'Bash', command: 'type appsettings.json' } as never)
+  const out = JSON.stringify(ran)
+  expect(out).not.toContain('SuperSecreta1')
+  expect(out).toContain('segredo ocultado: Password, 13 caracteres')
 })
 
-test('desktop: com a sessão já no worktree, não há o que trocar', async ($, on) => {
-  fake(on, { orchestrating: true, demand: 'us-1', cwd: 'C:/wt/us-1/Front' })
-  await $.session.start({ ...START('us-1'), cwd: 'C:/wt/us-1/Front', surface: 'desktop' })
-  const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw', props: PROPS_PANE })
-  await pane.press({ key: 'tab-diffs' })
-  expect(await pane.find({ key: 'app-diff' })).toBeUndefined()
-  await has(pane, /ícone de diff no topo da janela/)
-  await pane.unmount()
+test('depois de uma compactação, o estado da demanda volta pelo SessionStart', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'pr-7' })
+  on('classic.SessionStart', () => ({})) // o core do kit: nenhum hook de settings
+  await $.session.start(START('pr-7'))
+  const base = { session_id: 's', transcript_path: 't', cwd: 'C:/wt/pr-7/repo', hook_event_name: 'SessionStart' as const }
+  const after = await $.classic.SessionStart({ ...base, source: 'compact' } as never)
+  expect(JSON.stringify(after)).toContain('Pasta da demanda')
+  const fresh = await $.classic.SessionStart({ ...base, source: 'startup' } as never)
+  expect(JSON.stringify(fresh)).not.toContain('Pasta da demanda')
 })

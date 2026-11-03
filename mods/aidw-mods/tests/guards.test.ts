@@ -9,7 +9,6 @@ const RUNTIME: Runtime = {
     codificador: ['codificador', 'codificador-medium'],
     revisor: ['revisor', 'revisor-medium', 'revisor-low'],
   },
-  maxRetries: 3,
   agents: ['planejador', 'codificador', 'revisor'],
   roles: { planejador: 'planner', codificador: 'coder', revisor: 'reviewer' },
 }
@@ -19,11 +18,6 @@ const base = (over: Partial<DelegationCheck> = {}): DelegationCheck => ({
   prompt: PROMPT,
   runtime: RUNTIME,
   userPrompts: ['/aidw:go 1'],
-  step: 'IMPLEMENT',
-  round: 0,
-  roundKind: null,
-  extraRounds: 0,
-  kind: 'desenvolvimento',
   ...over,
 })
 
@@ -69,29 +63,7 @@ describe('travas da delegação', () => {
     expect(checkDelegation(base({ prompt: PROMPT + ' x'.repeat(4000) }))).toContain('por caminho')
   })
 
-  test('limite de rodadas da revisão', async () => {
-    const at = (round: number, extra = 0, subagentType = 'aidw:codificador-medium', step = 'CODER_FIX') =>
-      checkDelegation(base({ step, round, roundKind: 'revisão', extraRounds: extra, subagentType }))
-    expect(at(2)).toBe(null)
-    expect(at(3)).toContain('Liberar +1 rodada')
-    expect(at(3, 0, 'aidw:revisor-medium', 'TRIAGE')).toContain('rodada 3')
-    expect(at(3, 1)).toBe(null)
-    expect(checkDelegation(base({ step: 'CODER_FIX', round: 5, roundKind: 'revisão', kind: 'pr-review' }))).toBe(null)
-  })
-
-  test('limite de rodadas com os nomes curtos: vale o papel, não o nome', async () => {
-    const runtime: Runtime = {
-      variants: { dev: ['dev', 'dev-medium'], revisao: ['revisao', 'revisao-medium'] },
-      maxRetries: 3,
-      agents: ['dev', 'revisao'],
-      roles: { dev: 'coder', revisao: 'reviewer' },
-    }
-    const why = checkDelegation(base({ runtime, subagentType: 'aidw:dev-medium', step: 'CODER_FIX', round: 3, roundKind: 'revisão' }))
-    expect(why).toContain('Liberar +1 rodada')
-  })
-
-  test('sem laço do plano: o ajuste do plano não trava por rodada', async () => {
-    const plan = base({ subagentType: 'aidw:planejador-medium', step: 'PLAN_FIX', round: 3, roundKind: 'plano' })
-    expect(checkDelegation(plan)).toBe(null)
+  test('sem limite de rodadas: a demanda itera até terminar (painel v4)', async () => {
+    expect(checkDelegation(base({ subagentType: 'aidw:codificador-medium', prompt: PROMPT + ' Rodada 9 da revisão.' }))).toBe(null)
   })
 })

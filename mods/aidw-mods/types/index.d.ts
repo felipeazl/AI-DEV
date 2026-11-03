@@ -170,14 +170,11 @@ export type Snapshot = {
   timeline: TimelineItem[]
   progress: Progress
   repos: Repo[]
-  artifacts: Record<string, string[]>
-  patches: string[]
   level: string | null
   passes: string
   planVersion: string
   round: number
   roundKind: 'plano' | 'revisão' | null
-  maxRetries: number
   delegations: Delegation[]
   tokens: number
   /** O próprio orquestrador (chat principal), do metricas-orquestrador.md. */
@@ -211,15 +208,6 @@ export type RunningAgent = { key: string; agent: string; label: string; since: n
 /** Uma delegação do AiDW à espera do registro no metricas.md (a de um agente em segundo plano, até ele terminar). */
 export type Pending = { agent: string; level: string | null; label: string; demand: string }
 
-export type DiffView = {
-  source: string
-  files: { path: string; change: string; added: number; removed: number }[]
-  selected: string
-  hunks: string
-  summary: string
-  error: string
-}
-
 /** Uma janela de uso do plano (5h, 7d), da `$.session.usage().rateLimits`. */
 export type Limit = { kind: '5h' | '7d'; percent: number; resetsAt: string }
 export type Usage = { percent: number; tokens: number; limits: Limit[] }
@@ -236,18 +224,16 @@ declare module 'claude-code' {
       /** Agentes do AiDW em segundo plano, pelo agentId: o registro sai quando cada um termina. */
       background: Record<string, Pending>
       hidden: boolean
-      tab: string
+      /** A aba aberta em cada painel (`geral`, `metricas`, `decidir`). */
+      tabs: Record<string, string>
       tick: number
-      extraRounds: Record<string, number>
       publish: Record<string, boolean>
       /** "Aprovar a PR?" por PR (`manual`, `sim`, `nao`); sem escolha, manual. A revisão antiga, sem triagem, usa `''`. */
       approvals: Record<string, string>
       drafts: Record<string, string>
-      diff: DiffView | null
       reviewRound: number
       usage: Usage | null
       codeReads: number
-      warned: Record<string, boolean>
       /** Revisão V2: a rodada (arquivo do review), a aba de decisão, os filtros e as decisões marcadas. */
       reviewFile: string
       decisionTab: string

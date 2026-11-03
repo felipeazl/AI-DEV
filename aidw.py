@@ -646,13 +646,11 @@ def context_routing_file(ctx: dict | None) -> Path | None:
 
 
 def load_routing(rep: Report, ctx: dict | None = None) -> dict:
-    """routing.toml do núcleo com o do contexto ativo por cima (só o que ele redefine: variantes, max_retries,
+    """routing.toml do núcleo com o do contexto ativo por cima (só o que ele redefine: variantes e
     regras)."""
     routing = load_toml(ROUTING_FILE) if ROUTING_FILE.exists() else {}
     if over := context_routing_file(ctx):
         routing = deep_merge(routing, load_toml(over))
-    if "max_retries" in routing and (not isinstance(routing["max_retries"], int) or routing["max_retries"] < 1):
-        rep.error(f"routing.toml: max_retries deve ser um inteiro ≥ 1 (atual: {routing['max_retries']!r})")
     for st, action in routing.get("rules", {}).items():
         if action not in ACTIONS:
             rep.error(f"routing.toml: ação desconhecida {action!r} em {st!r} "
@@ -1276,8 +1274,8 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    "go back to the orchestrator in your final JSON.",
                    f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`). The orchestrator chose "
                    "the effort of this task.",
-                   f"- Max retries: {routing.get('max_retries', 3)} (the same failing step; then stop and "
-                   "report the failure `state` of your OUTPUT)",
+                   "- Max retries: 3 attempts at the same failing step (a build, a test); then stop and report "
+                   "the failure `state` of your OUTPUT",
                    "- Put the whole result in your final message: the orchestrator only receives that.",
                    *runtime_lines(cfg, ctx)]),
         skills_section(a["skills"], skills, provider, a["preload"], ns),
@@ -1414,10 +1412,8 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run "
             "`record` for it; run it yourself only when that line is missing or says the mod could not record.",
             "  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, "
-            "`model` the user did not ask for, missing task/folder, a pasted input, a loop past `max_retries`) comes back denied with "
-            "`AiDW (trava da delegação)` and the reason: fix the call, never work around it. A loop past the "
-            "limit goes to the user (HUMAN_APPROVAL); only they release one more round (panel button or "
-            "`/rodada`).",
+            "`model` the user did not ask for, missing task/folder, a pasted input) comes back denied with "
+            "`AiDW (trava da delegação)` and the reason: fix the call, never work around it.",
             "  - The user may answer through the AiDW panel (`/painel`): a manual-test step arrives as "
             "`Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and "
             "the PR decision or the card comment as a message they sent. They are the user's own words: record "
@@ -2119,7 +2115,6 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
         "claude_settings": managed if provider == "claude" else prev.get("claude_settings", {}),
         # para os mods do Claude (travas da delegação): os subagent_type de cada agente (tabela Agents and effort)
         "variants": variant_cells(resolved),
-        "max_retries": b["routing"].get("max_retries", 3),
         # o painel lateral do mod: ligado, a não ser que o contexto o desligue ([mods] panel = false); sem os
         # arquivos de um modelo, as abas dele somem
         "panel": bool(ctx.get("mods", {}).get("panel", True)) if ctx else True,

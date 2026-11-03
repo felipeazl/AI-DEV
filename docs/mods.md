@@ -1,7 +1,7 @@
 # Mods (só Claude Code)
 
 Mods são plugins de *function hooks* do Claude Code: código que roda dentro da sessão, desenha na tela (faixa acima
-do prompt, painel, status, toasts) e reage a eventos (uma ferramenta chamada, uma mensagem enviada, um subagente que
+do prompt, painel, status) e reage a eventos (uma ferramenta chamada, uma mensagem enviada, um subagente que
 terminou). O AiDW traz os dele no plugin **`aidw-mods`**, que o `install` instala junto com o plugin `aidw`.
 
 **Só existem no Claude Code.** O Codex não tem mods ([claude-e-codex.md](claude-e-codex.md)).
@@ -15,16 +15,16 @@ Os mods do AiDW ficam ligados **só no modo orquestrador**:
 
 Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
 
-**O painel vale em todo contexto.** Ele mostra os artefatos do fluxo do AiDW (cobertura de critérios, revisão em
-cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto pode desligá-lo no `context.toml`:
+**Os painéis valem em todo contexto.** Eles mostram os artefatos do fluxo do AiDW (cobertura de critérios, revisão
+em cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto pode desligá-lo no `context.toml`:
 
 ```toml
 [mods]
 panel = false
 ```
 
-Desligado, o painel não abre, o `/painel` não é registrado e a demanda fica só com a faixa acima do prompt
-(demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
+Desligado, os painéis não abrem, `/painel`, `/metricas` e `/decisoes` não são registrados e a faixa acima do prompt
+fica sem os botões (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
 segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
 
 ## Visão geral
@@ -32,10 +32,9 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 | Mod | Para quê | Onde aparece |
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painel do AiDW](#painel-do-aidw) | Acompanhar e decidir: mapa da demanda, critérios e regras, revisão em cartões, diffs, teste manual, métricas ([painel.md](painel.md)); desligado só no contexto com `[mods] panel = false` | painel lateral (`/painel`) |
+| [Painéis do AiDW](#painéis-do-aidw) | Geral, Métricas e Decisões ([painel.md](painel.md)); desligados só no contexto com `[mods] panel = false` | ao lado do chat, pelo botão da faixa ou pelo comando |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
-| [Avisos](#avisos) | Quando a demanda precisa de você, um agente terminou ou o contexto cresceu | toasts |
 | [Contexto enxuto](#contexto-enxuto) | Compacta sozinho a conversa parada há 50 min (a partir de 100k tokens), antes de o cache expirar | fim do turno |
 | [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
 | [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
@@ -45,32 +44,40 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 ## Faixa da demanda
 
 ```text
-AiDW it-101662 · contexto ▬▬▬▭▭ 160k · 7d ▬▬▬▬▭ 58% · 5h ▬▬▬▬▬ 91% (renova 16:40) · ▶ codificador (otimizacao-r2) 2m10s
+AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
+● dev-medium · correção r1 · 2m10s
+                                                                          Geral  Métricas  Decisões 4
 ```
 
-O id da demanda, o contexto deste chat em % da janela do modelo, com os tokens e as janelas de uso do plano (7d e 5h) em %,
-cada um com barra fina, e os agentes rodando. O 7d e o 5h ficam amarelos a partir de 80% e mostram a hora local em
-que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
+Três linhas (painel v4):
+1. **A demanda e o consumo:** o id, a etapa, **● espera você** em laranja quando a etapa é sua (aprovação, triagem,
+   revisão de código, teste manual, PR, revisão final) e, do outro lado, o contexto deste chat em % da janela do
+   modelo, com os tokens, e as janelas de uso do plano (7d e 5h) em %, cada um com barra fina.
+2. **Os agentes rodando**, com o tempo; sem agente, a linha não aparece.
+3. **Os botões** **Geral**, **Métricas** e **Decisões** (com o número do que espera você, em laranja), numa linha só,
+   à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
+a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
 `DONE`. **`/faixa`** esconde e mostra.
 
-## Painel do AiDW
+## Painéis do AiDW
 
-Abre sozinho quando o modo orquestrador liga (numa janela larga o bastante) e com **`/painel [aba]`**; no
-terminal, as teclas `1`…`6` trocam de aba e `r` atualiza. O que cada aba mostra, de onde vem cada dado e o que os agentes gravam para
-isso está em **[painel.md](painel.md)**:
+Três painéis, cada um ao lado do chat, abertos só quando você pede: pelo botão na faixa ou pelo comando (painel v4,
+Felipe, 2026-11-03). Com dois ou mais abertos, o app mostra as abas entre eles. O que cada um mostra, de onde vem cada
+dado e o que os agentes gravam para isso está em **[painel.md](painel.md)**:
 
-| Uso | Abas |
-|---|---|
-| Desenvolvimento | Geral · Critérios e Regras · Revisão · Diffs · Teste manual · Métricas |
-| Revisão de PR | Geral · Comentários · Diffs · Métricas |
-| Levantamento | Geral · Card × código · Estimativa · Dúvidas · Métricas |
+| Painel | Comando | Desenvolvimento | Revisão de PR | Levantamento |
+|---|---|---|---|---|
+| Geral | `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
+| Métricas | `/metricas` | consumo | consumo | consumo |
+| Decisões | `/decisoes` | Revisão · Testes | Comentários | Dúvidas |
 
-Aba sem dados fica oculta. No app, as abas são só clique; no terminal, as teclas aparecem e funcionam.
+A Geral e as Métricas são uma página só; nas Decisões, aba sem dados fica oculta, e a linha de abas só aparece com duas ou mais. As Decisões abrem na primeira aba que espera
+você. `/painel <aba>` abre o painel da aba (`/painel revisao` abre as Decisões). No terminal, as teclas `1`, `2`… trocam
+de aba; no app, as abas são só clique. O diff fica com o app (*Alterações* na barra lateral e o painel de diff dele).
 
 Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e aprovar uma PR, comentar
 no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta
-a uma dúvida vão como mensagem sua. `/painel fluxo`, `agentes` e `pontos` (nomes antigos) abrem Geral,
-Métricas e Card × código.
+a uma dúvida vão como mensagem sua.
 
 ## Métricas sozinhas
 
@@ -81,8 +88,8 @@ ferramenta, duração e o `state` lido do JSON final do agente.
 - **O que o orquestrador recebe:** o resultado volta com a linha `AiDW: delegação registrada…` e o `header` e o
   `resumo` para mostrar. Com ela, o orquestrador **não** roda o `record`. Sem ela, ou se o mod disser que não
   conseguiu, ele roda à mão.
-- **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa e um
-  toast. Os números são os mesmos da notificação do agente (`subagent_tokens`, `tool_uses`): os tokens são o uso da
+- **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa. Os
+  números são os mesmos da notificação do agente (`subagent_tokens`, `tool_uses`): os tokens são o uso da
   última resposta dele (o contexto no fim, como o `totalTokens` de um agente em primeiro plano), não a soma do turno,
   que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
   agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
@@ -103,20 +110,16 @@ Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Agents an
 | Formato | falta `Pasta da demanda:` no prompt |
 | Tabela | o `subagent_type` não é o padrão nem uma exceção do agente, ou o agente está desligado |
 | Insumo colado | o prompt passa de 6.000 caracteres (diff, plano e review vão por caminho) |
-| Limite de rodadas | num desenvolvimento, a revisão chegou ao `max_retries` e a chamada é do revisor ou do codificador do laço |
 
 Um `runtime.json` de antes do fluxo v3 (sem `variants`) desliga a trava até o próximo `aidw.py apply`.
 
-O limite de rodadas é uma trava de verdade: o orquestrador tem de parar e te perguntar. Só você libera mais uma
-rodada, pelo botão **Liberar +1 rodada** do painel ou com **`/rodada`**. Revisão de PR e levantamento não têm
-esse laço.
+Não há trava de rodadas: a demanda itera até terminar (painel v4).
 
-## Avisos
+## Sem avisos próprios
 
-Toasts, cada um uma vez:
-- **A demanda espera você:** a aprovação do plano, a decisão dos achados, a sua revisão de código, os passos manuais, o OK da PR ou a revisão final de uma PR de outro dev.
-- **Agente terminou:** um agente em segundo plano terminou, com o `state` dele.
-- **Compactou:** o mod compactou a conversa parada, com o tamanho antes e depois.
+O mod não levanta toast nem notificação (painel v4, Felipe, 2026-11-03): o app do Claude já avisa quando o turno
+acaba. O agente em segundo plano que termina chega como nota na conversa (*Métricas sozinhas*), e o resultado de um
+`/painel` que não coube volta no próprio comando.
 
 ## Contexto enxuto
 
@@ -142,7 +145,10 @@ fim da demanda.
 
 ## Filtro de segredos
 
-Toda linha da conversa do orquestrador e dos agentes passa pelo filtro antes de entrar no contexto e no transcript.
+Toda linha da conversa do orquestrador e dos agentes passa pelo filtro antes de entrar no contexto e no transcript, e
+o resultado de cada ferramenta também, antes de virar linha. Com o plugin de segurança da organização
+(`cc-plugin-sec-default`), que fica acima dos plugins do usuário e passa as linhas adiante sem chamar os de baixo, é o
+filtro no resultado das ferramentas que vale; as linhas, o plugin da organização cuida.
 Ele mascara o valor e mostra só o nome e o tamanho, como pede a policy de segredos:
 `Password=«segredo ocultado: Password, 11 caracteres»`.
 - **O que ele pega:**
@@ -166,6 +172,9 @@ Quando a conversa do orquestrador é compactada, o mod relê a demanda do disco 
 - a rodada do laço e os achados abertos;
 - o lembrete de reler a skill e os artefatos.
 
+O resumo vai pelo `SessionStart` de origem `compact`, que roda mesmo com o plugin de segurança da organização (ele
+passa o evento da compactação adiante sem chamar os plugins do usuário).
+
 ## Configuração
 
 O `install` grava a raiz do AiDW desta máquina no plugin. Dois campos podem ser trocados no menu de configuração do
@@ -186,7 +195,6 @@ Claude Code (`pluginConfigs`): `aidwRoot` (a pasta do `aidw.py`) e `python` (o c
 | `hooks/artifacts.ts` | os parsers dos artefatos (achados, triagem, critérios, roteiro, levantamento…) |
 | `hooks/guards.ts` | as travas da delegação |
 | `hooks/secrets.ts` | o filtro de segredos |
-| `hooks/diffs.ts` | o diff dividido por arquivo |
 | `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `metricas-orquestrador.md`, `routing.toml`, limites do contexto |
 | `types/index.d.ts` | o contrato do estado (`PluginState['aidw-mods']`) e os tipos do retrato |
 

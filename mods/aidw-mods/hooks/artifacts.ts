@@ -63,29 +63,29 @@ type Phase = { name: string; steps: string[] }
 const PHASES: Record<DemandKind, Phase[]> = {
   // fluxo v3 (2026-10-23); as etapas antigas ficam na fase equivalente, pelas demandas abertas antes dele
   desenvolvimento: [
-    { name: 'Entender', steps: ['UNDERSTAND', 'EXPLORE'] },
+    { name: 'Entendimento', steps: ['UNDERSTAND', 'EXPLORE'] },
     { name: 'Plano', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
     { name: 'Sua aprovação', steps: ['PLAN_APPROVAL', 'TICKETS'] },
-    { name: 'Implementar', steps: ['IMPLEMENT', 'TEST_PLAN'] },
+    { name: 'Implementação', steps: ['IMPLEMENT', 'TEST_PLAN'] },
     { name: 'Revisão', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
     { name: 'Sua revisão', steps: ['USER_REVIEW'] },
     { name: 'Testes', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
     { name: 'PR', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
-    { name: 'Pronto', steps: ['DONE'] },
+    { name: 'Concluída', steps: ['DONE'] },
   ],
   'pr-review': [
-    { name: 'Entender', steps: ['UNDERSTAND'] },
-    { name: 'Preparar', steps: ['PREPARE_REVIEW'] },
-    { name: 'Revisar', steps: ['REVIEW'] },
+    { name: 'Entendimento', steps: ['UNDERSTAND'] },
+    { name: 'Preparação', steps: ['PREPARE_REVIEW'] },
+    { name: 'Revisão', steps: ['REVIEW'] },
     { name: 'Revisão final', steps: ['FINAL_REVIEW'] },
-    { name: 'Pronto', steps: ['DONE'] },
+    { name: 'Concluída', steps: ['DONE'] },
   ],
   levantamento: [
-    { name: 'Entender', steps: ['UNDERSTAND'] },
-    { name: 'Explorar', steps: ['EXPLORE'] },
-    { name: 'Estimar', steps: ['ESTIMATE'] },
+    { name: 'Entendimento', steps: ['UNDERSTAND'] },
+    { name: 'Exploração', steps: ['EXPLORE'] },
+    { name: 'Estimativa', steps: ['ESTIMATE'] },
     { name: 'Revisão final', steps: ['FINAL_REVIEW'] },
-    { name: 'Pronto', steps: ['DONE'] },
+    { name: 'Concluída', steps: ['DONE'] },
   ],
 }
 
@@ -136,31 +136,31 @@ type Stage = { name: string; group: ProgressStage['group']; steps: string[]; who
 /** As etapas da barra de progresso do Mapa da demanda: as do AiDW e, no desenvolvimento, as de fora (time e QA). */
 const STAGES: Record<DemandKind, Stage[]> = {
   desenvolvimento: [
-    { name: 'Entender', group: 'aidw', steps: ['UNDERSTAND', 'EXPLORE'] },
+    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND', 'EXPLORE'] },
     { name: 'Plano', group: 'aidw', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
     { name: 'Sua aprovação', group: 'aidw', steps: ['PLAN_APPROVAL', 'TICKETS'] },
-    { name: 'Implementar', group: 'aidw', steps: ['IMPLEMENT', 'TEST_PLAN'] },
+    { name: 'Implementação', group: 'aidw', steps: ['IMPLEMENT', 'TEST_PLAN'] },
     { name: 'Revisão', group: 'aidw', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
     { name: 'Sua revisão', group: 'aidw', steps: ['USER_REVIEW'] },
     { name: 'Testes', group: 'aidw', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
     { name: 'PR', group: 'aidw', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
     { name: 'Code review', group: 'fora', steps: ['CODE_REVIEW'], who: 'o time' },
     { name: 'Testes QA', group: 'fora', steps: ['QA_TEST'], who: 'a QA' },
-    { name: 'Pronto', group: 'fora', steps: ['DONE'] },
+    { name: 'Concluída', group: 'fora', steps: ['DONE'] },
   ],
   'pr-review': [
-    { name: 'Entender', group: 'aidw', steps: ['UNDERSTAND'] },
-    { name: 'Preparar', group: 'aidw', steps: ['PREPARE_REVIEW'] },
-    { name: 'Revisar', group: 'aidw', steps: ['REVIEW'] },
+    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND'] },
+    { name: 'Preparação', group: 'aidw', steps: ['PREPARE_REVIEW'] },
+    { name: 'Revisão', group: 'aidw', steps: ['REVIEW'] },
     { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
-    { name: 'Pronto', group: 'aidw', steps: ['DONE'] },
+    { name: 'Concluída', group: 'aidw', steps: ['DONE'] },
   ],
   levantamento: [
-    { name: 'Entender', group: 'aidw', steps: ['UNDERSTAND'] },
-    { name: 'Explorar', group: 'aidw', steps: ['EXPLORE'] },
-    { name: 'Estimar', group: 'aidw', steps: ['ESTIMATE'] },
+    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND'] },
+    { name: 'Exploração', group: 'aidw', steps: ['EXPLORE'] },
+    { name: 'Estimativa', group: 'aidw', steps: ['ESTIMATE'] },
     { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
-    { name: 'Pronto', group: 'aidw', steps: ['DONE'] },
+    { name: 'Concluída', group: 'aidw', steps: ['DONE'] },
   ],
 }
 
@@ -181,7 +181,7 @@ export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalSt
   for (const s of history) {
     const st = stages[stageOf(s)]
     if (!st) continue
-    if (st.group === 'fora' && st.name !== 'Pronto') {
+    if (st.group === 'fora' && st.name !== 'Concluída') {
       lastOutside = st.name
       returnedFrom = null
     } else if (st.group === 'aidw' && lastOutside) {
@@ -818,26 +818,3 @@ export function latest(files: string[], re: RegExp): { file: string; n: number }
 }
 
 export type Artifact = { file: string; group: string }
-
-const GROUPS: [RegExp, string][] = [
-  [/^resumo|^pontos-/, 'Card'],
-  [/^exploracao-/, 'Exploração'],
-  [/^plano-testes|^roteiro-|^qa-|^teste-orquestrador|^resultado-|^ambiente-teste/, 'Testes'],
-  [/^plano-|^revisao-plano|^triagem-plano/, 'Plano'],
-  [/^tarefa-/, 'Tarefas'],
-  [/\.patch$/, 'Diffs'],
-  [/^review-|^triagem-|^checklist-|^bugs?-|^bug-hunt|^seguranca|^auditoria/, 'Revisão'],
-  [/^levantamento-/, 'Levantamento'],
-  [/^revisao-final|^rascunho-/, 'Revisão final'],
-  [/^aprendizados-|^metricas|^estado|^cobertura-/, 'Registro'],
-]
-
-/** Os arquivos da demanda, agrupados por etapa (o resto em "Outros"). */
-export function groupArtifacts(files: string[]): Record<string, string[]> {
-  const out: Record<string, string[]> = {}
-  for (const f of files.filter(f => /\.(md|patch|txt|json)$/.test(f) && f !== 'demand.json').sort()) {
-    const group = GROUPS.find(([re]) => re.test(f))?.[1] ?? 'Outros'
-    ;(out[group] ??= []).push(f)
-  }
-  return out
-}
