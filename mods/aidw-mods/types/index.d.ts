@@ -203,7 +203,22 @@ export type Snapshot = {
   testMarks: Record<string, number> | null
 }
 
-export type RunningAgent = { key: string; agent: string; label: string; since: number }
+/**
+ * Um agente rodando, na faixa: o nome, o modelo e o effort (da variante e do runtime.json), o label, desde quando e os
+ * tokens da última resposta dele (a mesma conta do metricas.md), que andam a cada passo.
+ */
+export type RunningAgent = {
+  key: string
+  agent: string
+  label: string
+  since: number
+  display?: string
+  model?: string
+  effort?: string
+  /** O id do loop do subagente (`agent.spawn`), para casar os passos dele com o card. */
+  agentId?: string
+  tokens?: number
+}
 
 /** Uma delegação do AiDW à espera do registro no metricas.md (a de um agente em segundo plano, até ele terminar). */
 export type Pending = { agent: string; level: string | null; label: string; demand: string }

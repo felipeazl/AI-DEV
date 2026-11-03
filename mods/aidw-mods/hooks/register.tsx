@@ -5,12 +5,14 @@ import type { Pending, ReviewFilter, Snapshot } from '../types'
 import {
   IDLE_MIN,
   IDLE_MS,
+  agentSpec,
   demandIds,
   demandSetId,
   labelFor,
   parseDelegation,
   parseState,
 } from './aidw'
+import type { AgentDef } from './aidw'
 import type { DemandFile, ExternalStep } from './artifacts'
 import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
@@ -78,6 +80,12 @@ async function runtimeJson($: EngineInterface): Promise<Record<string, unknown>>
 async function stateDir($: EngineInterface): Promise<string | null> {
   const r = await runtimeJson($)
   return typeof r.state_dir === 'string' ? norm(r.state_dir) : null
+}
+
+/** O nome, o modelo e o effort da variante, para o card do agente na faixa. */
+async function specOf($: EngineInterface, variant: string) {
+  const agents = Object.values(((await runtimeJson($)).agents ?? {}) as Record<string, AgentDef>)
+  return agentSpec(variant, agents)
 }
 
 /** A tabela de níveis e os agentes ligados, para as travas da delegação. */
@@ -471,7 +479,8 @@ export const register: Register = (on, options) => {
     const p: Pending = { agent, level: d.level, label: labelFor(d.task, agent, e.description), demand: d.demand }
     const key = e.tool_use_id
     const since = await $.clock.now()
-    await update($, running, list => [...list, { key, agent: agent.split(':').pop() ?? agent, label: p.label, since }])
+    const spec = await specOf($, agent)
+    await update($, running, list => [...list, { key, agent: agent.split(':').pop() ?? agent, label: p.label, since, ...spec }])
     if ((await read($, snap))?.dir !== norm(d.demand)) await refresh($, d.demand)
 
     const ran = await next(e)
@@ -494,10 +503,27 @@ export const register: Register = (on, options) => {
     return { ...ran, context: [...(ran.context ?? []), notice(header, p)] }
   })
 
-  // O uso de cada resposta de um subagente: o registro em segundo plano grava o da última.
+  // O id do subagente de cada Agent: os passos dele levam esse id, e o card da faixa soma os tokens por ele.
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    if ('agentId' in r && r.agentId) {
+      const id = r.agentId
+      await update($, running, list => list.map(x => (x.key === e.tool_use_id ? { ...x, agentId: id } : x)))
+    }
+    return r
+  })
+
+  // O uso de cada resposta de um subagente: o registro em segundo plano grava o da última; o card mostra os tokens.
   on('turn.step', async function* ($, e, next) {
     const r = yield* next(e)
-    if (e.agentId && r.usage) lastUsage.set(e.agentId, r.usage)
+    const id = e.agentId
+    if (id && r.usage) {
+      lastUsage.set(id, r.usage)
+      const tokens = totalTokens(r.usage)
+      if ((await read($, running)).some(x => x.agentId === id || x.key === id)) {
+        await update($, running, list => list.map(x => (x.agentId === id || x.key === id ? { ...x, tokens } : x)))
+      }
+    }
     return r
   })
 
