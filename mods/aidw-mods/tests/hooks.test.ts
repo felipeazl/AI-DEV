@@ -90,7 +90,7 @@ const PROPS_BAND = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns
 const PROPS_PANE = { title: 'AiDW', isFocused: true, bodyColumns: 160, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 
 type Fake = {
-  runs: (readonly string[])[]; fills: string[]; submits: string[]; toasts: string[]; opens: number; clock: ReturnType<typeof mock.clock>
+  runs: (readonly string[])[]; fills: string[]; submits: string[]; contexts: string[]; toasts: string[]; opens: number; clock: ReturnType<typeof mock.clock>
   files: Record<string, string>
 }
 
@@ -106,7 +106,7 @@ function fake(
   for (const [id, entries] of Object.entries(DEMANDS)) {
     for (const [name, text] of Object.entries(entries)) files[`${STATE}/${id}/${name}`] = text
   }
-  const out: Fake = { runs: [], fills: [], submits: [], toasts: [], opens: 0, clock: mock.clock(on), files }
+  const out: Fake = { runs: [], fills: [], submits: [], contexts: [], toasts: [], opens: 0, clock: mock.clock(on), files }
   on('ui.toast', ($, e) => {
     out.toasts.push(e.text)
     return { value: undefined }
@@ -152,6 +152,7 @@ function fake(
   })
   on('prompt.submit', ($, e) => {
     out.submits.push(e.text)
+    out.contexts.push((e.context ?? []).join('\n'))
     return { text: e.text }
   })
   on('process.run', ($, e) => {
@@ -517,13 +518,17 @@ test('filtro de segredos no resultado das ferramentas (o session.append pode nã
   expect(out).toContain('segredo ocultado: Password, 13 caracteres')
 })
 
-test('depois de uma compactação, o estado da demanda volta pelo SessionStart', async ($, on) => {
-  fake(on, { orchestrating: true, demand: 'pr-7' })
-  on('classic.SessionStart', () => ({})) // o core do kit: nenhum hook de settings
+test('depois de uma compactação, o estado da demanda vai com a próxima mensagem', async ($, on) => {
+  const opts = { orchestrating: true, demand: 'pr-7', contextTokens: 180_000 }
+  const f = fake(on, opts)
   await $.session.start(START('pr-7'))
-  const base = { session_id: 's', transcript_path: 't', cwd: 'C:/wt/pr-7/repo', hook_event_name: 'SessionStart' as const }
-  const after = await $.classic.SessionStart({ ...base, source: 'compact' } as never)
-  expect(JSON.stringify(after)).toContain('Pasta da demanda')
-  const fresh = await $.classic.SessionStart({ ...base, source: 'startup' } as never)
-  expect(JSON.stringify(fresh)).not.toContain('Pasta da demanda')
+  const say = (text: string) => $.prompt.submit({ text, origin: { kind: 'composer' } } as never)
+  await say('segue')
+  expect(f.contexts.at(-1)).not.toContain('Pasta da demanda')
+  // /compact (ou a nativa): o contexto cai para menos da metade, e a nota vai uma vez
+  opts.contextTokens = 30_000
+  await say('continua')
+  expect(f.contexts.at(-1)).toContain('Pasta da demanda')
+  await say('e agora?')
+  expect(f.contexts.at(-1)).not.toContain('Pasta da demanda')
 })
