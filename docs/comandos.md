@@ -16,7 +16,7 @@
 | `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
 | `/painel [aba]` | — | Abre o painel Geral da demanda (mod do Claude Code), ou o painel da aba pedida ([painel.md](painel.md)) |
 | `/metricas` | — | Abre o painel de métricas da demanda |
-| `/decisoes` | — | Abre o painel Decisões, o que espera você: achados da revisão, roteiro, comentários de PR, dúvidas |
+| `/testes-review` | — | Abre o painel Testes e Review (achados da revisão, roteiro, comentários de PR; Dúvidas no levantamento), só informativo |
 
 ## Linha de comando (`python aidw.py …`)
 

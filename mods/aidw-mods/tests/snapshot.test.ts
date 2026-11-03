@@ -14,7 +14,7 @@ describe('aba Geral', () => {
     expect(phaseOf(final)).toBe('PR')
     const plan = nextStep(snap({ id: 'us-1', step: 'PLAN_APPROVAL' }))
     expect([plan.you, plan.text]).toEqual([true, expect.stringContaining('aprova')])
-    expect(nextStep(snap({ id: 'us-1', step: 'TRIAGE' })).text).toContain('painel Decisões')
+    expect(nextStep(snap({ id: 'us-1', step: 'TRIAGE' })).text).toContain('no chat')
     expect(nextStep(snap({ id: 'us-1', step: 'USER_REVIEW' })).text).toContain('Alterações')
     expect(nextStep(snap({ id: 'us-1', step: 'PR' })).text).toContain('OK')
     const impl = nextStep(snap({ id: 'us-1', step: 'IMPLEMENT' }))

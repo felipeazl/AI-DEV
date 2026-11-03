@@ -227,18 +227,13 @@ declare module 'claude-code' {
       /** A aba aberta em cada painel (`geral`, `metricas`, `decidir`). */
       tabs: Record<string, string>
       tick: number
-      publish: Record<string, boolean>
-      /** "Aprovar a PR?" por PR (`manual`, `sim`, `nao`); sem escolha, manual. A revisão antiga, sem triagem, usa `''`. */
-      approvals: Record<string, string>
-      drafts: Record<string, string>
       reviewRound: number
       usage: Usage | null
       codeReads: number
-      /** Revisão V2: a rodada (arquivo do review), a aba de decisão, os filtros e as decisões marcadas. */
+      /** A rodada (arquivo do review), a aba e os filtros da Revisão; o painel só informa, a decisão é no chat. */
       reviewFile: string
       decisionTab: string
       reviewFilter: ReviewFilter
-      decisions: Record<string, string>
       /** Grupos recolhidos que você abriu (dúvidas, artefatos, preparação, delegações). */
       expanded: Record<string, boolean>
     }

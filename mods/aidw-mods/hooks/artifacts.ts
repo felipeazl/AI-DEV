@@ -360,19 +360,6 @@ export function parseTriage(text: string): { decisions: Record<string, string>; 
   return { decisions, published: [...published] }
 }
 
-/**
- * "Aprovar a PR?", uma pergunta por PR, igual em qualquer ferramenta (Azure DevOps, GitHub, GitLab). Manual, o
- * padrão: o AiDW não aprova e você decide na ferramenta. Sim: o AiDW aprova. Não: o AiDW não aprova.
- */
-export const APPROVALS = [
-  { value: 'manual', label: 'Manual', text: 'manual (não aprove; eu decido na ferramenta)' },
-  { value: 'sim', label: 'Sim', text: 'sim (aprove a PR)' },
-  { value: 'nao', label: 'Não', text: 'não (não aprove)' },
-] as const
-
-/** A escolha de aprovação de uma PR; sem escolha, manual. */
-export const approvalOf = (chosen: Record<string, string>, pr: string): string => chosen[pr] || 'manual'
-
 /** As linhas de uma tabela Markdown, cada uma como {coluna: célula} pelo cabeçalho (em minúsculas). */
 function tableRows(section: string): Record<string, string>[] {
   const rows = section.split('\n').filter(l => l.trim().startsWith('|'))

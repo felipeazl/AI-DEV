@@ -28,7 +28,7 @@ The explorer ends with `"state"`: `exploration_complete` → `ESTIMATE`; `enviro
 can, otherwise take it to the user (never redo the task for it). A missing `state` is a failed result: delegate once
 more asking only for the missing JSON.
 
-**After the estimate**, the user answers doubts (the panel sends `Resposta à dúvida D<n> …`, the user's own words) or
+**After the estimate**, the user answers doubts in chat or
 asks for adjustments: update `levantamento-<id>.md` (an answered doubt goes to *Respondidas*; say whether the estimate
 changed) and the note (`demand set <id> --note "levantamento: <SP> SP, <min>–<max> h"`). To implement the demand, the
 user calls `/aidw:go <id>`: this prompt is only the levantamento.

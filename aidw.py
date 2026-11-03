@@ -1414,10 +1414,8 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, "
             "`model` the user did not ask for, missing task/folder, a pasted input) comes back denied with "
             "`AiDW (trava da delegação)` and the reason: fix the call, never work around it.",
-            "  - The user may answer through the AiDW panel (`/painel`): a manual-test step arrives as "
-            "`Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and "
-            "the PR decision or the card comment as a message they sent. They are the user's own words: record "
-            "and act on them as if typed.",
+            "  - The AiDW panels (`/painel`, `/metricas`, `/testes-review`) only show the demand: every decision "
+            "(findings, manual steps, what to publish, PR approval, doubts) is asked and answered in chat.",
             explore_line(resolved),
         ]
         return "\n".join(lines)
