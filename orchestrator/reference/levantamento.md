@@ -16,9 +16,11 @@ escrita em ambiente nem no board sem o OK do usuário.
   `exploracao-levantamento.md`.
 - **Estimate** (`ESTIMATE`): apply the rubric and write `levantamento-<id>.md` in the reference's model exactly (the
   panel reads its tables).
-- **End:** show the estimate and the doubts, offer the card comment (a locked action), then `DONE`. Never change the
-  card's state or fields. A demand whose folder has `levantamento-<id>.md` and no plan starts its development from
-  `EXPLORE`, reusing the summary, the points and the exploration; ask the explorer only what the plan still needs.
+- **End:** show the estimate and the doubts, offer the card comment (a locked action), then `FINAL_REVIEW` with
+  status `active`: the demand waits there while doubts are open. It goes to `DONE` only by `/aidw:done` or when
+  `/aidw:go` takes it into implementation. Never change the card's state or fields. A demand whose folder has
+  `levantamento-<id>.md` and no plan starts its development from `EXPLORE`, reusing the summary, the points and the
+  exploration; ask the explorer only what the plan still needs.
 
 ## 1. Os pontos do card
 
@@ -174,7 +176,9 @@ cabeçalhos, as colunas e os rótulos `**Riscos:**`, `*Para:*` e `*Muda a estima
 2. **Ofereça** publicar no card um comentário com a estimativa e as dúvidas, curto e no padrão do contexto ativo.
    Publicar é ação travada: só com o OK explícito do usuário, com o texto que ele aprovou. Nunca mude o estado nem
    os campos do card (story points inclusive) sem ele pedir.
-3. `demand set <id> --step DONE --status done --note "levantamento: <SP> SP, <min>–<max> h"`.
+3. `demand set <id> --step FINAL_REVIEW --status active --note "levantamento: <SP> SP, <min>–<max> h"`. A demanda
+   fica nessa etapa enquanto houver dúvidas; `DONE` só pelo `/aidw:done` ou quando o `/aidw:go` a leva para a
+   implementação (Felipe, 03/11).
 
 Se a demanda for implementada depois, o `/orquestrar` reaproveita `resumo-<id>.md`, `pontos-<id>.md` e
 `exploracao-levantamento.md` (seção *Levantamento*).
