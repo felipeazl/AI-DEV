@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
+  agentSpec,
   compact,
   demandIds,
   demandSetId,
@@ -114,4 +115,15 @@ describe('demanda pelo argumento do /aidw:go', () => {
     expect(demandIds('retome a IT 101662 e veja https://dev.azure.com/x/_workitems/edit/101662/').numbers).toEqual(['101662'])
     expect(demandIds('feature/pipeline-liveness-front').named).toEqual([])
   })
+})
+
+test('agentSpec: o modelo e o effort vêm da variante e do agente base', () => {
+  const agents = [
+    { name: 'busca', display: 'Busca', model: 'haiku', effort: '' },
+    { name: 'dev', display: 'Dev', model: 'sonnet', effort: 'high' },
+  ]
+  expect(agentSpec('busca', agents)).toEqual({ display: 'Busca', model: 'Haiku', effort: '' })
+  expect(agentSpec('aidw:busca-sonnet-medium', agents)).toEqual({ display: 'Busca', model: 'Sonnet', effort: 'medium' })
+  expect(agentSpec('dev-medium', agents)).toEqual({ display: 'Dev', model: 'Sonnet', effort: 'medium' })
+  expect(agentSpec('general-purpose', agents)).toEqual({ display: 'general-purpose', model: '', effort: '' })
 })
