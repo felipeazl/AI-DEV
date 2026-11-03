@@ -2224,7 +2224,8 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
            "os passos (*STEPS*)."] if survey else [
         "3. **Retomar:** se a demanda já tem `demand.json`, **não recomece** — leia a pasta dela (plano, triagens, "
         "reviews, `estado.md`) e continue da etapa gravada (`step`). Exceção: a que só teve levantamento "
-        "(`levantamento-<id>.md` e nenhum plano), chamada para implementar, começa o workflow dela pelo `EXPLORE` "
+        "(`levantamento-<id>.md` e nenhum plano), chamada para implementar: feche o levantamento com "
+        f"`{aidw} demand set <id> --step DONE` e comece o workflow dela pelo `EXPLORE` (`--status active`), "
         "reaproveitando o levantamento (seção *Levantamento*).",
         f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
         "o fluxo. Pedido para revisar a PR de outra pessoa (`pr <n>`, um link de PR, \"revisar a PR\"): workflow "
