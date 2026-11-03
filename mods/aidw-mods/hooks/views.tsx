@@ -359,7 +359,7 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
   const where = [s.kind === 'desenvolvimento' ? '' : KIND_LABEL[s.kind], s.progress.current].filter(Boolean).join(' · ')
   // três linhas (painel v4): a demanda e o consumo; os agentes rodando, quando há; os botões, numa linha só, à direita
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" rowGap={1}>
       <Box key="info" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
         <Box gap={1}>
           <Text color={C.claude} bold>
