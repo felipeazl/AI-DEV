@@ -252,19 +252,20 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     await decidir.press({ key: 'review-round-review-us-1-r1.md' })
     await decidir.press({ key: 'dt-voce' })
     await has(decidir, /nome ruim/)
-    await decidir.press({ key: 'dec-R1-01-0' })
-    await decidir.press({ key: 'review-send' })
-    expect(f.fills.at(-1)).toContain('R1-01 (Código r1): mantido')
+    // só informa: nada de decidir nem levar ao prompt; a decisão é no chat
+    expect(await decidir.find({ key: 'dec-R1-01-0' })).toBeUndefined()
+    expect(await decidir.find({ key: 'review-send' })).toBeUndefined()
+    await has(decidir, /^ a decidir $/)
     await decidir.press({ key: 'tab-manual' })
-    await decidir.input({ key: 'evidencia-T2', text: 'mensagem apareceu', kind: 'change' })
-    await decidir.press({ key: 'manual-ok' })
-    expect(f.submits.at(-1)).toContain('passo T2: ✅ passou — evidência: mensagem apareceu')
+    await has(decidir, /^Próximo · T2$/)
+    expect(await decidir.find({ key: 'manual-ok' })).toBeUndefined()
+    expect(await decidir.find({ key: 'evidencia-T2' })).toBeUndefined()
     await decidir.unmount()
   }
 
   // /painel com a aba leva ao painel dela
   const before = f.opens
-  expect(JSON.stringify(await $.command.run({ command: 'painel', args: 'revisao' } as never))).toContain('painel Decisões aberto')
+  expect(JSON.stringify(await $.command.run({ command: 'painel', args: 'revisao' } as never))).toContain('painel Testes e Review aberto')
   expect(JSON.stringify(await $.command.run({ command: 'metricas', args: '' } as never))).toContain('Métricas aberto')
   expect(f.opens).toBe(before + 2)
 })
@@ -287,34 +288,24 @@ test('travas: variante fora da tabela e model sem pedido são recusados', async 
   expect(f.runs).toEqual([])
 })
 
-test('revisão de PR: achados, aprovação e a decisão vai para o prompt', async ($, on) => {
-  const f = fake(on, { orchestrating: true, demand: 'pr-7' })
+test('revisão de PR: os achados só informam', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'pr-7' })
   await $.session.start(START('pr-7'))
   // FINAL_REVIEW espera você: a faixa diz
   const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
   await has(band, /^● espera você$/)
   await band.unmount()
-  // na revisão de PR, as Decisões só têm os comentários: abre neles, sem linha de abas
+  // na revisão de PR, Testes e Review só tem os comentários: abre neles, sem linha de abas
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
   expect(await pane.find({ key: 'tab-comentarios' })).toBeUndefined()
   await has(pane, /^Isto quebra o contrato\.$/)
   await has(pane, /Comentário na PR 7/)
-  await pane.press({ key: 'pa-R1-01' })
-  expect(f.fills.at(-1)).toContain('Ajuste o comentário do achado R1-01')
-  await pane.press({ key: 'pp-R1-01' })
-  await pane.press({ key: 'pp-R1-02' })
-  expect(await pane.find({ key: 'pt-publicar' })).toBeDefined()
-  await pane.press({ key: 'pr-decision' })
-  expect(f.fills.at(-1)).toContain('Publicar: R1-01, R1-02')
-  expect(f.fills.at(-1)).toContain('Aprovar a PR: manual (não aprove; eu decido na ferramenta).')
-  await pane.press({ key: 'ap-unica-sim' })
-  await pane.press({ key: 'pr-decision' })
-  expect(f.fills.at(-1)).toContain('Aprovar a PR: sim (aprove a PR).')
+  for (const key of ['pa-R1-01', 'pp-R1-01', 'pr-decision', 'ap-unica-sim']) expect(await pane.find({ key })).toBeUndefined()
   await pane.unmount()
 })
 
-test('revisão de PR com triagem: comentários por PR, aprovação por PR e a decisão vai para o prompt', async ($, on) => {
-  const f = fake(on, { orchestrating: true, demand: 'pr-8' })
+test('revisão de PR com triagem: comentários por PR, só informativos', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'pr-8' })
   await $.session.start(START('pr-8'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
   // abre em "A decidir": só o C2; o publicado aparece em Todos, com a situação da rodada 2
@@ -323,32 +314,31 @@ test('revisão de PR com triagem: comentários por PR, aprovação por PR e a de
   await pane.press({ key: 'pt-todos' })
   await has(pane, /^publicado \(thread 1\), resolvido na r2$/)
   await has(pane, /^junta R1-01 · B1-01$/)
-  // "Aprovar a PR?" por PR, manual quando você não escolhe
-  await has(pane, /^Aprovar a PR 8\?$/)
-  await pane.press({ key: 'pp-C2' })
-  await pane.press({ key: 'ap-8-sim' })
-  await pane.press({ key: 'pr-decision' })
-  expect(f.fills.at(-1)).toContain('PR 8: publicar C2; não publicar nenhum; aprovar: sim (aprove a PR).')
-  expect(f.fills.at(-1)).toContain('PR 9: publicar nenhum; não publicar C3; aprovar: manual (não aprove; eu decido na ferramenta).')
+  // publicar e aprovar a PR são decididos no chat
+  expect(await pane.find({ type: 'Text', text: /^Aprovar a PR/ })).toBeUndefined()
+  for (const key of ['pp-C2', 'ap-8-sim', 'pr-decision']) expect(await pane.find({ key })).toBeUndefined()
   await pane.unmount()
 })
 
 test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
-  const f = fake(on, { orchestrating: true, demand: 'lv-9' })
+  fake(on, { orchestrating: true, demand: 'lv-9' })
   await $.session.start(START('lv-9'))
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-geral', props: PROPS_PANE })
   // card × código e estimativa são blocos da Geral
   expect(await pane.find({ key: 'tab-codigo' })).toBeUndefined()
   await has(pane, /^aceitar CPF$/)
   await has(pane, /^5$/)
-  await pane.press({ key: 'post-levantamento' })
-  expect(f.fills.at(-1)).toContain('publique no card lv-9')
+  expect(await pane.find({ key: 'post-levantamento' })).toBeUndefined()
   await pane.unmount()
-  const decidir = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
-  await decidir.input({ key: 'duvida-D1', text: 'Só PF', kind: 'change' })
-  await decidir.input({ key: 'duvida-D1', text: 'Só PF' })
-  expect(f.submits.at(-1)).toContain('Resposta à dúvida D1 do levantamento lv-9: Só PF')
-  await decidir.unmount()
+  // no levantamento o painel é o das Dúvidas: só informa, a resposta é no chat
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^Dúvidas/)
+  await band.unmount()
+  expect(JSON.stringify(await $.command.run({ command: 'testes-review', args: '' } as never))).toContain('painel Dúvidas aberto')
+  const duvidas = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
+  await has(duvidas, /^Vale para PJ\?$/)
+  expect(await duvidas.find({ key: 'duvida-D1' })).toBeUndefined()
+  await duvidas.unmount()
 })
 
 test('contexto sem painel: a faixa aparece, o painel não abre e /painel explica', async ($, on) => {

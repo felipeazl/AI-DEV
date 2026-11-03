@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
-  APPROVALS,
-  approvalOf,
   decisionOf,
   parseCardAsk,
   parseCardPoints,
@@ -278,12 +276,6 @@ describe('painel v3', () => {
     const text = ['# L', '', '## Onde a mudança toca', '- **Hope**: lê as frases', '  - teste', '', '## Estimativa', 'x'].join('\n')
     expect(parseSection(text, /Onde a mudan[çc]a toca/i)).toBe('- **Hope**: lê as frases\n  - teste')
     expect(parseSection(text, /Riscos/)).toBe('')
-  })
-
-  test('aprovar a PR: manual sem escolha', async () => {
-    expect(approvalOf({}, '8')).toBe('manual')
-    expect(approvalOf({ '8': 'sim' }, '8')).toBe('sim')
-    expect(APPROVALS.map(o => o.label)).toEqual(['Manual', 'Sim', 'Não'])
   })
 
   test('triagem de PR: comentários e publicados pela seção Publicado', async () => {

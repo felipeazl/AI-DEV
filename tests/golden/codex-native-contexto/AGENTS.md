@@ -76,7 +76,7 @@ is disabled (do them yourself, cheaply). `pr-review` and `levantamento` have the
 6. **Review** (`REVIEW`) ⇄ **fix** (`CODER_FIX`) — a revisor gets the plan, the delivery, the diff file and
    the build result. Its findings (quality, bugs and security, each with a recommendation) go to the user **every
    round** (`TRIAGE`): show one line per finding — ID, severity, category, `file:line`, the problem, the reviewer's
-   recommendation and yours — and let the user decide keep or discard (the panel sends `Decisões da revisão (…)`).
+   recommendation and yours — and let the user decide keep or discard, in chat.
    Before recommending to discard a CRITICO/IMPORTANTE, or accepting "can't be fixed here" / "covers every case",
    verify it (skill `verificar-premissa`). Record the decisions in `triagem-<id>-r<N>.md` (`| ID | Decisão | Motivo |`).
    Kept findings → a coder fixes them (task with the IDs), then a fresh reviewer re-reviews only the fixes (the
@@ -109,9 +109,9 @@ user asks is a fix, not a new demand: the short path of the reference *caminho-c
 - **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
 **Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
-current and nothing else. Messages from the panel are the user's own words: `Decisões da revisão (…)` — record and act;
-`Roteiro …, passo …` — record the result in the script; `Ajuste o comentário …` / `Sobre a dúvida …` — rewrite that
-text before anything is published. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
+current and nothing else. The panel only shows: every decision (keep or discard a finding, a manual step's result,
+what to publish, approving a PR, a doubt's answer) is asked and answered in chat, by you or the agent whose step it
+is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
 `UX_VALIDATION` — `demand set <id> --extra-step <STEP>` when the plan says the demand goes through one): only the user
 moves a demand into or out of them, never on your own — PR open → `CODE_REVIEW`; the team asked for changes → the fix
 step, by the short path; sent to QA → `QA_TEST`; QA returned a bug → the fix step again; accepted → `DONE`.

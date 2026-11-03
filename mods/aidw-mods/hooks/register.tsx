@@ -16,7 +16,7 @@ import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
 import { redactBlocks, redactValue } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
-import { Band, Panel, VIEWS, levantamentoText, pendingCount, prDecisionText, prTriageDecisionText, reviewDecisionText, tabHasData, viewFor, visibleTabs } from './views'
+import { Band, Panel, pendingCount, tabHasData, viewFor, viewTitle, visibleTabs } from './views'
 import type { Actions, BandNav, UI, View } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
@@ -31,9 +31,6 @@ const background = atom({ plugin: 'aidw-mods', key: 'background' } as const, {})
 const hidden = atom({ plugin: 'aidw-mods', key: 'hidden' } as const, false)
 const tabs = atom({ plugin: 'aidw-mods', key: 'tabs' } as const, {})
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
-const publish = atom({ plugin: 'aidw-mods', key: 'publish' } as const, {})
-const approvals = atom({ plugin: 'aidw-mods', key: 'approvals' } as const, {})
-const drafts = atom({ plugin: 'aidw-mods', key: 'drafts' } as const, {})
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
@@ -41,7 +38,6 @@ const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
 const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
 const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], open: false }
 const reviewFilter = atom({ plugin: 'aidw-mods', key: 'reviewFilter' } as const, NO_FILTER)
-const decisions = atom({ plugin: 'aidw-mods', key: 'decisions' } as const, {})
 const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
 // Um pane por painel (painel v4), aberto pelo botão da faixa ou pelo comando, nunca sozinho.
@@ -114,13 +110,10 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
   const before = await read($, snap)
   await update($, snap, () => next)
   if (before?.id !== next.id) {
-    await update($, approvals, () => ({}))
-    await update($, publish, () => ({}))
     await update($, tabs, () => ({}))
     await update($, reviewRound, () => next.round)
     await update($, reviewFile, () => '')
     await update($, decisionTab, () => '')
-    await update($, decisions, () => ({}))
   }
 }
 
@@ -202,11 +195,12 @@ async function panelOn($: EngineInterface): Promise<boolean> {
 
 /** Abre um painel; devolve o motivo quando ele não coube na janela. */
 async function openPanel($: EngineInterface, view: View): Promise<string | null> {
-  const opened = await $.ui.open({ id: PANE[view], title: `AiDW · ${VIEWS[view].title}` })
+  const s = await read($, snap)
+  const opened = await $.ui.open({ id: PANE[view], title: `AiDW · ${viewTitle(view, s?.kind ?? 'desenvolvimento')}` })
   return opened.isPlaced ? null : (opened.reason ?? 'sem espaço')
 }
 
-/** `/painel [aba]`, `/metricas`, `/decisoes`: abre o painel (e a aba pedida) e diz o que aconteceu. */
+/** `/painel [aba]`, `/metricas`, `/testes-review`: abre o painel (e a aba pedida) e diz o que aconteceu. */
 async function openFromCommand($: EngineInterface, arg: string): Promise<{ text: string }> {
   if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
   const s = await read($, snap)
@@ -214,7 +208,7 @@ async function openFromCommand($: EngineInterface, arg: string): Promise<{ text:
   const { view, tab } = viewFor(s.kind, arg.trim().toLowerCase())
   if (tab) await update($, tabs, x => ({ ...x, [view]: tab }))
   const missing = await openPanel($, view)
-  return { text: missing ? `AiDW: o painel não coube (${missing}); alargue a janela.` : `AiDW: painel ${VIEWS[view].title} aberto (${s.id}).` }
+  return { text: missing ? `AiDW: o painel não coube (${missing}); alargue a janela.` : `AiDW: painel ${viewTitle(view, s.kind)} aberto (${s.id}).` }
 }
 
 /** `aidw.py demand set <id> --step X`: a etapa mudou (ou a demanda é outra). */
@@ -396,7 +390,7 @@ export const register: Register = (on, options) => {
         ? [
             { name: 'painel', description: 'Abre o painel Geral da demanda do AiDW (ou o painel da aba pedida)', argumentHint: '[aba]' },
             { name: 'metricas', description: 'Abre o painel de métricas da demanda do AiDW' },
-            { name: 'decisoes', description: 'Abre o painel Decisões: achados, roteiro, comentários de PR, dúvidas' },
+            { name: 'testes-review', description: 'Abre o painel Testes e Review (Dúvidas no levantamento): achados, roteiro, comentários de PR' },
           ]
         : []),
     ]) {
@@ -430,7 +424,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'painel' }, ($, e) => openFromCommand($, e.args))
   on('command.run', { command: 'metricas' }, $ => openFromCommand($, 'metricas'))
-  on('command.run', { command: 'decisoes' }, $ => openFromCommand($, 'decidir'))
+  on('command.run', { command: 'testes-review' }, $ => openFromCommand($, 'decidir'))
 
   // Travas da delegação e registro da métrica.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
@@ -565,7 +559,7 @@ export const register: Register = (on, options) => {
       ? {
           open: view => void openPanel($, view),
           canDecide: visibleTabs(s, 'decidir').length > 0,
-          pending: pendingCount({ snap: s, reviewFile: await read($, reviewFile), decisions: await read($, decisions), publish: await read($, publish) }),
+          pending: pendingCount({ snap: s, reviewFile: await read($, reviewFile) }),
           hasMetrics: tabHasData(s, 'metricas'),
         }
       : undefined
@@ -584,62 +578,14 @@ export const register: Register = (on, options) => {
       return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:lev.</Text>
     }
     await read($, tick)
-    const fill = (text: string) => $.prompt.fill({ text })
     const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])
     const act: Actions = {
       tab: t => void update($, tabs, x => ({ ...x, [view]: t })),
       refresh: () => void refresh($),
       reviewFile: f => void update($, reviewFile, () => f),
       decisionTab: t => void update($, decisionTab, () => t),
-      decide: (key, value) =>
-        void update($, decisions, x => {
-          const out = { ...x }
-          if (out[key] === value) delete out[key]
-          else out[key] = value
-          return out
-        }),
       toggleFilter: (kind, value) => void update($, reviewFilter, f => ({ ...f, [kind]: toggle(f[kind], value) })),
       toggleFilters: () => void update($, reviewFilter, f => ({ ...f, open: !f.open })),
-      sendReviewDecisions: () =>
-        void (async () => {
-          await fill(reviewDecisionText(s, await read($, decisions)))
-          await update($, decisions, () => ({}))
-        })(),
-      togglePublish: (id, value) =>
-        void update($, publish, x => {
-          const out = { ...x }
-          if (out[id] === value) delete out[id]
-          else out[id] = value
-          return out
-        }),
-      approve: (pr, value) => void update($, approvals, x => ({ ...x, [pr]: value })),
-      sendPrDecision: () =>
-        void (async () => {
-          const text = s.prTriage
-            ? prTriageDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
-            : prDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
-          await fill(text)
-        })(),
-      adjustInChat: text => void fill(text),
-      draft: (key, value) => void update($, drafts, x => ({ ...x, [key]: value })),
-      manualResult: (step, result) =>
-        void (async () => {
-          const evidence = (await read($, drafts))[`evidencia-${step}`] ?? ''
-          const what = result === 'ok' ? '✅ passou' : result === 'fail' ? '❌ falhou' : '⏭ pulado'
-          await $.prompt.submit({
-            text: `Roteiro ${s.roteiro}, passo ${step}: ${what}${evidence ? ` — evidência: ${evidence}` : ''}`,
-            asUser: true,
-          })
-          await update($, drafts, x => ({ ...x, [`evidencia-${step}`]: '' }))
-        })(),
-      answerDoubt: id =>
-        void (async () => {
-          const answer = (await read($, drafts))[`duvida-${id}`] ?? ''
-          if (!answer.trim()) return
-          await $.prompt.submit({ text: `Resposta à dúvida ${id} do levantamento ${s.id}: ${answer}`, asUser: true })
-          await update($, drafts, x => ({ ...x, [`duvida-${id}`]: '' }))
-        })(),
-      postLevantamento: () => void fill(levantamentoText(s)),
       expand: key => void update($, expanded, x => ({ ...x, [key]: !x[key] })),
     }
     return Panel(
@@ -650,16 +596,12 @@ export const register: Register = (on, options) => {
         running: await read($, running),
         now: await $.clock.now(),
         tab: (await read($, tabs))[view] ?? '',
-        publish: await read($, publish),
-        approvals: await read($, approvals),
-        drafts: await read($, drafts),
         usage: await read($, usage),
         columns: e.props.bodyColumns,
         surface: e.surface,
         reviewFile: await read($, reviewFile),
         decisionTab: await read($, decisionTab),
         filter: await read($, reviewFilter),
-        decisions: await read($, decisions),
         expanded: await read($, expanded),
       },
       act,

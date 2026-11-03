@@ -79,8 +79,8 @@ O revisor revisa a entrega contra o plano numa passada: padrões do time, **bugs
 a severidade, a correção mínima dentro do escopo, o código antes e depois e a recomendação (manter ou descartar, e por
 quê). Dúvidas de regra ou de arquitetura vêm como dúvida, não como achado.
 
-Os achados vão para **você** e para o orquestrador a cada rodada: no painel Decisões, a aba Revisão mostra cada um com a
-recomendação e os botões Manter/Descartar, e o botão do rodapé leva as decisões ao prompt. Antes de recomendar
+Os achados vão para **você** e para o orquestrador a cada rodada, e você decide manter ou descartar no chat; o painel
+Testes e Review mostra cada um com a recomendação, só para consulta. Antes de recomendar
 descartar um CRITICO/IMPORTANTE, o orquestrador confere a premissa (skill `verificar-premissa`). As decisões ficam em
 `triagem-<id>-r<N>.md`; os mantidos vão para o codificador, e um revisor novo confere só as correções. Sem achado a
 decidir, a demanda vai para a sua revisão de código.
@@ -96,7 +96,7 @@ decidir, a demanda vai para a sua revisão de código.
   escritas aprovadas, os passos automáticos — API e navegador, pelo Claude in Chrome (o seu Chrome, logado) ou pelo
   Playwright — e a regressão da área, e escreve ✅/❌ e a evidência no próprio roteiro.
 - **Passos manuais** (desktop/WPF, ou o que o qa não conseguiu no navegador): o orquestrador mostra um passo por vez,
-  você executa e manda a evidência (pela aba Testes do painel Decisões ou no chat), e ele marca o resultado.
+  você executa e manda a evidência no chat, e ele marca o resultado (o painel Testes e Review mostra o roteiro).
 - **Ajustes de teste:** mudança de código só para testar (bypass, flag, mock, apontar para QA) é feita pelo
   codificador, marcada com `AIDW-TESTE`, num patch separado; sai antes do commit, e o hook recusa um commit com a
   marca.

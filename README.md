@@ -131,7 +131,7 @@ PR), as ações travadas, as dúvidas reais e o que sair do plano. Não há modo
 | `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
 | `/painel [aba]` | — | Abre o painel Geral da demanda, ou o da aba pedida ([painel](docs/painel.md)) |
 | `/metricas` | — | Abre o painel de métricas da demanda |
-| `/decisoes` | — | Abre o painel Decisões: o que espera você |
+| `/testes-review` | — | Abre o painel Testes e Review (Dúvidas no levantamento), só informativo |
 
 ### Mods (só Claude Code)
 
@@ -140,8 +140,8 @@ No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
 - **Faixa acima do prompt:** a demanda, o contexto e as janelas de 7d e 5h do plano, com barras, os agentes rodando
   e os botões dos painéis.
 - **Painéis do AiDW** ([painel.md](docs/painel.md)), só quando você abre: **Geral** (`/painel`: título, mapa da
-  demanda com resumo, números e progresso, inclusive Code review e QA), **Métricas** (`/metricas`) e **Decisões**
-  (`/decisoes`: o que espera você).
+  demanda com resumo, números e progresso, inclusive Code review e QA), **Métricas** (`/metricas`) e **Testes e Review**
+  (`/testes-review`: achados, roteiro e comentários de PR; **Dúvidas** no levantamento), só para consulta: toda decisão é no chat.
   - **Desenvolver:** critérios, regras e cenários com a cobertura; revisão em cartões (antes e depois do código,
     recomendação do AiDW, decisão); teste manual passo a passo.
   - **Revisar PR:** achados com o comentário de cada um, o que publicar e "Aprovar a PR?" (manual, sim, não).
