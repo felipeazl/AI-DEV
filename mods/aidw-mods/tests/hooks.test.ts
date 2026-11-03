@@ -18,7 +18,7 @@ const RUNTIME = {
   agents: {
     orchestrator: { name: 'orquestrador', enabled: true },
     planner: { name: 'planejador', enabled: true },
-    coder: { name: 'codificador', enabled: true },
+    coder: { name: 'codificador', display: 'Codificador', enabled: true, model: 'opus', effort: 'medium' },
     reviewer: { name: 'revisor', enabled: true },
   },
 }
@@ -470,6 +470,13 @@ test('agente em segundo plano: grava o contexto da última resposta, não a soma
     for await (const _ of stream) void _
     await stream.result
   }
+  // a faixa mostra o agente como card: nome, modelo e effort, label e os tokens da última resposta
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^Codificador$/)
+  await has(band, /^Opus medium$/)
+  await has(band, /^rota$/)
+  await has(band, /^242k tokens$/)
+  await band.unmount()
   const sum = steps.reduce((n, u) => n + u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens, 0)
   await $.turn.complete({
     answer: 'pronto\n{"state": "plan_review_changes_requested"}', durationMs: 508_448, isAborted: false, turnId: 'bt', reason: 'answer',
