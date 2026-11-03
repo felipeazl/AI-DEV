@@ -19,7 +19,7 @@ import {
   progress,
 } from '../hooks/artifacts'
 import { buildSnapshot, stateLabel } from '../hooks/snapshot'
-import { C, diffSources, patchLabel, reviewRounds, roundName, svgDoc, visibleTabs } from '../hooks/views'
+import { C, reviewRounds, roundName, svgDoc, viewFor, visibleTabs } from '../hooks/views'
 
 const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ step, at: '' })) })
 
@@ -28,7 +28,7 @@ describe('progresso do Mapa da demanda', () => {
     const p = progress('desenvolvimento', steps('UNDERSTAND', 'IMPLEMENT', 'REVIEW', 'PR'))
     expect([p.current, p.index, p.total]).toEqual(['PR', 8, 11])
     expect(p.stages.map(s => s.name)).toEqual([
-      'Entender', 'Plano', 'Sua aprovação', 'Implementar', 'Revisão', 'Sua revisão', 'Testes', 'PR', 'Code review', 'Testes QA', 'Pronto',
+      'Entendimento', 'Plano', 'Sua aprovação', 'Implementação', 'Revisão', 'Sua revisão', 'Testes', 'PR', 'Code review', 'Testes QA', 'Concluída',
     ])
     expect(p.stages.map(s => s.state)).toEqual([...Array(7).fill('feito'), 'atual', 'pendente', 'pendente', 'pendente'])
     // as etapas antigas caem na fase equivalente (demandas abertas antes do fluxo v3)
@@ -87,7 +87,7 @@ describe('critérios, regras e cenários', () => {
       const all: Record<string, string> = {
         'demand.json': JSON.stringify({ id: 'us-1', step, summary: 'Resumo' }), 'plano-us-1.md': plan, ...extra,
       }
-      return buildSnapshot({ dir: 'C:/x/us-1', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all, maxRetries: 3 })
+      return buildSnapshot({ dir: 'C:/x/us-1', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all })
     }
     const status = (s: ReturnType<typeof build>) => s.coverage.map(c => `${c.id}:${c.status}`)
     const before = build('IMPLEMENT')
@@ -145,7 +145,7 @@ describe('revisão V2', () => {
       'review-otimizacao-it-9-r1.md': '### R1-01 — SUGESTAO — `b.cs:2`\n**O quê:** duplicado\n',
       'triagem-it-9-r1.md': '| ID | Sev. | Decisão |\n|---|---|---|\n| R1-01 | IMPORTANTE | Corrigir |\n',
     }
-    const s = buildSnapshot({ dir: 'C:/x/it-9', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all, maxRetries: 3 })
+    const s = buildSnapshot({ dir: 'C:/x/it-9', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all })
     expect(reviewRounds(s).map(r => r.label)).toEqual(['Código r1', 'Código r2', 'Otimização r1'])
     const r1 = s.findings.find(f => f.file === 'review-it-9-r1.md')
     expect([r1?.status, r1?.decision, r1?.title]).toEqual(['corrigido na r2', 'mantido', 'falta summary'])
@@ -308,8 +308,10 @@ describe('painel v3', () => {
   })
 
   test('abas sem dados ficam ocultas; a Geral fica sempre', async () => {
-    const s = buildSnapshot({ dir: 'C:/x/us-1', demand: { id: 'us-1', step: 'IMPLEMENT' }, files: [], texts: {}, maxRetries: 3 })
-    expect(visibleTabs(s).map(([id]) => id)).toEqual(['geral'])
+    const s = buildSnapshot({ dir: 'C:/x/us-1', demand: { id: 'us-1', step: 'IMPLEMENT' }, files: [], texts: {} })
+    expect(visibleTabs(s, 'geral').map(([id]) => id)).toEqual(['geral'])
+    expect(visibleTabs(s, 'metricas')).toEqual([])
+    expect(visibleTabs(s, 'decidir')).toEqual([])
   })
 
   test('riscos da estimativa: subtópicos, na linha ou a seção antiga', async () => {
@@ -321,17 +323,14 @@ describe('painel v3', () => {
     expect(parseEstimate(lines('## Estimativa', '- **Story points:** 3')).risks).toBe('')
   })
 
-  test('diffs: nomes legíveis e o patch inteiro da PR com worktree sai', async () => {
-    expect(patchLabel('diff-pr8197-GedarAC-r2.patch')).toBe('PR 8197 · só a rodada 2')
-    expect(patchLabel('diff-pr8208-Emissao.patch')).toBe('PR 8208 · Emissao')
-    expect(patchLabel('diff-131192-01-r1-para-r2.patch')).toBe('131192-01 · r1 → r2')
-    expect(patchLabel('diff-145145-api-r1.patch')).toBe('145145-api · rodada 1')
-    expect(patchLabel('ambiente-teste-bug-146134-gedarac.patch')).toBe('ajustes de teste · bug-146134-gedarac')
-    expect(patchLabel('diff-131192-final.patch')).toBe('131192-final')
-    const s = {
-      repos: [{ name: 'GedarAC', path: 'C:/wt/a', pr: '8197' }, { name: 'Emissao', path: 'C:/wt/b', pr: '8208' }],
-      patches: ['diff-pr8197-GedarAC-r2.patch', 'diff-pr8197-GedarAC.patch', 'diff-pr8208-Emissao.patch', 'diff-pr9-Hope.patch'],
-    } as unknown as Parameters<typeof diffSources>[0]
-    expect(diffSources(s).map(x => x.label)).toEqual(['PR 8197 · GedarAC', 'PR 8197 · só a rodada 2', 'PR 8208 · Emissao', 'PR 9 · Hope'])
+  test('painel v4: o argumento do /painel leva ao painel e à aba', async () => {
+    expect(viewFor('desenvolvimento', '')).toEqual({ view: 'geral', tab: '' })
+    expect(viewFor('desenvolvimento', 'critérios')).toEqual({ view: 'geral', tab: '' })
+    expect(viewFor('desenvolvimento', 'revisao')).toEqual({ view: 'decidir', tab: 'revisao' })
+    expect(viewFor('desenvolvimento', 'roteiro')).toEqual({ view: 'decidir', tab: 'manual' })
+    expect(viewFor('pr-review', 'achados')).toEqual({ view: 'decidir', tab: 'comentarios' })
+    expect(viewFor('levantamento', 'decisoes')).toEqual({ view: 'decidir', tab: '' })
+    expect(viewFor('levantamento', 'agentes')).toEqual({ view: 'metricas', tab: '' })
+    expect(viewFor('desenvolvimento', 'diffs')).toEqual({ view: 'geral', tab: '' })
   })
 })

@@ -1,27 +1,23 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register, Timer, TurnUsage } from 'claude-code'
 
-import type { DiffView, Pending, ReviewFilter, Snapshot } from '../types'
+import type { Pending, ReviewFilter, Snapshot } from '../types'
 import {
   IDLE_MIN,
   IDLE_MS,
-  compact,
   demandIds,
   demandSetId,
   labelFor,
   parseDelegation,
-  parseMaxRetries,
   parseState,
 } from './aidw'
 import type { DemandFile, ExternalStep } from './artifacts'
-import { diffSummary, splitDiff } from './diffs'
-import type { DiffFile } from './diffs'
 import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
-import { redactBlocks } from './secrets'
+import { redactBlocks, redactValue } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
-import { Band, Panel, diffSources, levantamentoText, prDecisionText, prTriageDecisionText, reviewDecisionText, tabFor } from './views'
-import type { Actions, UI } from './views'
+import { Band, Panel, VIEWS, levantamentoText, pendingCount, prDecisionText, prTriageDecisionText, reviewDecisionText, tabHasData, viewFor, visibleTabs } from './views'
+import type { Actions, BandNav, UI, View } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
 // Ligado só no modo orquestrador: a sessão está no state/sessions.json, que o guard do AiDW grava ao
@@ -33,17 +29,14 @@ const running = atom({ plugin: 'aidw-mods', key: 'running' } as const, [])
 // variável do módulo, porque o agente costuma atravessar um `/reload-plugins` ou um `aidw.py install`.
 const background = atom({ plugin: 'aidw-mods', key: 'background' } as const, {})
 const hidden = atom({ plugin: 'aidw-mods', key: 'hidden' } as const, false)
-const tab = atom({ plugin: 'aidw-mods', key: 'tab' } as const, 'geral')
+const tabs = atom({ plugin: 'aidw-mods', key: 'tabs' } as const, {})
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
-const extraRounds = atom({ plugin: 'aidw-mods', key: 'extraRounds' } as const, {})
 const publish = atom({ plugin: 'aidw-mods', key: 'publish' } as const, {})
 const approvals = atom({ plugin: 'aidw-mods', key: 'approvals' } as const, {})
 const drafts = atom({ plugin: 'aidw-mods', key: 'drafts' } as const, {})
-const diff = atom({ plugin: 'aidw-mods', key: 'diff' } as const, null)
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
-const warned = atom({ plugin: 'aidw-mods', key: 'warned' } as const, {})
 const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
 const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
 const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], open: false }
@@ -51,7 +44,8 @@ const reviewFilter = atom({ plugin: 'aidw-mods', key: 'reviewFilter' } as const,
 const decisions = atom({ plugin: 'aidw-mods', key: 'decisions' } as const, {})
 const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
-const PANE = 'aidw'
+// Um pane por painel (painel v4), aberto pelo botão da faixa ou pelo comando, nunca sozinho.
+const PANE: Record<View, string> = { geral: 'aidw-geral', metricas: 'aidw-metricas', decidir: 'aidw-decidir' }
 // Etapas em que um ajuste de teste pode estar aplicado (ou já devia ter saído).
 const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'PR', 'ORCHESTRATOR_TEST', 'PREPARE_REVIEW', 'REVIEW', 'DOCS', 'FINAL_REVIEW'])
 const CODE_FILE = /\.(cs|ts|tsx|js|jsx|mjs|vue|py|java|kt|go|rs|cpp|c|h|vb|sql|xaml|cshtml|razor|html|scss|css)$/i
@@ -64,8 +58,6 @@ let python = 'python'
 const lastUsage = new Map<string, TurnUsage>()
 // As últimas mensagens do usuário (a trava de `model` confere se ele pediu outro modelo).
 const userPrompts: string[] = []
-// Diffs já calculados, por fonte (o estado guarda só o arquivo aberto).
-const diffCache = new Map<string, DiffFile[]>()
 let kbCache: { name: string; folder: string; path: string }[] | null = null
 // A compactação por ociosidade agendada no fim do último turno; uma mensagem nova a cancela.
 let idleTimer: Timer | null = null
@@ -99,7 +91,7 @@ async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
     .filter(([role, a]) => a.enabled && role !== 'orchestrator')
   const agents = on.map(([, a]) => a.name)
   const roles = Object.fromEntries(on.map(([role, a]) => [a.name, role]))
-  return { variants, maxRetries: Number(r.max_retries ?? 3), agents, roles }
+  return { variants, agents, roles }
 }
 
 /** Relê a demanda do disco e redesenha a faixa e o painel. */
@@ -116,33 +108,25 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
   const texts: Record<string, string> = {}
   for (const f of wanted(files)) texts[f] = await $.fs.read(`${target}/${f}`).catch(() => '')
   const r = await runtimeJson($)
-  const maxRetries =
-    typeof r.max_retries === 'number'
-      ? r.max_retries
-      : parseMaxRetries(await $.fs.read(`${root}/orchestrator/config/routing.toml`).catch(() => ''))
-  const maxRetriesPlan = typeof r.max_retries_plan === 'number' ? r.max_retries_plan : maxRetries
   const externalSteps = Array.isArray(r.external_steps) ? (r.external_steps as ExternalStep[]) : []
-  const next = buildSnapshot({ dir: target, demand, files, texts, maxRetries, maxRetriesPlan, externalSteps })
+  const next = buildSnapshot({ dir: target, demand, files, texts, externalSteps })
   if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)
   if (before?.id !== next.id) {
     await update($, approvals, () => ({}))
     await update($, publish, () => ({}))
-    await update($, diff, () => null)
+    await update($, tabs, () => ({}))
     await update($, reviewRound, () => next.round)
     await update($, reviewFile, () => '')
     await update($, decisionTab, () => '')
     await update($, decisions, () => ({}))
   }
-  if (tabFor(next.kind, await read($, tab)) === 'diffs') await ensureDiff($, next)
 }
 
-/** Diffs abre com o diff da primeira fonte já carregado; o guardado só vale se a fonte é desta demanda. */
-async function ensureDiff($: EngineInterface, s: Snapshot): Promise<void> {
-  const sources = diffSources(s)
-  const current = await read($, diff)
-  if (sources[0] && !sources.some(x => x.value === current?.source)) await showDiff($, sources[0].value)
+/** Diz no status quantos segredos o filtro ocultou (só o nome, nunca o valor). */
+function hidSecrets($: EngineInterface, hits: string[]) {
+  $.ui.status(`AiDW: ${hits.length} segredo(s) ocultado(s) na conversa (${hits.slice(0, 3).join(', ')})`)
 }
 
 /** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes do commit da PR. */
@@ -188,7 +172,7 @@ async function fromArgument($: EngineInterface, argument: string): Promise<strin
   return null
 }
 
-/** Confere se esta sessão está no modo orquestrador; ao entrar, acha a demanda e abre o painel. */
+/** Confere se esta sessão está no modo orquestrador; ao entrar, acha a demanda (os painéis só abrem pelo botão ou comando). */
 async function checkActive($: EngineInterface): Promise<boolean> {
   let on = false
   let argument = ''
@@ -206,11 +190,8 @@ async function checkActive($: EngineInterface): Promise<boolean> {
     const dir = (await fromCwd($, await $.session.cwd())) ?? (await fromArgument($, argument))
     if (dir) await refresh($, dir)
   }
-  if (on && !was) {
-    await measure($)
-    if (await panelOn($)) await openPanel($, false)
-  }
-  if (!on && was) await $.ui.close({ id: PANE }).catch(() => undefined)
+  if (on && !was) await measure($)
+  if (!on && was) for (const id of Object.values(PANE)) await $.ui.close({ id }).catch(() => undefined)
   return on
 }
 
@@ -219,10 +200,21 @@ async function panelOn($: EngineInterface): Promise<boolean> {
   return (await runtimeJson($)).panel !== false
 }
 
-async function openPanel($: EngineInterface, asked: boolean): Promise<void> {
+/** Abre um painel; devolve o motivo quando ele não coube na janela. */
+async function openPanel($: EngineInterface, view: View): Promise<string | null> {
+  const opened = await $.ui.open({ id: PANE[view], title: `AiDW · ${VIEWS[view].title}` })
+  return opened.isPlaced ? null : (opened.reason ?? 'sem espaço')
+}
+
+/** `/painel [aba]`, `/metricas`, `/decisoes`: abre o painel (e a aba pedida) e diz o que aconteceu. */
+async function openFromCommand($: EngineInterface, arg: string): Promise<{ text: string }> {
+  if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
   const s = await read($, snap)
-  const opened = await $.ui.open({ id: PANE, title: s ? `AiDW — ${s.id}` : 'AiDW' })
-  if (asked && !opened.isPlaced) $.ui.toast(`AiDW: o painel não coube (${opened.reason}); alargue a janela`)
+  if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:go).' }
+  const { view, tab } = viewFor(s.kind, arg.trim().toLowerCase())
+  if (tab) await update($, tabs, x => ({ ...x, [view]: tab }))
+  const missing = await openPanel($, view)
+  return { text: missing ? `AiDW: o painel não coube (${missing}); alargue a janela.` : `AiDW: painel ${VIEWS[view].title} aberto (${s.id}).` }
 }
 
 /** `aidw.py demand set <id> --step X`: a etapa mudou (ou a demanda é outra). */
@@ -275,14 +267,6 @@ function notice(header: string | null, p: Pending): string {
     : `AiDW: o mod aidw-mods não conseguiu registrar esta delegação (${p.label}); rode \`aidw.py record\` você mesmo.`
 }
 
-/** Um aviso só uma vez por chave (orçamento, contexto, espera). */
-async function warnOnce($: EngineInterface, key: string, text: string): Promise<void> {
-  const seen = await read($, warned)
-  if (seen[key]) return
-  await update($, warned, w => ({ ...w, [key]: true }))
-  $.ui.toast(text, { timeoutMs: 10_000 })
-}
-
 /** O contexto (em tokens) e as janelas de uso do plano (5h, 7d) para a faixa. */
 async function measure($: EngineInterface): Promise<number | null> {
   try {
@@ -327,8 +311,6 @@ async function compactIdle($: EngineInterface): Promise<void> {
         'gravadas; o resto está nos arquivos da pasta da demanda.',
     })
     if (r.skip !== undefined) return
-    const after = r.tokensAfter ? ` → ${compact(r.tokensAfter)}` : ''
-    $.ui.toast(`AiDW: contexto compactado depois de um tempo parado (${compact(before)}${after} tokens)`, { timeoutMs: 8_000 })
     await measure($)
   } catch {
     // um turno começou antes: a compactação fica para a próxima pausa
@@ -347,48 +329,6 @@ async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs:
   await measure($)
   idleTimer?.cancel()
   idleTimer = $.clock.after(IDLE_MS, () => void compactIdle($))
-  if (!s) return
-  if (s.waiting) await warnOnce($, `wait:${s.id}:${s.step}:${s.delegations.length}`, `AiDW: ${s.id} espera você — ${s.waiting}`)
-}
-
-/** Calcula (ou pega do cache) o diff de uma fonte: o worktree contra a base, ou um .patch da pasta. */
-async function diffFiles($: EngineInterface, s: Snapshot, source: string): Promise<{ files: DiffFile[]; error: string }> {
-  const cached = diffCache.get(source)
-  if (cached) return { files: cached, error: '' }
-  let text = ''
-  if (source.startsWith('patch:')) {
-    text = await $.fs.read(`${s.dir}/${source.slice(6)}`).catch(() => '')
-    if (!text) return { files: [], error: `não consegui ler ${source.slice(6)}` }
-  } else {
-    const repo = s.repos.find(r => `repo:${r.path}` === source)
-    if (!repo) return { files: [], error: 'repositório não encontrado na demanda' }
-    const range = repo.pr && repo.source ? [`${repo.base}...${repo.source}`] : [repo.base || 'HEAD']
-    const ran = await $.process
-      .run(['git', '-C', repo.path, 'diff', '--no-color', '--no-ext-diff', ...range], { timeoutMs: 30_000 })
-      .catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
-    if (ran.exitCode !== 0) return { files: [], error: `git diff falhou: ${ran.stderr.slice(0, 200)}` }
-    text = ran.stdout
-  }
-  const files = splitDiff(text)
-  diffCache.set(source, files)
-  return { files, error: '' }
-}
-
-async function showDiff($: EngineInterface, source: string, file?: string): Promise<void> {
-  const s = await read($, snap)
-  if (!s) return
-  if (!file) diffCache.delete(source) // escolher a fonte de novo relê o diff
-  const { files, error } = await diffFiles($, s, source)
-  const selected = file ?? files[0]?.path ?? ''
-  const view: DiffView = {
-    source,
-    files: files.map(f => ({ path: f.path, change: f.change, added: f.added, removed: f.removed })),
-    selected,
-    hunks: files.find(f => f.path === selected)?.hunks ?? '',
-    summary: error ? '' : diffSummary(files),
-    error,
-  }
-  await update($, diff, () => view)
 }
 
 /** As notas da base de conhecimento do contexto ativo (para `[[nota]]` no prompt). */
@@ -452,8 +392,13 @@ export const register: Register = (on, options) => {
     const panel = await panelOn($)
     for (const command of [
       { name: 'faixa', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
-      ...(panel ? [{ name: 'painel', description: 'Abre o painel do AiDW (geral, critérios, revisão, diffs, métricas…)', argumentHint: '[aba]' }] : []),
-      { name: 'rodada', description: 'Libera mais uma rodada no laço de revisão travado pelo max_retries' },
+      ...(panel
+        ? [
+            { name: 'painel', description: 'Abre o painel Geral da demanda do AiDW (ou o painel da aba pedida)', argumentHint: '[aba]' },
+            { name: 'metricas', description: 'Abre o painel de métricas da demanda do AiDW' },
+            { name: 'decisoes', description: 'Abre o painel Decisões: achados, roteiro, comentários de PR, dúvidas' },
+          ]
+        : []),
     ]) {
       await $.command.register(command).catch(() => undefined)
     }
@@ -483,22 +428,9 @@ export const register: Register = (on, options) => {
     return { text: now ? 'Faixa do AiDW escondida.' : 'Faixa do AiDW visível.' }
   })
 
-  on('command.run', { command: 'painel' }, async ($, e) => {
-    if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
-    const s = await read($, snap)
-    if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:go).' }
-    if (e.args.trim()) await update($, tab, () => tabFor(s.kind, e.args.trim().toLowerCase()))
-    await openPanel($, true)
-    return { text: `Painel do AiDW aberto (${s.id}).` }
-  })
-
-  on('command.run', { command: 'rodada' }, async $ => {
-    const s = await read($, snap)
-    if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão.' }
-    const n = ((await read($, extraRounds))[s.id] ?? 0) + 1
-    await update($, extraRounds, x => ({ ...x, [s.id]: n }))
-    return { text: `AiDW: ${n} rodada(s) extra(s) liberada(s) para ${s.id} (limite agora ${s.maxRetries + n}).` }
-  })
+  on('command.run', { command: 'painel' }, ($, e) => openFromCommand($, e.args))
+  on('command.run', { command: 'metricas' }, $ => openFromCommand($, 'metricas'))
+  on('command.run', { command: 'decisoes' }, $ => openFromCommand($, 'decidir'))
 
   // Travas da delegação e registro da métrica.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
@@ -506,7 +438,6 @@ export const register: Register = (on, options) => {
     const isOn = await read($, active)
     if (isOn) {
       const rt = await loadRuntime($)
-      const s = await read($, snap)
       if (rt) {
         const why = checkDelegation({
           subagentType: e.subagent_type ?? 'general-purpose',
@@ -514,11 +445,6 @@ export const register: Register = (on, options) => {
           model: e.model,
           runtime: rt,
           userPrompts,
-          step: s?.step ?? null,
-          round: s?.round ?? 0,
-          roundKind: s?.roundKind ?? null,
-          extraRounds: s ? ((await read($, extraRounds))[s.id] ?? 0) : 0,
-          kind: s?.kind ?? null,
         })
         if (why) return { deny: why }
       }
@@ -591,30 +517,41 @@ export const register: Register = (on, options) => {
         ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs)
         : null
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: notice(header, p) }] } })
-      $.ui.toast(`AiDW: ${p.agent.split(':').pop()} (${p.label}) terminou${state ? ` — ${state}` : ''}`, { timeoutMs: 8_000 })
     } else if (!id && (await read($, active))) {
       await endOfTurn($, e)
     }
     return next(e)
   })
 
-  // Depois de uma compactação, o estado da demanda volta ao contexto.
-  on('session.compact', async ($, e, next) => {
+  // Depois de uma compactação, o estado da demanda volta ao contexto. Pelo SessionStart de origem `compact`, não pelo
+  // session.compact: onde a organização assenta um plugin de segurança acima (cc-plugin-sec-default), ele passa o
+  // session.compact adiante e o hook daqui não roda.
+  on('classic.SessionStart', async ($, e, next) => {
     const ran = await next(e)
-    if (e.agentId || !(await read($, active))) return ran
+    if (e.source !== 'compact' || e.agent_type || !(await read($, active))) return ran
     await refresh($)
     const s = await read($, snap)
-    if (s) await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: stateNote(s) }] } })
-    return ran
+    return s ? { ...ran, additionalContext: [...(ran.additionalContext ?? []), stateNote(s)] } : ran
   })
 
   // Filtro de segredos: nenhuma linha da conversa (do orquestrador ou dos agentes) leva o valor de um segredo.
+  // Onde a organização assenta um plugin de segurança acima (cc-plugin-sec-default), o session.append não chega
+  // aqui; o resultado de cada ferramenta, sim: o filtro roda nele também, antes de virar linha.
   on('session.append', async ($, e, next) => {
     if (!(await read($, active))) return next(e)
     const r = redactBlocks(e.message.content)
     if (!r.hits.length) return next(e)
-    $.ui.status(`AiDW: ${r.hits.length} segredo(s) ocultado(s) na conversa (${r.hits.slice(0, 3).join(', ')})`)
+    hidSecrets($, r.hits)
     return next({ ...e, message: { ...e.message, content: r.content } })
+  })
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    // um resultado com erro e um negado ficam como estão; o resto vai como resultado próprio (o core o mapeia de novo)
+    if (ran.deny !== undefined || ran.isError || !(await read($, active))) return ran
+    const r = redactValue(ran.result)
+    if (!r.hits.length) return ran
+    hidSecrets($, r.hits)
+    return { result: r.value, ...(ran.context ? { context: ran.context } : {}) } as typeof ran
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -624,10 +561,18 @@ export const register: Register = (on, options) => {
     }
     const ui = $.ui.resolve(e) as unknown as UI
     await read($, tick)
-    return Band(ui, s, await read($, running), await read($, usage), await $.clock.now())
+    const nav: BandNav | undefined = (await panelOn($))
+      ? {
+          open: view => void openPanel($, view),
+          canDecide: visibleTabs(s, 'decidir').length > 0,
+          pending: pendingCount({ snap: s, reviewFile: await read($, reviewFile), decisions: await read($, decisions), publish: await read($, publish) }),
+          hasMetrics: tabHasData(s, 'metricas'),
+        }
+      : undefined
+    return Band(ui, s, await read($, running), await read($, usage), await $.clock.now(), nav)
   })
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+  for (const view of Object.keys(PANE) as View[]) on('ui.render', { component: 'Pane', requestId: PANE[view] }, async ($, e) => {
     const ui = $.ui.resolve(e) as unknown as UI
     const s = await read($, snap)
     if (!(await panelOn($))) {
@@ -639,19 +584,11 @@ export const register: Register = (on, options) => {
       return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:lev.</Text>
     }
     await read($, tick)
-    const fill = async (text: string, toast: string) => {
-      await $.prompt.fill({ text })
-      $.ui.toast(toast)
-    }
+    const fill = (text: string) => $.prompt.fill({ text })
     const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])
     const act: Actions = {
-      tab: t =>
-        void (async () => {
-          await update($, tab, () => t)
-          if (t === 'diffs') await ensureDiff($, s)
-        })(),
+      tab: t => void update($, tabs, x => ({ ...x, [view]: t })),
       refresh: () => void refresh($),
-      extraRound: () => void update($, extraRounds, x => ({ ...x, [s.id]: (x[s.id] ?? 0) + 1 })),
       reviewFile: f => void update($, reviewFile, () => f),
       decisionTab: t => void update($, decisionTab, () => t),
       decide: (key, value) =>
@@ -665,7 +602,7 @@ export const register: Register = (on, options) => {
       toggleFilters: () => void update($, reviewFilter, f => ({ ...f, open: !f.open })),
       sendReviewDecisions: () =>
         void (async () => {
-          await fill(reviewDecisionText(s, await read($, decisions)), 'AiDW: as decisões estão no prompt; revise e envie')
+          await fill(reviewDecisionText(s, await read($, decisions)))
           await update($, decisions, () => ({}))
         })(),
       togglePublish: (id, value) =>
@@ -681,9 +618,9 @@ export const register: Register = (on, options) => {
           const text = s.prTriage
             ? prTriageDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
             : prDecisionText(s, await read($, publish), await read($, approvals), await read($, drafts))
-          await fill(text, 'AiDW: a decisão está no prompt; revise e envie')
+          await fill(text)
         })(),
-      adjustInChat: text => void fill(text, 'AiDW: o texto está no prompt; diga o que ajustar e envie'),
+      adjustInChat: text => void fill(text),
       draft: (key, value) => void update($, drafts, x => ({ ...x, [key]: value })),
       manualResult: (step, result) =>
         void (async () => {
@@ -702,34 +639,23 @@ export const register: Register = (on, options) => {
           await $.prompt.submit({ text: `Resposta à dúvida ${id} do levantamento ${s.id}: ${answer}`, asUser: true })
           await update($, drafts, x => ({ ...x, [`duvida-${id}`]: '' }))
         })(),
-      postLevantamento: () => void fill(levantamentoText(s), 'AiDW: o pedido está no prompt; revise e envie'),
-      diffSource: source => void showDiff($, source),
-      diffFile: path =>
-        void (async () => {
-          const d = await read($, diff)
-          if (d) await showDiff($, d.source, path)
-        })(),
-      // o host recusa um prompt.submit que começa com `/`: o comando roda pelo command.run
-      appDiff: repo => void $.command.run({ command: 'aidw:diff', args: repo }),
+      postLevantamento: () => void fill(levantamentoText(s)),
       expand: key => void update($, expanded, x => ({ ...x, [key]: !x[key] })),
     }
     return Panel(
       ui,
       {
+        view,
         snap: s,
         running: await read($, running),
         now: await $.clock.now(),
-        tab: await read($, tab),
+        tab: (await read($, tabs))[view] ?? '',
         publish: await read($, publish),
         approvals: await read($, approvals),
         drafts: await read($, drafts),
-        diff: await read($, diff),
         usage: await read($, usage),
-        extraRounds: (await read($, extraRounds))[s.id] ?? 0,
         columns: e.props.bodyColumns,
         surface: e.surface,
-        canAppDiff: e.surface === 'desktop',
-        sessionCwd: e.surface === 'desktop' ? norm(await $.session.cwd()) : '',
         reviewFile: await read($, reviewFile),
         decisionTab: await read($, decisionTab),
         filter: await read($, reviewFilter),

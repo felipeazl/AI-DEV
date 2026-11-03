@@ -184,7 +184,7 @@ Mudanças aqui valem para todos que usam o AiDW: faça por PR.
 | Arquivo | O que define |
 |---|---|
 | `config/models.toml` | Catálogo de modelos por provedor: `model_id` (no Claude, o apelido que sempre aponta para a versão mais nova), `label` (como aparece), `tiers` (`top`/`mid`/`fast`), `efforts` aceitos, `min_cli` |
-| `orchestrator/config/routing.toml` | `[rules]` (`state` → ação), `max_retries` e `[[effort.variants.<papel>]]` (as exceções ao padrão de cada agente: `effort`, `model` opcional e `when`, o motivo que permite usá-la) |
+| `orchestrator/config/routing.toml` | `[rules]` (`state` → ação) e `[[effort.variants.<papel>]]` (as exceções ao padrão de cada agente: `effort`, `model` opcional e `when`, o motivo que permite usá-la) |
 | `config/mcp.toml` | Catálogo de MCPs: comando ou URL, `auth`, `allow`, os papéis que podem usar (`agents`), `use_when` e `triggers` (quando o orquestrador manda usar) |
 | `orchestrator/ORCHESTRATOR.md` | O núcleo do orquestrador |
 | `orchestrator/reference/` | O que o orquestrador lê sob demanda (com `when:`) |
