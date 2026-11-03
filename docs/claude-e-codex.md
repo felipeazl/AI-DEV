@@ -34,7 +34,7 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 |---|---|
 | Plugin `aidw` (marketplace, comandos `/aidw:*`, instalação em qualquer pasta) | o formato de plugin é do Claude Code |
 | Regras de permissão e hooks do AiDW (guard, `AIDW-TESTE`, registro do modo orquestrador) | instalados só no Claude Code |
-| **Mods** (`aidw-mods`): faixa e painéis da demanda (Geral, Métricas e Decisões), métricas sozinhas, travas da delegação, filtro de segredos | plugins de *function hooks* do Claude Code ([mods.md](mods.md)) |
+| **Mods** (`aidw-mods`): faixa e painéis da demanda (Geral, Métricas e Testes e Review), métricas sozinhas, travas da delegação, filtro de segredos | plugins de *function hooks* do Claude Code ([mods.md](mods.md)) |
 | Painel de diff por repositório (`/aidw:diff`) e levar o chat ao worktree no meio da conversa | `change_directory` / `EnterWorktree` |
 | *Session folders* (pasta do contexto aberta no app) | `request_directory` |
 | Effort fixado por variante de agente e ferramentas/MCPs limitados no próprio subagente | subagentes do Claude Code |

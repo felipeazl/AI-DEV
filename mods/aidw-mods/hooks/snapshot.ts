@@ -286,11 +286,11 @@ export function nextStep(s: Snapshot): { you: boolean; text: string } {
     case 'PLAN_APPROVAL':
       return { you: true, text: 'Leia o plano e diga no chat se aprova ou o que ajustar; nada vai para o código antes disso.' }
     case 'TRIAGE':
-      return { you: true, text: 'Decida cada achado no painel Decisões (manter ou descartar) e leve as decisões ao prompt.' }
+      return { you: true, text: 'Decida no chat cada achado (manter ou descartar); o painel Testes e Review mostra cada um.' }
     case 'USER_REVIEW':
       return { you: true, text: 'Revise o código no diff do app (Alterações) e diga no chat se aprova ou o que mudar.' }
     case 'MANUAL_TEST':
-      return { you: true, text: 'Siga os passos manuais no painel Decisões e marque cada um.' }
+      return { you: true, text: 'Siga os passos manuais com o orquestrador no chat; o painel Testes e Review mostra o roteiro.' }
     case 'PR':
       return { you: true, text: 'Confira o commit, o texto da PR e as pendências para a QA e dê o OK no chat.' }
     case 'FINAL_REVIEW':
@@ -298,7 +298,7 @@ export function nextStep(s: Snapshot): { you: boolean; text: string } {
         you: true,
         text:
           s.kind === 'pr-review'
-            ? 'Escolha o que publicar e se o AiDW aprova cada PR no painel Decisões.'
+            ? 'Diga no chat o que publicar e se o AiDW aprova cada PR; o painel Testes e Review mostra os comentários.'
             : s.kind === 'levantamento'
               ? 'Confira a estimativa e as dúvidas e diga se publica o comentário no card.'
               : 'Confira a entrega (os critérios na Geral e o diff do app) e diga no chat se aprova; depois, `/aidw:done` fecha a demanda.',

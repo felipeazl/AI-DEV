@@ -165,7 +165,7 @@ Total **≈ <soma> SP**.
 resumo-<id>.md · pontos-<id>.md · exploracao-levantamento.md
 ```
 
-Os painéis do AiDW (*Card × código* e *Estimativa* na Geral, *Dúvidas* nas Decisões) leem exatamente essas tabelas e marcações: mantenha os
+Os painéis do AiDW (*Card × código* e *Estimativa* na Geral, *Dúvidas* no painel Dúvidas) leem exatamente essas tabelas e marcações: mantenha os
 cabeçalhos, as colunas e os rótulos `**Riscos:**`, `*Para:*` e `*Muda a estimativa:*` como estão.
 
 ## 7. Fechar
