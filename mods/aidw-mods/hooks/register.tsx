@@ -41,6 +41,7 @@ const reviewFilter = atom({ plugin: 'aidw-mods', key: 'reviewFilter' } as const,
 const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
 // Um pane por painel (painel v4), aberto pelo botão da faixa ou pelo comando, nunca sozinho.
+const COMPACTED_FROM = 40_000
 const PANE: Record<View, string> = { geral: 'aidw-geral', metricas: 'aidw-metricas', decidir: 'aidw-decidir' }
 // Etapas em que um ajuste de teste pode estar aplicado (ou já devia ter saído).
 const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'PR', 'ORCHESTRATOR_TEST', 'PREPARE_REVIEW', 'REVIEW', 'DOCS', 'FINAL_REVIEW'])
@@ -57,6 +58,8 @@ const userPrompts: string[] = []
 let kbCache: { name: string; folder: string; path: string }[] | null = null
 // A compactação por ociosidade agendada no fim do último turno; uma mensagem nova a cancela.
 let idleTimer: Timer | null = null
+// A compactação ociosa do próprio mod: a nota do estado da demanda vai na próxima mensagem.
+let compactedByIdle = false
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 const under = (path: string, dir: string) => norm(path).toLowerCase().startsWith(`${norm(dir).toLowerCase()}/`)
@@ -120,6 +123,24 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
 /** Diz no status quantos segredos o filtro ocultou (só o nome, nunca o valor). */
 function hidSecrets($: EngineInterface, hits: string[]) {
   $.ui.status(`AiDW: ${hits.length} segredo(s) ocultado(s) na conversa (${hits.slice(0, 3).join(', ')})`)
+}
+
+/**
+ * Depois de uma compactação, o estado da demanda volta junto da próxima mensagem sua. Não pelo session.compact nem
+ * pelo SessionStart: o plugin de segurança da organização (cc-plugin-sec-default) passa os dois adiante sem chamar os
+ * plugins do usuário; o prompt.submit chega aqui. A compactação se vê pela do próprio mod ou pelo contexto que caiu
+ * para menos da metade (a partir de COMPACTED_FROM tokens); uma seção fixa no prompt de sistema mudaria a cada etapa
+ * e regravaria o cache da conversa inteira.
+ */
+async function stateAfterCompaction($: EngineInterface): Promise<string[]> {
+  const before = (await read($, usage))?.tokens ?? 0
+  const now = await measure($)
+  const compacted = compactedByIdle || (now !== null && before >= COMPACTED_FROM && now < before / 2)
+  compactedByIdle = false
+  if (!compacted) return []
+  await refresh($)
+  const s = await read($, snap)
+  return s ? [stateNote(s)] : []
 }
 
 /** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes do commit da PR. */
@@ -305,6 +326,7 @@ async function compactIdle($: EngineInterface): Promise<void> {
         'gravadas; o resto está nos arquivos da pasta da demanda.',
     })
     if (r.skip !== undefined) return
+    compactedByIdle = true
     await measure($)
   } catch {
     // um turno começou antes: a compactação fica para a próxima pausa
@@ -410,7 +432,8 @@ export const register: Register = (on, options) => {
       userPrompts.push(e.text)
       if (userPrompts.length > 8) userPrompts.shift()
     }
-    const notes = (await read($, active)) ? await kbContext($, e.text) : []
+    const isOn = await read($, active)
+    const notes = isOn ? [...(await stateAfterCompaction($)), ...(await kbContext($, e.text))] : []
     const ran = await next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
     await checkActive($)
     return ran
@@ -515,17 +538,6 @@ export const register: Register = (on, options) => {
       await endOfTurn($, e)
     }
     return next(e)
-  })
-
-  // Depois de uma compactação, o estado da demanda volta ao contexto. Pelo SessionStart de origem `compact`, não pelo
-  // session.compact: onde a organização assenta um plugin de segurança acima (cc-plugin-sec-default), ele passa o
-  // session.compact adiante e o hook daqui não roda.
-  on('classic.SessionStart', async ($, e, next) => {
-    const ran = await next(e)
-    if (e.source !== 'compact' || e.agent_type || !(await read($, active))) return ran
-    await refresh($)
-    const s = await read($, snap)
-    return s ? { ...ran, additionalContext: [...(ran.additionalContext ?? []), stateNote(s)] } : ran
   })
 
   // Filtro de segredos: nenhuma linha da conversa (do orquestrador ou dos agentes) leva o valor de um segredo.
