@@ -2,7 +2,7 @@
 
 # Triagem de uma revisão de PR
 
-A triagem de cada rodada (`triagem-<id>-r<N>.md`) é o que você leva à revisão final **e o que o painel do AiDW mostra**
+A triagem de cada rodada (`triagem-<id>-r<N>.md`) é o que você leva à revisão final **e o que o painel Decisões do AiDW mostra**
 na aba Comentários: você decide sobre os comentários daqui, não sobre os achados soltos. Mantenha as seções, as colunas
 e as palavras abaixo como estão.
 

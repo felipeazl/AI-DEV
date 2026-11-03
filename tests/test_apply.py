@@ -1063,7 +1063,7 @@ class ContextTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             ctx_dir = root / "contexts" / "exemplo"
-            (ctx_dir / "routing.toml").write_text('max_retries = 2\n\n[[effort.variants.reviewer]]\neffort = "low"\n'
+            (ctx_dir / "routing.toml").write_text('[rules]\nreview_approved = "TEST"\n\n[[effort.variants.reviewer]]\neffort = "low"\n'
                                                   'when = "só a do contexto"\n', encoding="utf-8")
             (ctx_dir / "workflows").mkdir()
             (ctx_dir / "workflows" / "bugfix.yaml").write_text(
@@ -1076,7 +1076,8 @@ class ContextTest(unittest.TestCase):
             rep = aidw.Report(quiet=True)
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
-            self.assertEqual(b["routing"]["max_retries"], 2)
+            self.assertEqual(b["routing"]["rules"]["review_approved"], "TEST", "o valor do contexto substitui")
+            self.assertEqual(b["routing"]["rules"]["plan_ready"], "PLAN_APPROVAL", "o resto vem do núcleo")
             self.assertEqual(list(b["resolved"]["reviewer"]["variants"]), ["revisor", "revisor-low"],
                              "a lista do contexto substitui a do núcleo")
             self.assertIn("codificador-medium", b["resolved"]["coder"]["variants"], "o resto vem do núcleo")

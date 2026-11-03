@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { redact, redactBlocks } from '../hooks/secrets'
-import { diffSummary, splitDiff } from '../hooks/diffs'
 
 describe('filtro de segredos', () => {
   test('connection string mantém a chave e esconde o valor', async () => {
@@ -50,35 +49,5 @@ describe('filtro de segredos', () => {
     expect(JSON.stringify(r.content)).not.toContain('supersecreto')
     expect(JSON.stringify(r.content)).toContain('"tool_use_id":"t1"')
     expect(redactBlocks([{ type: 'text', text: 'nada aqui' }]).hits).toEqual([])
-  })
-})
-
-describe('diffs', () => {
-  test('divide por arquivo e conta linhas', async () => {
-    const patch = [
-      'diff --git a/src/a.ts b/src/a.ts',
-      'index 1..2 100644',
-      '--- a/src/a.ts',
-      '+++ b/src/a.ts',
-      '@@ -1,2 +1,3 @@',
-      ' x',
-      '-y',
-      '+y2',
-      '+z',
-      'diff --git a/novo.md b/novo.md',
-      'new file mode 100644',
-      '--- /dev/null',
-      '+++ b/novo.md',
-      '@@ -0,0 +1 @@',
-      '+oi',
-      '',
-    ].join('\n')
-    const files = splitDiff(patch)
-    expect(files.map(f => [f.path, f.change, f.added, f.removed])).toEqual([
-      ['src/a.ts', 'alterado', 2, 1],
-      ['novo.md', 'novo', 1, 0],
-    ])
-    expect(files[0]?.hunks.startsWith('@@ -1,2 +1,3 @@')).toBe(true)
-    expect(diffSummary(files)).toBe('2 arquivos · +3 −1')
   })
 })

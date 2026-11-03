@@ -91,3 +91,26 @@ export function redactBlocks<T>(content: T): { content: T; hits: string[] } {
   const next = walk(content) as T
   return { content: hits.length ? next : content, hits }
 }
+
+/**
+ * Mascara os segredos de todo texto de um resultado de ferramenta (o registro da ferramenta, antes de virar linha da
+ * conversa): cada string, em qualquer campo, menos imagem e PDF em base64.
+ */
+export function redactValue<T>(value: T): { value: T; hits: string[] } {
+  const hits: string[] = []
+  const walk = (node: unknown, key = ''): unknown => {
+    if (typeof node === 'string') {
+      if (key === 'base64') return node
+      const r = redact(node)
+      hits.push(...r.hits)
+      return r.text
+    }
+    if (Array.isArray(node)) return node.map(x => walk(x))
+    if (node && typeof node === 'object') {
+      return Object.fromEntries(Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, walk(v, k)]))
+    }
+    return node
+  }
+  const next = walk(value) as T
+  return { value: hits.length ? next : value, hits }
+}

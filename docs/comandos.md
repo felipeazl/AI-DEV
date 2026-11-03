@@ -14,8 +14,9 @@
 | `/aidw:contexto-usar <nome>` | `$aidw-contexto-usar` | Valida e ativa um contexto e regenera o ambiente |
 | `/aidw:contexto-criar` | `$aidw-contexto-criar` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
 | `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
-| `/painel [aba]` | — | Abre o painel do AiDW (mod do Claude Code): Geral (mapa da demanda), as abas de cada uso e Métricas ([painel.md](painel.md)) |
-| `/rodada` | — | Libera mais uma rodada no laço de revisão que a trava do `max_retries` parou |
+| `/painel [aba]` | — | Abre o painel Geral da demanda (mod do Claude Code), ou o painel da aba pedida ([painel.md](painel.md)) |
+| `/metricas` | — | Abre o painel de métricas da demanda |
+| `/decisoes` | — | Abre o painel Decisões, o que espera você: achados da revisão, roteiro, comentários de PR, dúvidas |
 
 ## Linha de comando (`python aidw.py …`)
 

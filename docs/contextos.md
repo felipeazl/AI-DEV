@@ -138,7 +138,7 @@ when = "quando a demanda passa por ela e o que acontece antes e depois"   # vai 
 
 ```toml
 [mods]
-panel = false                     # desliga o painel lateral do aidw-mods (padrão: ligado)
+panel = false                     # desliga os painéis do aidw-mods e os botões da faixa (padrão: ligado)
 ```
 
 O painel fica ligado em todo contexto: as abas mostram os artefatos do fluxo do AiDW (cobertura, revisão, roteiro
