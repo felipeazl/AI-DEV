@@ -172,8 +172,11 @@ Quando a conversa do orquestrador é compactada, o mod relê a demanda do disco 
 - a rodada do laço e os achados abertos;
 - o lembrete de reler a skill e os artefatos.
 
-O resumo vai pelo `SessionStart` de origem `compact`, que roda mesmo com o plugin de segurança da organização (ele
-passa o evento da compactação adiante sem chamar os plugins do usuário).
+O resumo vai junto da **sua primeira mensagem depois da compactação**, uma vez só. O mod percebe a compactação pela
+dele mesmo (a ociosa) ou pelo contexto que caiu para menos da metade, a partir de 40k tokens. Não vai pelo evento da
+compactação nem pelo `SessionStart`: o plugin de segurança da organização (`cc-plugin-sec-default`) passa os dois
+adiante sem chamar os plugins do usuário. Uma seção fixa no prompt de sistema mudaria a cada etapa e regravaria o
+cache da conversa inteira.
 
 ## Configuração
 
