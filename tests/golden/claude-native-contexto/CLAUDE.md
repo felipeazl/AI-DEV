@@ -74,7 +74,7 @@ is disabled (do them yourself, cheaply). `pr-review` and `levantamento` have the
 6. **Review** (`REVIEW`) ⇄ **fix** (`CODER_FIX`) — a revisor gets the plan, the delivery, the diff file and
    the build result. Its findings (quality, bugs and security, each with a recommendation) go to the user **every
    round** (`TRIAGE`): show one line per finding — ID, severity, category, `file:line`, the problem, the reviewer's
-   recommendation and yours — and let the user decide keep or discard (the panel sends `Decisões da revisão (…)`).
+   recommendation and yours — and let the user decide keep or discard, in chat.
    Before recommending to discard a CRITICO/IMPORTANTE, or accepting "can't be fixed here" / "covers every case",
    verify it (skill `verificar-premissa`). Record the decisions in `triagem-<id>-r<N>.md` (`| ID | Decisão | Motivo |`).
    Kept findings → a coder fixes them (task with the IDs), then a fresh reviewer re-reviews only the fixes (the
@@ -107,9 +107,9 @@ user asks is a fix, not a new demand: the short path of the reference *caminho-c
 - **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
 **Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
-current and nothing else. Messages from the panel are the user's own words: `Decisões da revisão (…)` — record and act;
-`Roteiro …, passo …` — record the result in the script; `Ajuste o comentário …` / `Sobre a dúvida …` — rewrite that
-text before anything is published. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
+current and nothing else. The panel only shows: every decision (keep or discard a finding, a manual step's result,
+what to publish, approving a PR, a doubt's answer) is asked and answered in chat, by you or the agent whose step it
+is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
 `UX_VALIDATION` — `demand set <id> --extra-step <STEP>` when the plan says the demand goes through one): only the user
 moves a demand into or out of them, never on your own — PR open → `CODE_REVIEW`; the team asked for changes → the fix
 step, by the short path; sent to QA → `QA_TEST`; QA returned a bug → the fix step again; accepted → `DONE`.
@@ -200,7 +200,7 @@ python aidw.py record --agent <name> [--effort <effort>] --label <label> --deman
 - With the `aidw-mods` plugin loaded (Claude Code only, on in orchestrator mode; docs/mods.md):
   - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run `record` for it; run it yourself only when that line is missing or says the mod could not record.
   - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, `model` the user did not ask for, missing task/folder, a pasted input) comes back denied with `AiDW (trava da delegação)` and the reason: fix the call, never work around it.
-  - The user may answer through the AiDW panel (`/painel`): a manual-test step arrives as `Roteiro <file>, passo <id>: ✅ passou — evidência: …`, a doubt as `Resposta à dúvida <n> …`, and the PR decision or the card comment as a message they sent. They are the user's own words: record and act on them as if typed.
+  - The AiDW panels (`/painel`, `/metricas`, `/testes-review`) only show the demand: every decision (findings, manual steps, what to publish, PR approval, doubts) is asked and answered in chat.
 - Code exploration: the `explorador` agent (*Agents and effort*), not this chat and not a generic explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder (the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the next step needs; one exploration per topic, reused, not repeated.
 
 ## Agents and effort

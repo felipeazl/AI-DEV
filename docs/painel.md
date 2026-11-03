@@ -15,8 +15,9 @@ no `context.toml`); dentro deles, cada aba só aparece quando há o arquivo que 
   cinza, espaço entre os blocos. O laranja do Claude só aparece no que está acontecendo agora ou espera você.
 - **Nada abre sozinho:** os painéis abrem pelo botão da faixa ou pelo comando. Sem toasts nem notificações próprias.
 - **Feito para o app desktop.** O terminal recebe a mesma informação, num desenho mais simples (barras ▰▱, teclas).
-- **Nada sai sem você:** publicar, aprovar uma PR, comentar no card e decidir achados vão para o prompt e só valem
-  quando você envia a mensagem.
+- **Os painéis só informam:** toda decisão (manter ou descartar um achado, o resultado de um passo manual, o que
+  publicar, aprovar uma PR, responder uma dúvida, comentar no card) é feita no chat, com o orquestrador e o agente da
+  etapa (revisor, QA). Nenhum painel tem botão de decisão nem campo de resposta (Alex, 2026-11-03).
 - **Sem orçamento de tokens nem limite de rodadas** em nenhuma tela: a demanda itera até terminar.
 - **O que os mods desenham:** caixas (borda, cor), texto, botões, campos, seletor e SVG. Não há menu flutuante; os
   filtros são uma linha de botões que liga e desliga.
@@ -47,7 +48,7 @@ do tema escuro e a do claro, e o `prefers-color-scheme` do app escolhe.
 ```text
 AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
 ● dev-medium · correção r1 · 2m10s
-                                                                          Geral  Métricas  Decisões 4
+                                                                          Geral  Métricas  Testes e Review 4
 ```
 
 Três linhas:
@@ -58,8 +59,8 @@ Três linhas:
    modelo com os tokens, e o 7d e o 5h em %, cada um com barra fina.
 2. **Os agentes rodando** (nome, tarefa, tempo), com o ponto laranja. Sem agente, a linha não aparece.
 3. **Os botões**, numa linha só e à direita: **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
-   gravado); **Decisões** (quando a demanda tem tela de decisão), com o número do que espera você em laranja e apagado
-   quando não há nada.
+   gravado); **Testes e Review** (quando a demanda tem revisão, roteiro ou comentários de PR; no levantamento,
+   **Dúvidas**), com o número do que ainda espera decisão em laranja e apagado quando não há nada.
 
 - **Cores das barras:** cor normal até 74%, amarela de 75% a 89%, vermelha a partir de 90%. O 7d e o 5h, a partir de
   75%, mostram a hora local em que a janela renova ("91% · renova 16:40"; com o dia, quando não é hoje); **no limite
@@ -74,25 +75,25 @@ Três linhas:
 |---|---|---|---|---|
 | Geral | **Geral** · `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
 | Métricas | **Métricas** · `/metricas` | consumo | consumo | consumo |
-| Decisões | **Decisões** · `/decisoes` | abas Revisão · Testes | Comentários | Dúvidas |
+| Testes e Review | **Testes e Review** · `/testes-review` | abas Revisão · Testes | Comentários | — (vira **Dúvidas**) |
 
 O uso vem dos arquivos da demanda. Uma demanda que fechou o levantamento (`DONE` depois do `ESTIMATE`) e seguiu para
 outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado.
 
-- **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Decisões"); com dois ou mais abertos,
+- **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Testes e Review" ou "AiDW · Dúvidas"); com dois ou mais abertos,
   o app mostra as abas entre eles. Ao sair do modo orquestrador, os três fecham. Numa janela estreita demais o painel
   não abre e o comando diz por quê.
-- **`/painel <aba>`** abre o painel que tem a aba (`/painel revisao`, `/painel roteiro` e `/painel decisoes` abrem as
-  Decisões; `/painel criterios`, `estimativa` e `codigo` abrem a Geral).
+- **`/painel <aba>`** abre o painel que tem a aba (`/painel revisao`, `/painel roteiro` e `/painel duvidas` abrem
+  Testes e Review, ou Dúvidas; `/painel criterios`, `estimativa` e `codigo` abrem a Geral).
 - **Cabeçalho único:** tipo e número (`US 128734 · Desenvolvimento`), a situação (`● Revisão · espera você`, ou
   `Code review · com o time` em azul, `Pausada`, `Concluída` em verde) e o título do card.
-- **Abas** (só nas Decisões, e só com duas ou mais): a ativa com moldura, as outras apagadas; ao lado do nome, em
-  laranja, o que espera você. Aba sem dados fica oculta. As Decisões abrem na primeira aba que espera você. No
+- **Abas** (só em Testes e Review, e só com duas ou mais): a ativa com moldura, as outras apagadas; ao lado do nome,
+  em laranja, o que ainda espera decisão. Aba sem dados fica oculta. O painel abre na primeira aba com pendência. No
   terminal, as teclas `1`, `2`… e `r` (↻, atualizar) aparecem e funcionam; no app, são só clique.
 - **Escolher entre poucas opções** (rodadas): botões lado a lado; uma opção só vira texto; mais de 4, o seletor do app.
 - **Texto dos artefatos** com `código` ou **negrito** é desenhado como Markdown.
-- **Botão principal:** só o de levar ao prompt (ou o de marcar o passo do roteiro). A opção recomendada é um botão
-  comum com "(recomendado)" no nome.
+- **Botões** só de navegação: abas, rodada, filtros, "Mostrar mais" e ↻. A opção recomendada aparece marcada com
+  "(recomendado)" no texto.
 
 ### Etapas
 
@@ -148,8 +149,8 @@ em Métricas).
   (precisa mudar, é a dor, não muda, nada a reaproveitar), o "hoje no código" e, apagado, o "para a demanda"; 5 à
   vista e "Mostrar mais"; e **Onde a mudança toca**.
 - **Estimativa:** os números (SP do card como está, SP quebrado, dias de dev, de QA, complexidade e confiança); o
-  esforço por bloco em barras de intervalo (mínimo a máximo); a recomendação de quebra em itens; **Riscos**; e
-  **Levar ao prompt: comentar no card**.
+  esforço por bloco em barras de intervalo (mínimo a máximo); a recomendação de quebra em itens; e **Riscos**.
+  Comentar no card é pedido no chat.
 - **Dados:** o `levantamento-<id>.md` no modelo fixo da referência *levantamento*.
 
 ## Métricas
@@ -166,52 +167,51 @@ em Métricas).
 
 Saíram na V4: a lista das delegações recentes e a dos artefatos (o app mostra os arquivos em Saídas).
 
-## Decisões
+## Testes e Review (Dúvidas no levantamento)
 
-O que espera você, num painel só: os achados da revisão, o teste manual, os comentários de PR e as dúvidas do
-levantamento. O número no botão da faixa soma o que espera você em cada aba. Sem nada (pelo `/decisoes`): "Nada para
-decidir nesta demanda por enquanto."
+Só para consulta: os achados da revisão, o teste manual e os comentários de PR; no levantamento, as dúvidas. O número no
+botão da faixa soma o que ainda espera decisão em cada aba; a decisão é no chat. Sem nada (pelo `/testes-review`):
+"Ainda sem testes nem revisão nesta demanda." ou, no levantamento, "Nenhuma dúvida por enquanto."
 
 ### Revisão (desenvolvimento)
 
-- **Rodada** em botões, por tipo: Plano r1, Código r1, Código r2… Abre na rodada com achado esperando você; senão, na
+- **Rodada** em botões, por tipo: Plano r1, Código r1, Código r2… Abre na rodada com achado a decidir; senão, na
   última do código.
-- **Decisão** em abas de texto: Com você · Mantidos · Descartados · Todos. Abre em **Com você**.
+- **Situação** em abas de texto: Com você (a decidir) · Mantidos · Descartados · Todos. Abre em **Com você**.
 - **Filtros:** um botão que abre uma linha de botões liga/desliga por criticidade, categoria (qualidade, bug,
   segurança) e status.
-- **Cada achado é um cartão:** criticidade, ID, `arquivo:linha` e status (com você, corrigido); o que foi apontado; o
-  código **antes e depois**, quando o achado propõe mudança; a **recomendação do AiDW**; e Manter e Descartar, a
-  recomendada com "(recomendado)". Nas dúvidas, as opções do próprio achado numa lista ("(a) …", a primeira é a
-  recomendada) e botões só com a letra.
-- Rodapé: **Levar decisões ao prompt** (`Decisões da revisão (…)`).
+- **Cada achado é um cartão:** criticidade, ID, `arquivo:linha` e situação (a decidir, mantido, descartado,
+  corrigido); o que foi apontado; o código **antes e depois**, quando o achado propõe mudança; a **recomendação do
+  AiDW**; nas dúvidas, as opções do próprio achado ("(a) …", a primeira é a recomendada); e, depois de decidido, a
+  decisão gravada na triagem.
 - **Dados:** achados no `review-*-rN.md` (categoria no título, `Antes:` e `Depois:`, `**Recomendação:**`); a decisão
-  vem do `triagem-*-rN.md`, que o orquestrador grava a partir da sua mensagem.
+  vem do `triagem-*-rN.md`, que o orquestrador grava a partir do que você disse no chat.
 
 ### Testes (desenvolvimento)
 
 - Progresso no topo (passaram, falharam, faltam), só com os passos ativos.
-- Cartão **Agora** com o passo da vez: seção, o que fazer, esperado, evidência e **Passou / Falhou / Pular**. O
-  resultado vai ao orquestrador como mensagem sua (`Roteiro …, passo …`).
-- Lista pelas seções do roteiro; a preparação fica recolhida; os removidos do roteiro, escondidos.
+- Cartão **Próximo** com o passo da vez: seção, o que fazer e o esperado. O resultado e a evidência vão no chat, com o
+  orquestrador, que marca o roteiro.
+- Lista pelas seções do roteiro, com a evidência de cada passo feito; a preparação fica recolhida; os removidos do
+  roteiro, escondidos.
 
 ### Comentários (revisão de PR)
 
-- **Você decide sobre os comentários da triagem** (`C1`, `C2`…; referência *triagem-pr*): cada um junta os achados
-  que dizem a mesma coisa ("junta R1-01 · B1-01"). Agrupados **por PR**.
+- **Os comentários da triagem** (`C1`, `C2`…; referência *triagem-pr*): cada um junta os achados que dizem a mesma
+  coisa ("junta R1-01 · B1-01"). Agrupados **por PR**.
 - Filtros: A decidir · Publicados · Todos (abre em A decidir quando há o que decidir).
 - **Cada comentário:** severidade (Pergunta para dúvida, Pendências QA), id, `arquivo:linha`, a situação, o título, o
-  **texto que vai para a PR** com **editar** e **ajustar no chat**, a recomendação e **Publicar** / **Não publicar**.
-  Publicados e recusados ficam recolhidos em "Ver comentário".
-- **Aprovar a PR? (por PR):** **Manual** (o padrão), **Sim** ou **Não**.
+  **texto que vai para a PR** e a recomendação. Publicados e recusados ficam recolhidos em "Ver comentário".
+- O que publicar, os ajustes de texto e se o AiDW aprova cada PR (manual, o padrão; sim; não) são decididos no chat,
+  na revisão final.
 - **Fora das PRs:** o que não vira comentário, recolhido.
-- Rodapé: o resumo PR a PR e **Levar decisão ao prompt**.
-- **Sem triagem no formato *triagem-pr*** (demandas antigas): os achados da última rodada, com abas A decidir ·
-  Publicar · Não publicar · Já publicados, e um "Aprovar a PR?" só.
+- **Sem triagem no formato *triagem-pr*** (demandas antigas): os achados da última rodada, com abas A decidir · Já
+  publicados.
 
 ### Dúvidas (levantamento)
 
-- As abertas por tema, cada uma com para quem é, o que muda na estimativa, o campo de resposta (**Responder** manda
-  `Resposta à dúvida …`) e **ajustar no chat**; as de um grupo "Respondidas …" ficam numa linha cada.
+- As abertas por tema, cada uma com para quem é, o que muda na estimativa e por que importa; as de um grupo
+  "Respondidas …" ficam numa linha cada. A resposta vai no chat; o orquestrador atualiza o levantamento.
 
 ## O que muda fora do painel
 

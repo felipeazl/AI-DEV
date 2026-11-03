@@ -23,7 +23,7 @@ em cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto 
 panel = false
 ```
 
-Desligado, os painéis não abrem, `/painel`, `/metricas` e `/decisoes` não são registrados e a faixa acima do prompt
+Desligado, os painéis não abrem, `/painel`, `/metricas` e `/testes-review` não são registrados e a faixa acima do prompt
 fica sem os botões (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
 segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
 
@@ -32,7 +32,7 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 | Mod | Para quê | Onde aparece |
 |---|---|---|
 | [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painéis do AiDW](#painéis-do-aidw) | Geral, Métricas e Decisões ([painel.md](painel.md)); desligados só no contexto com `[mods] panel = false` | ao lado do chat, pelo botão da faixa ou pelo comando |
+| [Painéis do AiDW](#painéis-do-aidw) | Geral, Métricas e Testes e Review, só informativos ([painel.md](painel.md)); desligados só no contexto com `[mods] panel = false` | ao lado do chat, pelo botão da faixa ou pelo comando |
 | [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
 | [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
 | [Contexto enxuto](#contexto-enxuto) | Compacta sozinho a conversa parada há 50 min (a partir de 100k tokens), antes de o cache expirar | fim do turno |
@@ -46,7 +46,7 @@ segredos, notas no prompt, estado depois da compactação) vale em qualquer cont
 ```text
 AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
 ● dev-medium · correção r1 · 2m10s
-                                                                          Geral  Métricas  Decisões 4
+                                                                          Geral  Métricas  Testes e Review 4
 ```
 
 Três linhas (painel v4):
@@ -54,7 +54,7 @@ Três linhas (painel v4):
    revisão de código, teste manual, PR, revisão final) e, do outro lado, o contexto deste chat em % da janela do
    modelo, com os tokens, e as janelas de uso do plano (7d e 5h) em %, cada um com barra fina.
 2. **Os agentes rodando**, com o tempo; sem agente, a linha não aparece.
-3. **Os botões** **Geral**, **Métricas** e **Decisões** (com o número do que espera você, em laranja), numa linha só,
+3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento; com o número do que espera decisão, em laranja), numa linha só,
    à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
 a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
 `DONE`. **`/faixa`** esconde e mostra.
@@ -69,15 +69,15 @@ dado e o que os agentes gravam para isso está em **[painel.md](painel.md)**:
 |---|---|---|---|---|
 | Geral | `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
 | Métricas | `/metricas` | consumo | consumo | consumo |
-| Decisões | `/decisoes` | Revisão · Testes | Comentários | Dúvidas |
+| Testes e Review (Dúvidas no levantamento) | `/testes-review` | Revisão · Testes | Comentários | Dúvidas |
 
-A Geral e as Métricas são uma página só; nas Decisões, aba sem dados fica oculta, e a linha de abas só aparece com duas ou mais. As Decisões abrem na primeira aba que espera
-você. `/painel <aba>` abre o painel da aba (`/painel revisao` abre as Decisões). No terminal, as teclas `1`, `2`… trocam
+A Geral e as Métricas são uma página só; em Testes e Review, aba sem dados fica oculta, e a linha de abas só aparece com duas ou mais. Testes e Review abre na primeira aba que espera
+você. `/painel <aba>` abre o painel da aba (`/painel revisao` abre Testes e Review). Os painéis só informam: toda decisão é no chat. No terminal, as teclas `1`, `2`… trocam
 de aba; no app, as abas são só clique. O diff fica com o app (*Alterações* na barra lateral e o painel de diff dele).
 
-Tudo o que o painel decide por você vai para o **prompt** (decisões da revisão, publicar e aprovar uma PR, comentar
-no card, ajustar um texto no chat) e só vale quando você envia. O resultado de um passo do teste manual e a resposta
-a uma dúvida vão como mensagem sua.
+Os painéis só informam (Alex, 2026-11-03): manter ou descartar um achado, o resultado de um passo do teste manual, o
+que publicar e se o AiDW aprova uma PR, comentar no card e responder uma dúvida são decididos no chat, com o
+orquestrador e o agente da etapa.
 
 ## Métricas sozinhas
 
@@ -190,7 +190,7 @@ Claude Code (`pluginConfigs`): `aidwRoot` (a pasta do `aidw.py`) e `python` (o c
 | Arquivo | O que tem |
 |---|---|
 | `hooks/register.tsx` | **o único arquivo que toca o engine (`$`)**: hooks, leitura do disco, `git`, `aidw.py record`. O `$` não atravessa `import` |
-| `hooks/views.tsx` | as telas da faixa e do painel; recebem a tabela de elementos e as ações, nunca o `$` |
+| `hooks/views.tsx` | as telas da faixa e dos painéis; recebem a tabela de elementos e as ações de navegação, nunca o `$` |
 | `hooks/snapshot.ts` | o retrato da demanda (`wanted` diz o que ler, `buildSnapshot` monta) |
 | `hooks/artifacts.ts` | os parsers dos artefatos (achados, triagem, critérios, roteiro, levantamento…) |
 | `hooks/guards.ts` | as travas da delegação |

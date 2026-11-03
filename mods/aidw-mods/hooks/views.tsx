@@ -1,11 +1,11 @@
 // As telas da faixa e dos painéis (v4, docs/painel.md). Recebem a tabela de elementos da superfície (não o `$`), os
-// dados e as ações; o register.tsx monta as ações (que gravam o estado ou mandam a decisão do usuário ao orquestrador).
+// dados e as ações de navegação (abas, rodada, filtros); os painéis só informam: toda decisão é no chat.
 
 import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { compact } from './aidw'
-import { APPROVALS, KIND_LABEL, approvalOf } from './artifacts'
+import { KIND_LABEL } from './artifacts'
 import { stateLabel } from './snapshot'
 
 type Desktop = Elements['desktop']
@@ -18,19 +18,8 @@ export type Actions = {
   refresh: () => void
   reviewFile: (file: string) => void
   decisionTab: (tab: string) => void
-  decide: (id: string, value: string) => void
   toggleFilter: (kind: keyof Omit<ReviewFilter, 'open'>, value: string) => void
   toggleFilters: () => void
-  sendReviewDecisions: () => void
-  togglePublish: (id: string, value: boolean) => void
-  /** "Aprovar a PR?": `manual`, `sim` ou `nao`; `pr` vazio na revisão antiga, sem triagem. */
-  approve: (pr: string, value: string) => void
-  sendPrDecision: () => void
-  adjustInChat: (text: string) => void
-  draft: (key: string, value: string) => void
-  manualResult: (step: string, result: 'ok' | 'fail' | 'skip') => void
-  answerDoubt: (id: string) => void
-  postLevantamento: () => void
   expand: (key: string) => void
 }
 
@@ -41,10 +30,6 @@ export type ViewState = {
   running: RunningAgent[]
   now: number
   tab: string
-  publish: Record<string, boolean>
-  /** "Aprovar a PR?" por PR; sem escolha, manual. */
-  approvals: Record<string, string>
-  drafts: Record<string, string>
   usage: Usage | null
   columns: number
   /** `terminal` mostra a tecla de cada aba (`1: Geral`); no app as teclas funcionam sem aparecer. */
@@ -52,7 +37,6 @@ export type ViewState = {
   reviewFile: string
   decisionTab: string
   filter: ReviewFilter
-  decisions: Record<string, string>
   expanded: Record<string, boolean>
 }
 
@@ -78,14 +62,19 @@ export const VIEWS: Record<View, { title: string; command: string; tabs: Record<
     tabs: { desenvolvimento: [['metricas', 'Métricas']], 'pr-review': [['metricas', 'Métricas']], levantamento: [['metricas', 'Métricas']] },
   },
   decidir: {
-    title: 'Decisões',
-    command: 'decisoes',
+    title: 'Testes e Review',
+    command: 'testes-review',
     tabs: {
       desenvolvimento: [['revisao', 'Revisão'], ['manual', 'Testes']],
       'pr-review': [['comentarios', 'Comentários']],
       levantamento: [['duvidas', 'Dúvidas']],
     },
   },
+}
+
+/** O nome do painel no uso da demanda: no levantamento, o de testes e review é o das dúvidas. */
+export function viewTitle(view: View, kind: DemandKind): string {
+  return view === 'decidir' && kind === 'levantamento' ? 'Dúvidas' : VIEWS[view].title
 }
 
 /** Nomes antigos das abas (`/painel fluxo`) e apelidos. */
@@ -140,7 +129,7 @@ const answered = (d: Doubt) => /respondid/i.test(d.group)
 export function viewFor(kind: DemandKind, arg: string): { view: View; tab: string } {
   const id = TAB_ALIAS[arg] ?? arg
   if (id === 'decidir' || id === 'metricas') return { view: id, tab: '' }
-  if (id === 'decisoes' || id === 'decisões') return { view: 'decidir', tab: '' }
+  if (['decisoes', 'decisões', 'testes-review', 'review'].includes(id)) return { view: 'decidir', tab: '' }
   const view = (Object.keys(VIEWS) as View[]).find(v => VIEWS[v].tabs[kind].some(([t]) => t === id))
   return view ? { view, tab: id } : { view: 'geral', tab: '' }
 }
@@ -324,7 +313,7 @@ const level = (p: number) => (p >= HIGH ? C.red : p >= WARN ? C.amber : C.dim)
 /** Os botões dos painéis na faixa; sem eles (painel desligado no contexto), a faixa fica só com a demanda. */
 export type BandNav = {
   open: (view: View) => void
-  /** Há tela de decisão nesta demanda (o botão Decisões aparece). */
+  /** Há testes, revisão ou dúvidas nesta demanda (o botão aparece). */
   canDecide: boolean
   /** O que espera você nas telas de decisão (a contagem em laranja). */
   pending: number
@@ -392,7 +381,7 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
           {nav.canDecide && (
             <Button key="open-decidir" plain dimColor={!nav.pending} onPress={() => nav.open('decidir')}>
               <Text>
-                {VIEWS.decidir.title}
+                {viewTitle('decidir', s.kind)}
                 {nav.pending > 0 && <Text color={C.claude}>{` ${nav.pending}`}</Text>}
               </Text>
             </Button>
@@ -417,7 +406,7 @@ function situation(s: Snapshot): { text: string; color: string } {
 }
 
 /** O que a contagem lê: a demanda e as decisões marcadas e ainda não enviadas. */
-export type Counted = Pick<ViewState, 'snap' | 'reviewFile' | 'decisions' | 'publish'>
+export type Counted = Pick<ViewState, 'snap' | 'reviewFile'>
 
 /** O que espera você em cada aba (a contagem ao lado do nome). */
 function tabCount(v: Counted, tab: string): number {
@@ -425,14 +414,12 @@ function tabCount(v: Counted, tab: string): number {
   switch (tab) {
     case 'revisao': {
       const file = defaultRound(s, v.reviewFile)
-      return file ? roundFindings(s, file).filter(f => !(v.decisions[`${f.file}:${f.id}`] ?? (f.decision === 'pendente' ? '' : f.decision)) && !isFixed(f)).length : 0
+      return file ? roundFindings(s, file).filter(f => f.decision === 'pendente' && !isFixed(f)).length : 0
     }
     case 'manual':
       return s.manual.filter(m => !m.removed && !m.result && !/prepara/i.test(m.section)).length
     case 'comentarios':
-      return s.prTriage
-        ? s.prTriage.comments.filter(c => !c.published && !c.declined && v.publish[c.id] === undefined).length
-        : prList(s).filter(f => !f.published && v.publish[f.id] === undefined).length
+      return s.prTriage ? s.prTriage.comments.filter(c => !c.published && !c.declined).length : prList(s).filter(f => !f.published).length
     case 'duvidas':
       return s.doubts.filter(d => !answered(d)).length
     default:
@@ -440,7 +427,7 @@ function tabCount(v: Counted, tab: string): number {
   }
 }
 
-/** O que espera você no painel Decisões, somado (o número do botão na faixa). */
+/** O que espera decisão (no chat) no painel Testes e Review, somado (o número do botão na faixa). */
 export function pendingCount(v: Counted): number {
   return VIEWS.decidir.tabs[v.snap.kind].reduce((n, [id]) => n + tabCount(v, id), 0)
 }
@@ -451,12 +438,12 @@ export function Panel(ui: UI, v: ViewState, act: Actions) {
   const tabs = visibleTabs(s, v.view)
   const terminal = v.surface === 'terminal'
   const sit = situation(s)
-  // a aba guardada; senão, nas Decisões, a primeira que espera você; senão, a primeira
+  // a aba guardada; senão, em Testes e Review, a primeira que espera você; senão, a primeira
   const tab = tabs.some(([id]) => id === v.tab)
     ? v.tab
     : ((v.view === 'decidir' ? tabs.find(([id]) => tabCount(v, id) > 0)?.[0] : undefined) ?? tabs[0]?.[0] ?? '')
   const body = !tab
-    ? <Text color={C.dim}>{v.view === 'decidir' ? 'Nada para decidir nesta demanda por enquanto.' : 'Ainda sem dados.'}</Text>
+    ? <Text color={C.dim}>{v.view === 'decidir' ? (s.kind === 'levantamento' ? 'Nenhuma dúvida por enquanto.' : 'Ainda sem testes nem revisão nesta demanda.') : 'Ainda sem dados.'}</Text>
     : tab === 'metricas'
       ? Metrics(ui, v)
       : tab === 'revisao'
@@ -796,7 +783,7 @@ function Review(ui: UI, v: ViewState, act: Actions) {
   const file = defaultRound(s, v.reviewFile)
   const inRound = roundFindings(s, file)
   const praise = s.findings.filter(f => f.file === file && f.severity === 'ELOGIO').length
-  const decided = (f: Finding) => v.decisions[`${f.file}:${f.id}`] ?? (f.decision === 'pendente' ? '' : f.decision)
+  const decided = (f: Finding) => (f.decision === 'pendente' ? '' : f.decision)
   const tabs = [
     { id: 'voce', label: 'Com você', has: (f: Finding) => !decided(f) && !isFixed(f) },
     { id: 'mantido', label: 'Mantidos', has: (f: Finding) => decided(f) === 'mantido' || (!decided(f) && isFixed(f)) },
@@ -810,7 +797,6 @@ function Review(ui: UI, v: ViewState, act: Actions) {
     .filter(f => !f0.severities.length || f0.severities.includes(f.severity ?? ''))
     .filter(f => !f0.sources.length || f0.sources.includes(categoryOf(f)))
     .filter(f => !f0.statuses.length || f0.statuses.includes(isFixed(f) ? 'corrigido' : 'aberto'))
-  const marked = Object.keys(v.decisions).filter(k => k.startsWith(`${file}:`)).length
   const filterButton = (kind: keyof Omit<ReviewFilter, 'open'>, value: string, label: string) => {
     const on = f0[kind].includes(value)
     return on ? (
@@ -856,27 +842,16 @@ function Review(ui: UI, v: ViewState, act: Actions) {
         )}
       </Box>
       {shown.length === 0 && <Text color={C.dim}>Nada aqui{tab?.id === 'voce' ? ': nenhum achado espera você nesta rodada.' : '.'}</Text>}
-      {shown.map(f => findingCard(ui, v, act, f, decided(f), file))}
+      {shown.map(f => findingCard(ui, f, decided(f)))}
       {praise > 0 && <Text color={C.dim}>{praise} elogio(s) nesta rodada</Text>}
-      {marked > 0 && (
-        <Box justifyContent="space-between" alignItems="center">
-          <Text color={C.dim}>{marked} decisão(ões) marcada(s) · vão para o prompt; nada muda até você enviar</Text>
-          <Button key="review-send" label="Levar decisões ao prompt" variant="primary" onPress={() => act.sendReviewDecisions()} />
-        </Box>
-      )}
     </Box>
   )
 }
 
-function findingCard(ui: UI, v: ViewState, act: Actions, f: Finding, decided: string, file: string) {
-  const { Box, Text, Button } = ui
+function findingCard(ui: UI, f: Finding, decided: string) {
+  const { Box, Text } = ui
   const sev = SEV[f.severity ?? ''] ?? { label: f.severity ?? '—', color: C.dim }
   const pending = !decided && !isFixed(f)
-  const marked = v.decisions[`${file}:${f.id}`]
-  const recommendsDrop = /^\W*(descart|cai\b|n[aã]o)/i.test(f.recommendation)
-  // uma dúvida traz opções (a), (b)…: o texto inteiro numa lista e, nos botões, só a letra
-  const letter = (o: string) => /^\(([a-z])\)/.exec(o)?.[1] ?? ''
-  const options = f.options.length ? f.options.slice(0, 4) : ['Manter', 'Descartar']
   return (
     <Box key={`fc-${f.file}-${f.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
       <Box gap={1}>
@@ -885,7 +860,7 @@ function findingCard(ui: UI, v: ViewState, act: Actions, f: Finding, decided: st
         <Box flexGrow={1} flexShrink={1}>
           <Text color={C.dim}>{f.where || f.source}</Text>
         </Box>
-        {isFixed(f) ? chip(ui, `st-${f.id}`, f.status, C.green) : pending ? chip(ui, `st-${f.id}`, 'com você', C.amber) : chip(ui, `st-${f.id}`, decided, C.dim)}
+        {isFixed(f) ? chip(ui, `st-${f.id}`, f.status, C.green) : pending ? chip(ui, `st-${f.id}`, 'a decidir', C.amber) : chip(ui, `st-${f.id}`, decided, C.dim)}
       </Box>
       {rich(ui, `ft-${f.id}`, f.title)}
       {codeBlock(ui, `code-${f.id}`, f)}
@@ -905,41 +880,15 @@ function findingCard(ui: UI, v: ViewState, act: Actions, f: Finding, decided: st
           ))}
         </Box>
       )}
-      {pending ? (
-        <Box gap={1} flexWrap="wrap">
-          {options.map((o, i) => {
-            const value = f.options.length ? o : i === 0 ? 'mantido' : 'descartado'
-            const recommended = f.options.length ? i === 0 : (i === 1) === recommendsDrop
-            const name = f.options.length ? `(${letter(o) || i + 1})` : o
-            return (
-              <Button
-                key={`dec-${f.id}-${i}`}
-                label={`${marked === value ? '✓ ' : ''}${name}${recommended && !f.options.length ? ' (recomendado)' : ''}`}
-                onPress={() => act.decide(`${file}:${f.id}`, value)}
-              />
-            )
-          })}
-        </Box>
-      ) : (
-        <Text color={C.dim}>Decisão: {decided || 'mantido'}{isFixed(f) ? ` · ${f.status}` : ''}</Text>
-      )}
+      {!pending && <Text color={C.dim}>Decisão: {decided || 'mantido'}{isFixed(f) ? ` · ${f.status}` : ''}</Text>}
     </Box>
   )
-}
-
-export function reviewDecisionText(s: Snapshot, decisions: Record<string, string>): string {
-  const lines = Object.entries(decisions).map(([key, value]) => {
-    const [file, id] = [key.slice(0, key.lastIndexOf(':')), key.slice(key.lastIndexOf(':') + 1)]
-    const f = s.findings.find(x => x.file === file && x.id === id)
-    return `- ${id} (${f ? `${roundName(f)} r${f.round}` : file}): ${value}`
-  })
-  return [`Decisões da revisão (${s.id}):`, ...lines, 'Registre na triagem e siga com o que foi mantido.'].join('\n')
 }
 
 // --- Teste manual ----------------------------------------------------------------------------------------------
 
 function Manual(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Input, Button } = ui
+  const { Box, Text, Button } = ui
   const s = v.snap
   const all = s.manual.filter(m => !m.removed)
   if (!all.length) return <Text color={C.dim}>Sem roteiro de teste manual (o QA grava roteiro-testes-&lt;id&gt;.md quando há passo manual).</Text>
@@ -950,7 +899,6 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
   const failed = tests.filter(m => m.result === '❌').length
   const next = tests.find(m => !m.result)
   const sections = [...new Set(tests.map(m => m.section))]
-  const key = next ? `evidencia-${next.id}` : ''
   return (
     <Box flexDirection="column" gap={1}>
       {card(
@@ -984,7 +932,7 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
         <Box key="mt-now" flexDirection="column" borderStyle="round" borderColor={C.claude} paddingX={2} paddingY={1} gap={1}>
           <Box justifyContent="space-between">
             <Text color={C.claude} bold>
-              Agora · {next.id}
+              Próximo · {next.id}
             </Text>
             <Text color={C.dim}>{next.section}</Text>
           </Box>
@@ -997,19 +945,7 @@ function Manual(ui: UI, v: ViewState, act: Actions) {
               {next.expected}
             </Text>
           )}
-          <Input
-            key={key}
-            label="Evidência"
-            placeholder="o que aconteceu (sem segredo nem dado pessoal)"
-            value={v.drafts[key] ?? ''}
-            onInput={value => act.draft(key, value)}
-            onSubmit={value => act.draft(key, value)}
-          />
-          <Box gap={1}>
-            <Button key="manual-ok" label="✓ Passou" variant="primary" onPress={() => act.manualResult(next.id, 'ok')} />
-            <Button key="manual-fail" label="✕ Falhou" onPress={() => act.manualResult(next.id, 'fail')} />
-            <Button key="manual-skip" label="Pular" plain onPress={() => act.manualResult(next.id, 'skip')} />
-          </Box>
+          <Text color={C.dim}>O resultado e a evidência vão no chat, com o orquestrador.</Text>
         </Box>
       )}
       {prep.length > 0 && (
@@ -1264,20 +1200,16 @@ function prList(s: Snapshot): Finding[] {
 }
 
 function PrFindings(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Button, Input } = ui
+  const { Box, Text, Button } = ui
   const s = v.snap
   const inRound = prList(s)
   if (!inRound.length) return <Text color={C.dim}>A revisão ainda não terminou.</Text>
-  const choice = (f: Finding) => v.publish[f.id]
   const tabs = [
-    { id: 'decidir', label: 'A decidir', has: (f: Finding) => !f.published && choice(f) === undefined },
-    { id: 'publicar', label: 'Publicar', has: (f: Finding) => !f.published && choice(f) === true },
-    { id: 'nao', label: 'Não publicar', has: (f: Finding) => !f.published && choice(f) === false },
+    { id: 'decidir', label: 'A decidir', has: (f: Finding) => !f.published },
     { id: 'publicados', label: 'Já publicados', has: (f: Finding) => f.published },
   ]
   const tab = tabs.find(t => t.id === v.decisionTab) ?? tabs[0]
   const shown = inRound.filter(f => tab?.has(f))
-  const toPublish = inRound.filter(f => choice(f) === true).length
   return (
     <Box flexDirection="column" gap={1}>
       <Box gap={1} flexWrap="wrap">
@@ -1292,11 +1224,6 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
       {shown.length === 0 && <Text color={C.dim}>Nada aqui.</Text>}
       {shown.map(f => {
         const sev = SEV[f.severity ?? ''] ?? { label: '—', color: C.dim }
-        const doubt = f.severity === 'DUVIDA'
-        const key = `comentario-${f.id}`
-        const editing = v.expanded[`edit:${f.id}`]
-        const text = v.drafts[key] ?? f.comment
-        const recommendsPublish = !/^\W*(n[aã]o|cai\b|descart|mantida, vai)/i.test(f.recommendation) && !doubt
         return (
           <Box key={`pf-${f.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
             <Box gap={1}>
@@ -1308,23 +1235,8 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
             {codeBlock(ui, `pcode-${f.id}`, f)}
             {f.comment && (
               <Box flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={1}>
-                <Box justifyContent="space-between">
-                  <Text color={C.dim}>Comentário{f.target ? ` na PR ${f.target}` : ''}</Text>
-                  <Box gap={1}>
-                    <Button key={`pe-${f.id}`} label={editing ? 'pronto' : 'editar'} plain onPress={() => act.expand(`edit:${f.id}`)} />
-                    <Button
-                      key={`pa-${f.id}`}
-                      label="ajustar no chat ↗"
-                      plain
-                      onPress={() => act.adjustInChat(`Ajuste o comentário do achado ${f.id} (PR ${f.target || '?'}) antes de publicar. Texto atual:\n\n${text}\n\nO que mudar: `)}
-                    />
-                  </Box>
-                </Box>
-                {editing ? (
-                  <Input key={key} value={text} onInput={value => act.draft(key, value)} onSubmit={value => act.draft(key, value)} />
-                ) : (
-                  <Text>{text}</Text>
-                )}
+                <Text color={C.dim}>Comentário{f.target ? ` na PR ${f.target}` : ''}</Text>
+                <Text>{f.comment}</Text>
               </Box>
             )}
             {f.recommendation && (
@@ -1333,30 +1245,9 @@ function PrFindings(ui: UI, v: ViewState, act: Actions) {
                 {rich(ui, `pr-${f.id}`, f.recommendation)}
               </Box>
             )}
-            {!f.published && (
-              <Box gap={1}>
-                <Button
-                  key={`pp-${f.id}`}
-                  label={`${choice(f) === true ? '✓ ' : ''}Publicar${recommendsPublish ? ' (recomendado)' : ''}`}
-                  onPress={() => act.togglePublish(f.id, true)}
-                />
-                <Button
-                  key={`pn-${f.id}`}
-                  label={`${choice(f) === false ? '✓ ' : ''}${doubt ? 'Perguntar ao time' : 'Não publicar'}${recommendsPublish ? '' : ' (recomendado)'}`}
-                  onPress={() => act.togglePublish(f.id, false)}
-                />
-              </Box>
-            )}
           </Box>
         )
       })}
-      {approvalCard(ui, v, act, '')}
-      <Box justifyContent="space-between" alignItems="center">
-        <Text color={C.dim}>
-          {toPublish} comentário(s) para publicar · aprovar: {approvalLabel(approvalOf(v.approvals, '')).toLowerCase()} · nada sai até você enviar
-        </Text>
-        <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />
-      </Box>
     </Box>
   )
 }
@@ -1369,8 +1260,6 @@ const PR_SEV: Record<string, { label: string; color: string }> = {
   PENDENCIA: { label: 'Pendências QA', color: C.dim },
 }
 
-const approvalLabel = (value: string) => APPROVALS.find(o => o.value === value)?.label ?? value
-const approvalText = (value: string) => APPROVALS.find(o => o.value === value)?.text ?? value
 
 /** As PRs da demanda: as da triagem e as do demand.json, sem repetir. */
 function prsOf(s: Snapshot): { pr: string; repo: string }[] {
@@ -1381,20 +1270,18 @@ function prsOf(s: Snapshot): { pr: string; repo: string }[] {
 }
 
 function PrComments(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Button, Input } = ui
+  const { Box, Text, Button } = ui
   const s = v.snap
   const tri = s.prTriage
   if (!tri) return <Text color={C.dim}>A revisão ainda não terminou.</Text>
-  const choice = (id: string) => v.publish[id]
   const filters = [
-    { id: 'decidir', label: 'A decidir', has: (c: PrComment) => !c.published && choice(c.id) === undefined && !c.declined },
+    { id: 'decidir', label: 'A decidir', has: (c: PrComment) => !c.published && !c.declined },
     { id: 'publicados', label: 'Publicados', has: (c: PrComment) => c.published },
     { id: 'todos', label: 'Todos', has: () => true },
   ]
   const pending = tri.comments.filter(c => filters[0]?.has(c)).length
   const filter = filters.find(f => f.id === v.decisionTab) ?? (pending ? filters[0] : filters[2])
   const prs = prsOf(s)
-  const toPublish = tri.comments.filter(c => !c.published && (choice(c.id) ?? false))
   return (
     <Box flexDirection="column" gap={1}>
       <Box justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
@@ -1423,7 +1310,6 @@ function PrComments(ui: UI, v: ViewState, act: Actions) {
               </Text>
             </Box>
             {list.map(c => prCommentCard(ui, v, act, c))}
-            {approvalCard(ui, v, act, pr)}
           </Box>
         )
       })}
@@ -1450,27 +1336,14 @@ function PrComments(ui: UI, v: ViewState, act: Actions) {
           ),
           `${tri.outside.split('\n').filter(l => /^\s*-\s/.test(l) && !/^\s{2,}/.test(l)).length} · não viram comentário`,
         )}
-      <Box justifyContent="space-between" alignItems="center" gap={2}>
-        <Box flexShrink={1}>
-          <Text color={C.dim}>
-            {`${prs.map(p => `${p.pr}: aprovar ${approvalLabel(approvalOf(v.approvals, p.pr)).toLowerCase()}`).join(' · ')} · ${toPublish.length} comentário(s) para publicar · nada sai até você enviar`}
-          </Text>
-        </Box>
-        <Button key="pr-decision" label="Levar decisão ao prompt" variant="primary" onPress={() => act.sendPrDecision()} />
-      </Box>
     </Box>
   )
 }
 
 function prCommentCard(ui: UI, v: ViewState, act: Actions, c: PrComment) {
-  const { Box, Text, Button, Input } = ui
+  const { Box, Text, Button } = ui
   const sev = PR_SEV[c.severity] ?? { label: c.severity || '—', color: C.dim }
-  const key = `comentario-${c.id}`
-  const editing = v.expanded[`edit:${c.id}`]
   const open = v.expanded[`c:${c.id}`] ?? (!c.published && !c.declined)
-  const text = v.drafts[key] ?? c.draft
-  const chosen = v.publish[c.id]
-  const recommendsPublish = /^\W*publicar/i.test(c.recommendation)
   const status = c.published ? { text: c.situation || 'publicado', color: C.green } : c.declined ? { text: c.situation, color: C.faint } : { text: 'a decidir', color: C.amber }
   return (
     <Box key={`pc-${c.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
@@ -1487,24 +1360,10 @@ function prCommentCard(ui: UI, v: ViewState, act: Actions, c: PrComment) {
       {!open && (
         <Button key={`pco-${c.id}`} label="Ver comentário" plain dimColor onPress={() => act.expand(`c:${c.id}`)} />
       )}
-      {open && text && (
+      {open && c.draft && (
         <Box flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={1}>
-          <Box justifyContent="space-between" gap={1}>
-            <Text color={C.dim}>Comentário na PR {c.pr}</Text>
-            {!c.published && (
-              <Box gap={1}>
-                <Button key={`pe-${c.id}`} label={editing ? 'pronto' : 'editar'} plain dimColor onPress={() => act.expand(`edit:${c.id}`)} />
-                <Button
-                  key={`pa-${c.id}`}
-                  label="ajustar no chat ↗"
-                  plain
-                  dimColor
-                  onPress={() => act.adjustInChat(`Ajuste o comentário ${c.id} (PR ${c.pr}) antes de publicar. Texto atual:\n\n${text}\n\nO que mudar: `)}
-                />
-              </Box>
-            )}
-          </Box>
-          {editing ? <Input key={key} value={text} onInput={value => act.draft(key, value)} onSubmit={value => act.draft(key, value)} /> : rich(ui, `pcd-${c.id}`, text)}
+          <Text color={C.dim}>Comentário na PR {c.pr}</Text>
+          {rich(ui, `pcd-${c.id}`, c.draft)}
         </Box>
       )}
       {open && c.recommendation && !c.published && (
@@ -1513,45 +1372,7 @@ function prCommentCard(ui: UI, v: ViewState, act: Actions, c: PrComment) {
           {rich(ui, `pcr-${c.id}`, c.recommendation)}
         </Box>
       )}
-      {!c.published && (
-        <Box gap={1}>
-          <Button
-            key={`pp-${c.id}`}
-            label={`${chosen === true ? '✓ ' : ''}${c.severity === 'DUVIDA' ? 'Perguntar ao time' : 'Publicar'}${recommendsPublish ? ' (recomendado)' : ''}`}
-            onPress={() => act.togglePublish(c.id, true)}
-          />
-          <Button
-            key={`pn-${c.id}`}
-            label={`${chosen === false || (chosen === undefined && c.declined) ? '✓ ' : ''}Não publicar${recommendsPublish ? '' : ' (recomendado)'}`}
-            onPress={() => act.togglePublish(c.id, false)}
-          />
-        </Box>
-      )}
     </Box>
-  )
-}
-
-/** "Aprovar a PR?": Manual (o padrão: você decide na ferramenta), Sim (o AiDW aprova) ou Não. */
-function approvalCard(ui: UI, v: ViewState, act: Actions, pr: string) {
-  const { Box, Text, Button } = ui
-  const current = approvalOf(v.approvals, pr)
-  const id = pr || 'unica'
-  return card(
-    ui,
-    `apr-${id}`,
-    pr ? `Aprovar a PR ${pr}?` : 'Aprovar a PR?',
-    <Box flexDirection="column" gap={1}>
-      <Box gap={1} flexWrap="wrap">
-        {APPROVALS.map(o =>
-          o.value === current ? (
-            <Button key={`ap-${id}-${o.value}`} label={`● ${o.label}`} onPress={() => act.approve(pr, o.value)} />
-          ) : (
-            <Button key={`ap-${id}-${o.value}`} label={o.label} plain dimColor onPress={() => act.approve(pr, o.value)} />
-          ),
-        )}
-      </Box>
-      <Text color={C.dim}>Manual: o AiDW não aprova, você decide na ferramenta. Sim: o AiDW aprova. Não: não aprova.</Text>
-    </Box>,
   )
 }
 
@@ -1691,17 +1512,13 @@ function EstimateView(ui: UI, v: ViewState, act: Actions) {
           e.spSplit,
         )}
       {e.risks && card(ui, 'risks', 'Riscos', ui.Markdown ? <ui.Markdown key="risks-md" text={e.risks} /> : <Text>{e.risks}</Text>)}
-      <Box justifyContent="space-between" alignItems="center" gap={2}>
-        <Text color={C.dim}>Comentar no card é ação travada: vai para o prompt e só vale quando você enviar.</Text>
-        <Button key="post-levantamento" label="Levar ao prompt: comentar no card" variant="primary" onPress={() => act.postLevantamento()} />
-      </Box>
     </Box>
   )
 }
 
 /** As dúvidas do levantamento: as abertas com o campo de resposta; as respondidas numa linha cada, recolhidas. */
 function Doubts(ui: UI, v: ViewState, act: Actions) {
-  const { Box, Text, Input, Button } = ui
+  const { Box, Text, Button } = ui
   const s = v.snap
   const open = s.doubts.filter(d => !answered(d))
   const done = s.doubts.filter(d => answered(d))
@@ -1728,7 +1545,6 @@ function Doubts(ui: UI, v: ViewState, act: Actions) {
           {open
             .filter(d => (d.group || 'Dúvidas') === g)
             .map(d => {
-              const key = `duvida-${d.id}`
               return (
                 <Box key={`dq-${d.id}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={2} paddingY={1} gap={1}>
                   <Box gap={1} flexWrap="wrap">
@@ -1738,25 +1554,6 @@ function Doubts(ui: UI, v: ViewState, act: Actions) {
                   </Box>
                   <Text bold>{d.question}</Text>
                   {d.why && rich(ui, `dw-${d.id}`, d.why, C.dim)}
-                  <Box gap={1} alignItems="center">
-                    <Box flexGrow={1}>
-                      <Input
-                        key={key}
-                        placeholder="sua resposta, se já souber"
-                        value={v.drafts[key] ?? ''}
-                        onInput={value => act.draft(key, value)}
-                        onSubmit={() => act.answerDoubt(d.id)}
-                        submitLabel="Responder"
-                      />
-                    </Box>
-                    <Button
-                      key={`dc-${d.id}`}
-                      label="ajustar no chat ↗"
-                      plain
-                      dimColor
-                      onPress={() => act.adjustInChat(`Sobre a dúvida ${d.id} do levantamento ${s.id} ("${d.question}"): `)}
-                    />
-                  </Box>
                 </Box>
               )
             })}
@@ -1817,51 +1614,4 @@ function rangeBar(ui: UI, key: string, from: number, to: number) {
       <ui.Text color={C.line}>{'·'.repeat(20 - b)}</ui.Text>
     </ui.Text>
   )
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Textos que os botões mandam ao orquestrador
-
-export function prDecisionText(s: Snapshot, publish: Record<string, boolean>, approvals: Record<string, string>, drafts: Record<string, string> = {}): string {
-  const list = s.findings.filter(f => f.source !== 'plano' && f.severity !== 'ELOGIO')
-  const round = Math.max(0, ...list.map(f => f.round))
-  const shown = list.filter(f => f.round === round && !f.published)
-  const yes = shown.filter(f => publish[f.id] === true)
-  const no = shown.filter(f => publish[f.id] === false).map(f => f.id)
-  const edited = yes.filter(f => drafts[`comentario-${f.id}`] && drafts[`comentario-${f.id}`] !== f.comment)
-  return [
-    `Revisão final da PR (${s.id}, rodada ${round}):`,
-    `- Publicar: ${yes.map(f => f.id).join(', ') || 'nenhum'} (com o texto dos rascunhos${edited.length ? ', exceto os editados abaixo' : ' como está'}).`,
-    ...edited.map(f => `  - ${f.id}, texto editado: ${drafts[`comentario-${f.id}`]}`),
-    `- Não publicar: ${no.join(', ') || 'nenhum'}.`,
-    `- Aprovar a PR: ${approvalText(approvalOf(approvals, ''))}.`,
-    'Pode publicar exatamente isso.',
-  ].join('\n')
-}
-
-/** A decisão da revisão de PR, PR por PR: o que publicar (com os textos editados) e se o AiDW aprova. */
-export function prTriageDecisionText(s: Snapshot, publish: Record<string, boolean>, approvals: Record<string, string>, drafts: Record<string, string> = {}): string {
-  const tri = s.prTriage
-  if (!tri) return ''
-  const lines = [`Revisão final da PR (${s.id}, rodada ${tri.round}):`]
-  for (const { pr } of prsOf(s)) {
-    const open = tri.comments.filter(c => c.pr === pr && !c.published)
-    const yes = open.filter(c => publish[c.id] === true)
-    const no = open.filter(c => publish[c.id] === false || (publish[c.id] === undefined && c.declined)).map(c => c.id)
-    const undecided = open.filter(c => publish[c.id] === undefined && !c.declined).map(c => c.id)
-    lines.push(
-      `- PR ${pr}: publicar ${yes.map(c => c.id).join(', ') || 'nenhum'}; não publicar ${no.join(', ') || 'nenhum'}` +
-        `${undecided.length ? `; sem decisão, não publicar: ${undecided.join(', ')}` : ''}; aprovar: ${approvalText(approvalOf(approvals, pr))}.`,
-    )
-    for (const c of yes) {
-      const text = drafts[`comentario-${c.id}`]
-      if (text && text !== c.draft) lines.push(`  - ${c.id}, texto editado: ${text}`)
-    }
-  }
-  lines.push('Publique exatamente isso (e aprove só as PRs com "sim"); depois atualize a Situação e o Publicado na triagem.')
-  return lines.join('\n')
-}
-
-export function levantamentoText(s: Snapshot): string {
-  return `OK: publique no card ${s.id} o comentário do levantamento (${s.levantamento}), como está no arquivo.`
 }
