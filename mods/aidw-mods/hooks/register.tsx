@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register, Timer, TurnUsage } from 'claude-code'
 
-import type { Pending, ReviewFilter, Snapshot } from '../types'
+import type { Pending, ReviewFilter, Snapshot, TokenUsage } from '../types'
 import {
   IDLE_MIN,
   IDLE_MS,
@@ -16,7 +16,7 @@ import type { AgentDef } from './aidw'
 import type { DemandFile, ExternalStep } from './artifacts'
 import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
-import { redactValue } from './secrets'
+import { redact, redactValue } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
 import { Band, Panel, pendingCount, tabHasData, viewFor, viewTitle, visibleTabs } from './views'
 import type { Actions, BandNav, UI, View } from './views'
@@ -52,29 +52,44 @@ const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 
 let root = 'C:/AiDW'
 let python = 'python'
-// O uso da última resposta de cada subagente (turn.step): é o tamanho do contexto no fim, o `totalTokens` do Agent e
-// o `subagent_tokens` da notificação. O `usage` do turn.complete soma todas as respostas (o cache relido a cada uma).
-const lastUsage = new Map<string, TurnUsage>()
-// A soma do uso de todas as respostas de cada subagente (o que a API cobra): o custo em US$ da delegação (2026-11-04).
-const sumUsage = new Map<string, TurnUsage>()
+// O uso de cada subagente (turn.step), no estado para atravessar recargas: `last` é a última resposta (o tamanho do
+// contexto no fim, o `totalTokens` do Agent e o `subagent_tokens` da notificação); `sum` soma todas as respostas, o que
+// a API cobra (o custo em US$ da delegação, 2026-11-04).
+const agentUsage = atom({ plugin: 'aidw-mods', key: 'agentUsage' } as const, {})
 
-function addUsage(id: string, u: TurnUsage): void {
-  const s = sumUsage.get(id)
-  sumUsage.set(id, s
-    ? {
-        ...u,
-        input_tokens: s.input_tokens + u.input_tokens,
-        cache_creation_input_tokens: s.cache_creation_input_tokens + u.cache_creation_input_tokens,
-        cache_read_input_tokens: s.cache_read_input_tokens + u.cache_read_input_tokens,
-        output_tokens: s.output_tokens + u.output_tokens,
-      }
-    : u)
+async function addUsage($: EngineInterface, id: string, r: TurnUsage): Promise<void> {
+  const u: TokenUsage = {
+    model: r.model,
+    input_tokens: r.input_tokens,
+    cache_creation_input_tokens: r.cache_creation_input_tokens,
+    cache_read_input_tokens: r.cache_read_input_tokens,
+    output_tokens: r.output_tokens,
+  }
+  await update($, agentUsage, all => {
+    const s = all[id]?.sum
+    const sum = s
+      ? {
+          ...u,
+          input_tokens: s.input_tokens + u.input_tokens,
+          cache_creation_input_tokens: s.cache_creation_input_tokens + u.cache_creation_input_tokens,
+          cache_read_input_tokens: s.cache_read_input_tokens + u.cache_read_input_tokens,
+          output_tokens: s.output_tokens + u.output_tokens,
+        }
+      : u
+    return { ...all, [id]: { last: u, sum } }
+  })
+}
+
+/** Tira o uso de um subagente do estado e o devolve (undefined quando o mod não viu as respostas dele). */
+async function takeUsage($: EngineInterface, id: string | undefined): Promise<{ last: TokenUsage; sum: TokenUsage } | undefined> {
+  if (!id) return undefined
+  const u = (await read($, agentUsage))[id]
+  if (u) await update($, agentUsage, all => Object.fromEntries(Object.entries(all).filter(([k]) => k !== id)))
+  return u
 }
 
 /** Os argumentos do custo para o `aidw.py record` (vazio quando o mod não viu as respostas do subagente). */
-function costArgs(id: string | undefined): string[] {
-  const u = id ? sumUsage.get(id) : undefined
-  if (id) sumUsage.delete(id)
+function costArgs(u: TokenUsage | undefined): string[] {
   return u
     ? ['--usage-model', u.model, '--input', String(u.input_tokens), '--cache-write', String(u.cache_creation_input_tokens),
         '--cache-read', String(u.cache_read_input_tokens), '--output', String(u.output_tokens)]
@@ -94,12 +109,21 @@ const under = (path: string, dir: string) => norm(path).toLowerCase().startsWith
 // ---------------------------------------------------------------------------------------------------------------
 // Disco e AiDW
 
+// O runtime.json só muda num `aidw.py apply`: lido de novo no máximo a cada minuto, não a cada refresh (2026-11-04).
+const RUNTIME_TTL = 60_000
+let runtimeCache: { at: number; value: Record<string, unknown> } | null = null
+
 async function runtimeJson($: EngineInterface): Promise<Record<string, unknown>> {
+  const now = await $.clock.now()
+  if (runtimeCache && now - runtimeCache.at < RUNTIME_TTL) return runtimeCache.value
+  let value: Record<string, unknown> = {}
   try {
-    return JSON.parse(await $.fs.read(`${root}/.aidw/runtime.json`)) as Record<string, unknown>
+    value = JSON.parse(await $.fs.read(`${root}/.aidw/runtime.json`)) as Record<string, unknown>
   } catch {
-    return {}
+    // sem runtime.json: as travas e o painel ficam no padrão
   }
+  runtimeCache = { at: now, value }
+  return value
 }
 
 async function stateDir($: EngineInterface): Promise<string | null> {
@@ -176,8 +200,15 @@ async function stateAfterCompaction($: EngineInterface): Promise<string[]> {
   return s ? [stateNote(s)] : []
 }
 
+// O git grep das marcas roda no máximo a cada MARKS_TTL por demanda e etapa; uma delegação que termina o refaz.
+const MARKS_TTL = 30_000
+let marksCache: { key: string; at: number; value: Record<string, number> } | null = null
+
 /** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes do commit da PR. */
 async function testMarks($: EngineInterface, s: Snapshot): Promise<Record<string, number>> {
+  const key = `${s.dir}|${s.step}`
+  const now = await $.clock.now()
+  if (marksCache && marksCache.key === key && now - marksCache.at < MARKS_TTL) return marksCache.value
   const out: Record<string, number> = {}
   for (const repo of s.repos) {
     const ran = await $.process
@@ -188,6 +219,7 @@ async function testMarks($: EngineInterface, s: Snapshot): Promise<Record<string
       ? ran.stdout.split('\n').reduce((n, line) => n + Number(/:(\d+)$/.exec(line.trim())?.[1] ?? 0), 0)
       : 0
   }
+  marksCache = { key, at: now, value: out }
   return out
 }
 
@@ -273,6 +305,8 @@ async function afterShell($: EngineInterface, command: string): Promise<void> {
   if (dir) await refresh($, `${dir}/${id}`)
 }
 
+const RECORDED = '\u0000gravado'
+
 /** Grava a linha no metricas.md pelo próprio `aidw.py record` e devolve o header + resumo que ele imprime. */
 async function record(
   $: EngineInterface,
@@ -281,7 +315,7 @@ async function record(
   tokens: number,
   tools: number,
   ms: number,
-  agentId?: string,
+  sum?: TokenUsage,
 ): Promise<string | null> {
   const argv = [
     python, `${root}/aidw.py`, 'record',
@@ -289,20 +323,25 @@ async function record(
     '--tokens', String(tokens), '--tool-uses', String(tools), '--duration-ms', String(Math.round(ms)),
     ...(p.level ? ['--level', p.level] : []),
     ...(state ? ['--state', state] : []),
-    ...costArgs(agentId),
+    ...costArgs(sum),
   ]
   try {
     const ran = await $.process.run(argv, { cwd: root, timeoutMs: 60_000 })
+    marksCache = null
     await refresh($, p.demand)
-    const out = JSON.parse(ran.stdout) as { header?: string; resumo?: string }
-    return out.header ? `${out.header}\n${out.resumo ?? ''}` : null
+    // a última linha JSON da saída: um aviso impresso antes não quebra o registro (2026-11-04)
+    const line = ran.stdout.split(/\r?\n/).reverse().find(l => l.trimStart().startsWith('{'))
+    const out = (line ? JSON.parse(line) : {}) as { header?: string; resumo?: string; error?: string }
+    if (out.header) return `${out.header}\n${out.resumo ?? ''}`
+    // gravou (código 0) mas sem o header: não peça ao orquestrador para registrar de novo (a linha duplicaria)
+    return ran.exitCode === 0 && !out.error ? RECORDED : null
   } catch {
     return null
   }
 }
 
 /** Os quatro números de uma resposta somados: o contexto que ela leu mais o que escreveu. */
-const totalTokens = (u: TurnUsage) => u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens
+const totalTokens = (u: TokenUsage) => u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens
 
 /** Quantas ferramentas o agente chamou: os tool_use do transcript dele, como o `tool_uses` da notificação. */
 async function toolUses($: EngineInterface, agentId: string): Promise<number> {
@@ -311,6 +350,9 @@ async function toolUses($: EngineInterface, agentId: string): Promise<number> {
 }
 
 function notice(header: string | null, p: Pending): string {
+  if (header === RECORDED) {
+    return `AiDW: delegação registrada no metricas.md pelo mod aidw-mods (${p.label}), sem o header; não rode \`aidw.py record\` para ela.`
+  }
   return header
     ? 'AiDW: delegação registrada no metricas.md pelo mod aidw-mods (não rode `aidw.py record` para ela). ' +
         `Abra o resultado com estas duas linhas, ao pé da letra:\n${header}`
@@ -516,7 +558,7 @@ export const register: Register = (on, options) => {
     const agentId = (await read($, running)).find(r => r.key === key)?.agentId
     if (ran.deny !== undefined || ran.isError || !result) {
       await update($, running, list => list.filter(r => r.key !== key))
-      if (agentId) sumUsage.delete(agentId)
+      await takeUsage($, agentId)
       return ran
     }
     if (result.status === 'async_launched') {
@@ -529,7 +571,7 @@ export const register: Register = (on, options) => {
     if (result.status !== 'completed') return ran
 
     const text = result.content.map(c => c.text).join('\n')
-    const header = await record($, p, parseState(text), result.totalTokens, result.totalToolUseCount, result.totalDurationMs, agentId)
+    const header = await record($, p, parseState(text), result.totalTokens, result.totalToolUseCount, result.totalDurationMs, (await takeUsage($, agentId))?.sum)
     return { ...ran, context: [...(ran.context ?? []), notice(header, p)] }
   })
 
@@ -548,8 +590,7 @@ export const register: Register = (on, options) => {
     const r = yield* next(e)
     const id = e.agentId
     if (id && r.usage) {
-      lastUsage.set(id, r.usage)
-      addUsage(id, r.usage)
+      await addUsage($, id, r.usage)
       const tokens = totalTokens(r.usage)
       if ((await read($, running)).some(x => x.agentId === id || x.key === id)) {
         await update($, running, list => list.map(x => (x.agentId === id || x.key === id ? { ...x, tokens } : x)))
@@ -580,15 +621,15 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const id = e.agentId
-    const last = id ? lastUsage.get(id) : undefined
-    if (id) lastUsage.delete(id)
+    const used = await takeUsage($, id)
+    const last = used?.last
     const p = id ? (await read($, background))[id] : undefined
     if (id && p) {
       await update($, background, b => Object.fromEntries(Object.entries(b).filter(([k]) => k !== id)))
       await update($, running, list => list.filter(r => r.key !== id))
       const state = parseState(e.answer)
       const header = last
-        ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs, id)
+        ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs, used?.sum)
         : null
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: notice(header, p) }] } })
     } else if (!id && (await read($, active))) {
@@ -602,8 +643,15 @@ export const register: Register = (on, options) => {
   // roda antes e o pulava, e o app avisava disso a cada sessão (removido em 2026-11-04).
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    // um resultado com erro e um negado ficam como estão; o resto vai como resultado próprio (o core o mapeia de novo)
-    if (ran.deny !== undefined || ran.isError || !(await read($, active))) return ran
+    // um negado fica como está; o resto vai como resultado próprio (o core o mapeia de novo)
+    if (ran.deny !== undefined || !(await read($, active))) return ran
+    if (ran.isError) {
+      // o erro também leva segredo (uma connection string numa exceção): volta como erro, com o texto filtrado
+      const r = redact(ran.text ?? (typeof ran.result === 'string' ? ran.result : ''))
+      if (!r.hits.length) return ran
+      hidSecrets($, r.hits)
+      return { deny: r.text }
+    }
     const r = redactValue(ran.result)
     if (!r.hits.length) return ran
     hidSecrets($, r.hits)

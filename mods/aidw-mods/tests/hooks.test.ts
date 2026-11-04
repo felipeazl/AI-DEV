@@ -97,7 +97,7 @@ type Fake = {
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean; toolText?: string },
+  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean; toolText?: string; toolError?: string; stdoutPrefix?: string },
 ): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
@@ -158,9 +158,9 @@ function fake(
   on('process.run', ($, e) => {
     out.runs.push(e.argv)
     const header = { header: '## Codificador - claude-opus Medium', resumo: 'Codificador (padrao) | 1.000 tokens' }
-    return { value: { exitCode: 0, stdout: JSON.stringify(header), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { exitCode: 0, stdout: (opts.stdoutPrefix ?? '') + JSON.stringify(header), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('tool.call', ($, e) => ({
+  on('tool.call', ($, e) => opts.toolError !== undefined && e.tool !== 'Agent' ? { isError: true as const, result: opts.toolError, text: opts.toolError } : ({
     result: opts.background ? {
       status: 'async_launched', agentId: 'bg1', description: 'Revisar plano', prompt: e.tool === 'Agent' ? e.prompt : '', outputFile: 'C:/tmp/bg1.output',
     } : {
@@ -509,6 +509,25 @@ test('filtro de segredos no resultado das ferramentas (o session.append pode nã
   const out = JSON.stringify(ran)
   expect(out).not.toContain('SuperSecreta1')
   expect(out).toContain('segredo ocultado: Password, 13 caracteres')
+})
+
+test('filtro de segredos também no resultado com erro: volta como erro, filtrado', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'pr-7', toolError: 'Exception: Server=a;Pass' + 'word=SuperSecreta1;' })
+  on('ui.status', () => ({ value: undefined }))
+  await $.session.start(START('pr-7'))
+  const ran = await $.tool.call({ tool: 'Bash', command: 'dotnet run' } as never)
+  const out = JSON.stringify(ran)
+  expect(out).not.toContain('SuperSecreta1')
+  expect(ran.deny).toContain('segredo ocultado: Password, 13 caracteres')
+})
+
+test('record: um aviso antes do JSON não perde o header nem pede registro de novo', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1', stdoutPrefix: 'aviso: algo\n' })
+  await $.session.start(START('us-1'))
+  const ran = await $.tool.call(delegation())
+  const context = (ran.context ?? []).join('\n')
+  expect(context).toContain('## Codificador - claude-opus Medium')
+  expect(context).not.toContain('não conseguiu registrar')
 })
 
 test('depois de uma compactação, o estado da demanda vai com a próxima mensagem', async ($, on) => {
