@@ -660,7 +660,8 @@ export const register: Register = (on, options) => {
           hasMetrics: tabHasData(s, 'metricas'),
         }
       : undefined
-    return Band(ui, s, await read($, running), await read($, usage), await $.clock.now(), nav)
+    return Band(ui, s, await read($, running), await read($, usage), await $.clock.now(), nav,
+      { columns: e.props.bodyColumns ?? 0, rows: e.props.maxRows ?? 0 })
   })
 
   for (const view of Object.keys(PANE) as View[]) on('ui.render', { component: 'Pane', requestId: PANE[view] }, async ($, e) => {

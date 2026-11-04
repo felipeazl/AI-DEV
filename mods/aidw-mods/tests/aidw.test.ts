@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
+  agentCardWidth,
   agentSpec,
+  agentsLayout,
   compact,
   demandSetId,
   labelFor,
@@ -124,6 +126,32 @@ describe('estado da demanda', () => {
     expect(compact(1_234_567)).toBe('1,2M')
     expect(compact(117_050)).toBe('117k')
     expect(compact(950)).toBe('950')
+  })
+})
+
+describe('agentes rodando na faixa', () => {
+  const agent = (i: number) => ({ key: `k${i}`, agent: 'revisao', display: 'Revisão', model: 'Sonnet', effort: 'high', label: 'smoke', since: 0, tokens: 51_000 })
+  const six = [1, 2, 3, 4, 5, 6].map(agent)
+
+  test('card com no mínimo 30 colunas e o texto mais largo', () => {
+    expect(agentCardWidth({ ...agent(1), display: 'Busca', model: 'Haiku', effort: undefined })).toBe(30)
+    expect(agentCardWidth({ ...agent(1), label: 'revisão da entrega E3 do front' })).toBeGreaterThan(30)
+  })
+
+  test('cards enquanto cabem numa linha; senão uma linha por agente', () => {
+    expect(agentsLayout(six.slice(0, 2), 160, 8)).toEqual({ mode: 'cards', shown: 2 })
+    expect(agentsLayout(six, 160, 8)).toEqual({ mode: 'list', shown: 6 })
+    expect(agentsLayout(six, 200, 8)).toEqual({ mode: 'cards', shown: 6 })
+  })
+
+  test('sem altura para todos: os primeiros e a linha de resumo', () => {
+    expect(agentsLayout(six, 120, 4)).toEqual({ mode: 'list', shown: 3 })
+    expect(agentsLayout(six, 120, 0)).toEqual({ mode: 'list', shown: 1 })
+  })
+
+  test('sem a largura (0): até 4 cards', () => {
+    expect(agentsLayout(six.slice(0, 4), 0, 8).mode).toBe('cards')
+    expect(agentsLayout(six.slice(0, 5), 0, 8).mode).toBe('list')
   })
 })
 
