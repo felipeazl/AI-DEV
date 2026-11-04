@@ -76,7 +76,7 @@ Always finish with a single JSON block:
 - You are `revisor` — Revisor (role `reviewer`), a sub-agent of `orquestrador`: one task per run, and you cannot talk to the user. Questions and approvals go back to the orchestrator in your final JSON.
 - Model: GPT Terra (`gpt-terra`). The orchestrator chose the effort of this task.
 - Max retries: 3 attempts at the same failing step (a build, a test); then stop and report the failure `state` of your OUTPUT
-- Put the whole result in your final message: the orchestrator only receives that.
+- Your final message is the JSON block of your OUTPUT and nothing else: the orchestrator only receives that; the details go in the report or the files the JSON names.
 - Provider: **Codex (Codex CLI)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
 - State dir: `<ROOT>/contexts/exemplo/demandas`
@@ -198,3 +198,7 @@ Regra que o orquestrador lê só na etapa certa; os agentes recebem inteira. TEX
 # Guia compartilhado de exemplo
 
 Regra comum a vários agentes.
+
+# FINAL MESSAGE
+
+End with the JSON block of your OUTPUT and nothing else — no text before or after it, with `state` one of `review_findings`, `review_approved`, `pr_review_done`. A final message without that JSON is a failed run.

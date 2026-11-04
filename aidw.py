@@ -1255,6 +1255,16 @@ def mcp_orchestrator_section(servers: dict, resolved: dict) -> str:
     ])
 
 
+def final_message_reminder(body: str) -> str:
+    """Fecho da definição: o JSON de saída fica a centenas de linhas do fim (policies, contexto) e o modelo menor
+    esquece o formato; repetir no fim, com os states do papel, segura a última mensagem (smoke de 2026-11-04)."""
+    m = re.search(r'"state":\s*"([^"]+)"', body)
+    states = ", ".join(f"`{s.strip()}`" for s in m.group(1).split("|")) if m else ""
+    which = f", with `state` one of {states}" if states else ", with its `state`"
+    return ("# FINAL MESSAGE\n\nEnd with the JSON block of your OUTPUT and nothing else — no text before or after "
+            f"it{which}. A final message without that JSON is a failed run.")
+
+
 def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
                  skills: dict, routing: dict, ns: str = "") -> tuple[dict, str]:
     """(frontmatter, markdown) da definição do agente — a mesma para Claude e Codex."""
@@ -1276,7 +1286,8 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    "the effort of this task.",
                    "- Max retries: 3 attempts at the same failing step (a build, a test); then stop and report "
                    "the failure `state` of your OUTPUT",
-                   "- Put the whole result in your final message: the orchestrator only receives that.",
+                   "- Your final message is the JSON block of your OUTPUT and nothing else: the orchestrator "
+                   "only receives that; the details go in the report or the files the JSON names.",
                    *runtime_lines(cfg, ctx)]),
         skills_section(a["skills"], skills, provider, a["preload"], ns),
         mcp_agent_section(servers, role),
@@ -1289,6 +1300,7 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
     if context_files(ctx, role):
         parts.append(f"# CONTEXT: {ctx['description']}")
         parts += [tpl.include(p) for p in context_files(ctx, role)]
+    parts.append(final_message_reminder(body))
     description = tpl.render(meta.get("description", a["display"]), source)
     return {**meta, "description": description}, "\n\n".join(parts) + "\n"
 
