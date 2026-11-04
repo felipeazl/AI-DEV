@@ -328,18 +328,26 @@ function agentCard(ui: UI, a: RunningAgent, now: number) {
   const { Box, Text } = ui
   const model = [a.model, a.effort].filter(Boolean).join(' ')
   return (
-    <Box key={`run-${a.key}`} flexDirection="column" borderStyle="round" borderColor={C.line} paddingX={1}>
-      <Box key="top" justifyContent="space-between" gap={2}>
-        <Box gap={1}>
-          <Text color={C.claude}>●</Text>
-          <Text bold>{a.display ?? a.agent}</Text>
-          {model && <Text color={C.dim}>{model}</Text>}
+    <Box
+      key={`run-${a.key}`}
+      flexDirection="column"
+      minWidth={30}
+      rowGap="xs"
+      borderStyle="round"
+      borderColor={C.line}
+      padding="sm"
+    >
+      <Box key="top" justifyContent="space-between" alignItems="center" columnGap="md">
+        <Box alignItems="center" columnGap="xs">
+          <Text size="footnote" color={C.claude}>●</Text>
+          <Text size="footnote" weight="semibold">{a.display ?? a.agent}</Text>
+          {model && <Text size="footnote" color={C.dim}>{model}</Text>}
         </Box>
-        <Text color={C.dim}>{secs(Math.max(0, Math.round((now - a.since) / 1000)))}</Text>
+        <Text size="footnote" color={C.dim} tabular>{secs(Math.max(0, Math.round((now - a.since) / 1000)))}</Text>
       </Box>
-      <Box key="bottom" justifyContent="space-between" gap={2}>
-        <Text color={C.dim}>{a.label}</Text>
-        <Text color={C.dim}>{a.tokens ? `${compact(a.tokens)} tokens` : 'começando'}</Text>
+      <Box key="bottom" justifyContent="space-between" alignItems="center" columnGap="md">
+        <Text size="footnote" color={C.dim}>{a.label}</Text>
+        <Text size="footnote" color={C.dim} tabular>{a.tokens ? `${compact(a.tokens)} tokens` : 'começando'}</Text>
       </Box>
     </Box>
   )
