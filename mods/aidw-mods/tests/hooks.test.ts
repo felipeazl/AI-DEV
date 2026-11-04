@@ -114,6 +114,7 @@ function fake(
     return { value: undefined }
   })
   on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('session.measure', ($, e) => ({ changed: [...e.changed] }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.id', () => ({ value: SESSION }))
@@ -143,7 +144,7 @@ function fake(
     const names = [...new Set(rest.map(r => r.split('/')[0] ?? ''))]
     return {
       value: names.map(name => ({
-        name, kind: rest.includes(name) ? ('file' as const) : ('dir' as const), size: 1, mtimeMs: 0, isLink: false,
+        name, kind: rest.includes(name) ? ('file' as const) : ('dir' as const), size: files[`${dir}${name}`]?.length ?? 1, mtimeMs: 0, isLink: false,
       })),
     }
   })
@@ -555,4 +556,62 @@ test('depois de uma compactação, o estado da demanda vai com a próxima mensag
   expect(f.contexts.at(-1)).toContain('Pasta da demanda')
   await say('e agora?')
   expect(f.contexts.at(-1)).not.toContain('Pasta da demanda')
+})
+
+test('faixa ao vivo: o contexto anda a cada resposta do orquestrador e com o session.measure', async ($, on) => {
+  const opts = { orchestrating: true, demand: 'us-1', contextTokens: 82_000 }
+  fake(on, opts)
+  on('turn.step', async function* ($, e) {
+    return {
+      turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'tool_use' as const,
+      usage: { model: 'claude-opus-5-5', input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 120_000, output_tokens: 10 },
+    }
+  })
+  await $.session.start(START('us-1'))
+  // uma resposta do chat principal no meio do turno: a faixa já mostra o contexto novo
+  opts.contextTokens = 120_000
+  const stream = $.turn.step({ turnId: 't', index: 0, model: 'claude-opus-5-5', messageCount: 1 })
+  for await (const _ of stream) void _
+  await stream.result
+  let band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^41% · 120k$/)
+  await band.unmount()
+  // o engine empurra o uso (uma janela do plano subiu um ponto): a faixa segue sem ler nada
+  await $.session.measure({
+    context: { window: 200_000, tokens: 150_000, percent: 75 },
+    rateLimits: [{ kind: 'seven_day', percentUsed: 59 }, { kind: 'five_hour', percentUsed: 92, resetsAt: '2026-10-14T16:40:00Z' }],
+    changed: ['context', 'rateLimits'],
+  } as never)
+  band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^75% · 150k$/)
+  await has(band, /^59%$/)
+  await band.unmount()
+})
+
+test('faixa ao vivo: o Write de um agente e um arquivo mudado no disco relêem a demanda', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1' })
+  const DEMAND = `${STATE}/us-1/demand.json`
+  const withStep = (step: string) => JSON.stringify({ ...JSON.parse(f.files[DEMAND] ?? '{}'), step })
+  const waiting = async () => {
+    const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+    const found = (await band.find({ type: 'Text', text: /espera você/ })) !== undefined
+    await band.unmount()
+    return found
+  }
+  await $.session.start(START('us-1'))
+  expect(await waiting()).toBe(false) // CODER_FIX: a vez é do agente
+
+  // um agente grava na pasta da demanda: relê na hora
+  f.files[DEMAND] = withStep('USER_REVIEW')
+  await $.tool.call({ tool: 'Write', file_path: DEMAND, content: f.files[DEMAND] } as never)
+  expect(await waiting()).toBe(true)
+
+  // um Write fora da pasta da demanda não relê
+  f.files[DEMAND] = withStep('CODER_FIX')
+  await $.tool.call({ tool: 'Write', file_path: 'C:/wt/us-1/repo/a.ts', content: 'x' } as never)
+  expect(await waiting()).toBe(true)
+
+  // o relógio vê que o arquivo mudou (fora das ferramentas) e relê
+  await f.clock.advance(5_000)
+  expect(await waiting()).toBe(false)
 })

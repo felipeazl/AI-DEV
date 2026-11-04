@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { BuiltinToolResults, EngineInterface, Register, Timer, TurnUsage } from 'claude-code'
+import type { BuiltinToolResults, EngineInterface, Register, SessionContextUsage, SessionRateLimit, Timer, TurnUsage } from 'claude-code'
 
 import type { Pending, ReviewFilter, Snapshot, TokenUsage } from '../types'
 import {
@@ -34,6 +34,9 @@ const tabs = atom({ plugin: 'aidw-mods', key: 'tabs' } as const, {})
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
+// O maior contexto visto desde a última mensagem sua: com a faixa ao vivo, o `usage` já mostra o contexto depois da
+// compactação quando a mensagem chega; a queda se mede contra este pico (2026-11-04).
+const contextPeak = atom({ plugin: 'aidw-mods', key: 'contextPeak' } as const, 0)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
 const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
 const decisionTab = atom({ plugin: 'aidw-mods', key: 'decisionTab' } as const, '')
@@ -149,6 +152,28 @@ async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
   return { variants, agents, roles }
 }
 
+// O retrato da pasta no último refresh (nome, tamanho e data de cada arquivo): o relógio compara com ele e só relê a
+// demanda quando algo mudou, mesmo fora das ferramentas (você no editor, outro chat, um script).
+let seen: { dir: string; sig: string } | null = null
+const signature = (entries: readonly { name: string; kind: string; size: number; mtimeMs: number }[]) =>
+  entries.filter(f => f.kind === 'file').map(f => `${f.name}:${f.size}:${f.mtimeMs}`).sort().join('|')
+
+/** Relê a demanda quando um arquivo da pasta mudou desde o último refresh (o relógio, a cada WATCH_MS). */
+async function watchDemand($: EngineInterface): Promise<void> {
+  if (!(await read($, active))) return
+  const dir = (await read($, snap))?.dir
+  if (!dir) return
+  const entries = await $.fs.list(dir).catch(() => null)
+  if (entries && !(seen?.dir === dir && seen.sig === signature(entries))) await refresh($, dir)
+}
+
+/** Um Write ou Edit (seu ou de um agente) num arquivo da pasta da demanda: a faixa e os painéis mostram na hora. */
+async function afterWrite($: EngineInterface, path: string | undefined): Promise<void> {
+  if (!path || !(await read($, active))) return
+  const dir = (await read($, snap))?.dir
+  if (dir && under(path, dir)) await refresh($, dir)
+}
+
 /** Relê a demanda do disco e redesenha a faixa e o painel. */
 async function refresh($: EngineInterface, dir?: string): Promise<void> {
   const target = dir ? norm(dir) : (await read($, snap))?.dir
@@ -159,7 +184,9 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
   } catch {
     return
   }
-  const files = (await $.fs.list(target).catch(() => [])).filter(f => f.kind === 'file').map(f => f.name)
+  const entries = await $.fs.list(target).catch(() => [])
+  seen = { dir: target, sig: signature(entries) }
+  const files = entries.filter(f => f.kind === 'file').map(f => f.name)
   const texts: Record<string, string> = {}
   for (const f of wanted(files)) texts[f] = await $.fs.read(`${target}/${f}`).catch(() => '')
   const r = await runtimeJson($)
@@ -189,8 +216,9 @@ function hidSecrets($: EngineInterface, hits: string[]) {
  * e regravaria o cache da conversa inteira.
  */
 async function stateAfterCompaction($: EngineInterface): Promise<string[]> {
-  const before = (await read($, usage))?.tokens ?? 0
+  const before = Math.max(await read($, contextPeak), (await read($, usage))?.tokens ?? 0)
   const now = await measure($)
+  if (now !== null) await update($, contextPeak, () => now)
   const compacted = compactedByIdle || (now !== null && before >= COMPACTED_FROM && now < before / 2)
   compactedByIdle = false
   if (!compacted) return []
@@ -346,16 +374,28 @@ function notice(header: string | null, p: Pending): string {
     : `AiDW: o mod aidw-mods não conseguiu registrar esta delegação (${p.label}); rode \`aidw.py record\` você mesmo.`
 }
 
-/** O contexto (em tokens) e as janelas de uso do plano (5h, 7d) para a faixa. */
+/**
+ * Grava o contexto e as janelas de uso do plano (5h, 7d) para a faixa, só quando algo que ela mostra mudou (o % ou o
+ * milhar de tokens, uma janela): cada gravação a redesenha. Devolve os tokens do contexto.
+ */
+async function setUsage($: EngineInterface, u: { context: SessionContextUsage; rateLimits?: readonly SessionRateLimit[] }): Promise<number> {
+  const tokens = u.context.tokens ?? 0
+  const limits = (u.rateLimits ?? [])
+    .filter(l => l.kind === 'five_hour' || l.kind === 'seven_day')
+    .map(l => ({ kind: l.kind === 'five_hour' ? ('5h' as const) : ('7d' as const), percent: l.percentUsed, resetsAt: l.resetsAt ?? '' }))
+  const next = { percent: Math.round(u.context.percent ?? 0), tokens, limits }
+  const before = await read($, usage)
+  const same = before !== null && before.percent === next.percent && Math.round(before.tokens / 1000) === Math.round(tokens / 1000) &&
+    JSON.stringify(before.limits) === JSON.stringify(limits)
+  if (!same) await update($, usage, () => next)
+  if (tokens > (await read($, contextPeak))) await update($, contextPeak, () => tokens)
+  return tokens
+}
+
+/** O contexto (em tokens) e as janelas de uso do plano (5h, 7d) para a faixa, lidos agora. */
 async function measure($: EngineInterface): Promise<number | null> {
   try {
-    const u = await $.session.usage()
-    const tokens = u.context.tokens ?? 0
-    const limits = (u.rateLimits ?? [])
-      .filter(l => l.kind === 'five_hour' || l.kind === 'seven_day')
-      .map(l => ({ kind: l.kind === 'five_hour' ? ('5h' as const) : ('7d' as const), percent: l.percentUsed, resetsAt: l.resetsAt ?? '' }))
-    await update($, usage, () => ({ percent: Math.round(u.context.percent ?? 0), tokens, limits }))
-    return tokens
+    return await setUsage($, await $.session.usage())
   } catch {
     return null // sem uso medido nesta superfície
   }
@@ -483,9 +523,10 @@ export const register: Register = (on, options) => {
     ]) {
       await $.command.register(command).catch(() => undefined)
     }
-    // o tempo dos agentes rodando anda a cada 5 s
+    // a cada 5 s: o tempo dos agentes rodando anda, e a demanda é relida se um arquivo da pasta mudou
     $.clock.every(5_000, () => {
       void tickRunning($)
+      void watchDemand($)
     })
     return next(e)
   })
@@ -572,10 +613,31 @@ export const register: Register = (on, options) => {
     return r
   })
 
+  // O contexto e as janelas do plano, empurrados pelo engine quando mudam (inclusive no meio do turno).
+  on('session.measure', async ($, e, next) => {
+    if (await read($, active)) await setUsage($, e)
+    return next(e)
+  })
+
+  // Um arquivo da pasta da demanda gravado por você ou por um agente: a faixa e os painéis mostram na hora.
+  on('tool.call', { tool: 'Write' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (ran.deny === undefined && !ran.isError) await afterWrite($, e.file_path)
+    return ran
+  })
+
+  on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (ran.deny === undefined && !ran.isError) await afterWrite($, e.file_path)
+    return ran
+  })
+
   // O uso de cada resposta de um subagente: o registro em segundo plano grava o da última; o card mostra os tokens.
+  // Do chat principal, o contexto da faixa anda a cada resposta, sem esperar o fim do turno.
   on('turn.step', async function* ($, e, next) {
     const r = yield* next(e)
     const id = e.agentId
+    if (!id && r.usage && (await read($, active))) await measure($)
     if (id && r.usage) {
       await addUsage($, id, r.usage)
       const tokens = totalTokens(r.usage)
