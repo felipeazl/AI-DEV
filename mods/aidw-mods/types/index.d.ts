@@ -267,6 +267,8 @@ declare module 'claude-code' {
       tick: number
       reviewRound: number
       usage: Usage | null
+      /** O maior contexto (tokens) visto desde a última mensagem sua: a compactação se mede contra ele. */
+      contextPeak: number
       codeReads: number
       /** A rodada (arquivo do review), a aba e os filtros da Revisão; o painel só informa, a decisão é no chat. */
       reviewFile: string

@@ -70,6 +70,12 @@ Três linhas (painel v4):
 a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
 `DONE`. **`/faixa`** esconde e mostra.
 
+**Ao vivo, sem esperar o fim do turno** (2026-11-04): o contexto anda a cada resposta do orquestrador (`turn.step`), e o
+contexto e as janelas 5h/7d também quando o engine os empurra (`session.measure`); a demanda é relida quando um `Write`
+ou `Edit` (seu ou de um agente) grava na pasta dela e, a cada 5 s, quando um arquivo da pasta mudou de tamanho ou data
+(você no editor, outro chat, um script). Nada disso gasta token: roda no mod, fora do contexto do modelo. Só o custo do
+chat principal no `metricas-orquestrador.md` segue por turno.
+
 ## Painéis do AiDW
 
 Três painéis, cada um ao lado do chat, abertos só quando você pede: pelo botão na faixa ou pelo comando (painel v4,
