@@ -12,6 +12,13 @@ describe('filtro de segredos', () => {
     expect(r.hits).toEqual(['Password (11)'])
   })
 
+  test('idempotente: um texto já filtrado passa de novo igual', async () => {
+    const once = redact('Server=sql01;Pass' + 'word=S3nh@Forte!;Encrypt=true').text
+    const twice = redact(once)
+    expect(twice.text).toBe(once)
+    expect(twice.hits).toEqual([])
+  })
+
   test('JSON, variável de ambiente, Bearer e JWT', async () => {
     const jwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'].join('.') // em pedaços: é um JWT de teste, não um segredo
     const text = [

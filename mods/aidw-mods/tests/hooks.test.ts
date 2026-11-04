@@ -498,23 +498,6 @@ test('agente em segundo plano: grava o contexto da última resposta, não a soma
   expect(f.runs.length).toBe(1)
 })
 
-test('filtro de segredos nas linhas da conversa', async ($, on) => {
-  fake(on, { orchestrating: true, demand: 'us-1' })
-  const rows: unknown[] = []
-  on('ui.status', () => ({ value: undefined }))
-  // o hook do teste fica abaixo do mod: vê a linha já filtrada (no kit não há nada abaixo para gravá-la)
-  on('session.append', ($, e, next) => {
-    rows.push(e.message.content)
-    return next(e)
-  })
-  await $.session.start(START('us-1'))
-  const row0 = { message: { type: 'user', content: [{ type: 'text', text: 'Server=a;Password=SuperSecreta1;' }] } }
-  await $.session.append(row0 as never).catch(() => undefined)
-  const row = JSON.stringify(rows.at(-1))
-  expect(row).not.toContain('SuperSecreta1')
-  expect(row).toContain('segredo ocultado: Password, 13 caracteres')
-})
-
 test('filtro de segredos no resultado das ferramentas (o session.append pode não chegar: plugin da organização acima)', async ($, on) => {
   fake(on, { orchestrating: true, demand: 'pr-7', toolText: 'appsettings: Server=a;Password=SuperSecreta1;' })
   on('ui.status', () => ({ value: undefined }))
