@@ -9,8 +9,13 @@ terminou). O AiDW traz os dele no plugin **`aidw-mods`**, que o `install` instal
 ## Quando ficam ligados
 
 Os mods do AiDW ficam ligados **só no modo orquestrador**:
-- **Ligar:** `/aidw:go` ou `/aidw:lev` registram a sessão em `state/sessions.json` (o guard do AiDW grava), e o
-  `aidw-mods` confere esse registro a cada mensagem.
+- **Ligar:** `/aidw:go` ou `/aidw:lev` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse
+  registro a cada mensagem. Quem grava é a skill `go`, com `aidw.py session bind` (lê `CLAUDE_CODE_SESSION_ID`), e
+  o hook do guard, onde o cliente manda o comando de barra a ele (o app sim, o terminal não).
+- **Qual demanda:** o registro guarda o contexto, o id e a pasta da demanda (`session bind --demand <id>`, e todo
+  `demand set` numa sessão já registrada). O mod lê a pasta dali, sem deduzir a demanda do texto: vale para qualquer
+  id, com card de qualquer plataforma ou livre (`feat-<slug>`, `fix-<slug>`…). Sem demanda no registro, vale a pasta
+  do chat quando ele abriu na demanda ou num worktree dela.
 - **Desligar:** `/aidw:sair` ou `/aidw:done` tiram a sessão do registro, e o painel fecha.
 
 Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
