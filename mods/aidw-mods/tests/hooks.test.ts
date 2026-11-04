@@ -393,7 +393,7 @@ test('fim de turno parado: grava o turno do orquestrador e compacta uma vez depo
   await $.session.start(START('pr-7'))
   await $.turn.complete(TURN(290_000))
   const rec = f.runs.find(a => a.includes('record-orchestrator')) ?? []
-  for (const [flag, value] of [['--demand', `${STATE}/pr-7`], ['--session', SESSION], ['--model', 'claude-opus-5-5'], ['--cache-read', '290000'], ['--cache-write', '10000'], ['--output', '700']] as const) {
+  for (const [flag, value] of [['--demand', `${STATE}/pr-7`], ['--session', SESSION], ['--model', 'claude-opus-5-5'], ['--cache-read', '290000'], ['--cache-write', '10000'], ['--output', '700'], ['--step', 'FINAL_REVIEW']] as const) {
     expect(rec[rec.indexOf(flag) + 1]).toBe(value)
   }
   await f.clock.advance(IDLE - 1_000)
@@ -487,6 +487,9 @@ test('agente em segundo plano: grava o contexto da última resposta, não a soma
   for (const [flag, value] of [
     ['--agent', 'aidw:codificador'], ['--label', 'rota'], ['--tokens', '242097'], ['--tool-uses', '3'],
     ['--duration-ms', '508448'], ['--state', 'plan_review_changes_requested'],
+    // o custo em US$: a soma das três respostas do subagente, no modelo delas
+    ['--usage-model', 'claude-sonnet-5-5'], ['--input', '6'], ['--cache-write', '16500'], ['--cache-read', '380000'],
+    ['--output', '1896'],
   ] as const) {
     expect(argv[argv.indexOf(flag) + 1]).toBe(value)
   }

@@ -98,10 +98,15 @@ ferramenta, duração e o `state` lido do JSON final do agente.
   que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
   agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
   caminho não perde o registro.
+- **O custo da delegação:** o mod soma o uso de todas as respostas do subagente (entrada, cache escrito, cache lido e
+  saída, no modelo delas) e passa ao `record`, que grava na coluna *Custo (USD)* o equivalente em preço de API. A
+  coluna de tokens continua sendo o contexto no fim; o custo é o que a API cobra pela soma. Sem as respostas (o
+  agente atravessou uma recarga do mod), o custo fica —.
 - **O orquestrador:** no fim de cada turno do chat principal, o mod soma o uso do turno (entrada, cache escrito, cache
   lido e saída, como a API informou) no `metricas-orquestrador.md` da demanda, pelo `aidw.py record-orchestrator`: uma
-  linha por sessão e modelo, com o custo equivalente em preço de API. É o que o `metricas.md` não mostra e costuma ser
-  a maior parte do gasto.
+  linha por sessão e modelo, com o custo equivalente em preço de API, e a seção *Por etapa* com os mesmos turnos
+  somados pela etapa da demanda (`step` do `demand.json` no começo do turno). É o que o `metricas.md` não mostra e
+  costuma ser a maior parte do gasto (≥ 95 % na medição de 2026-11-04).
 
 ## Travas da delegação
 
