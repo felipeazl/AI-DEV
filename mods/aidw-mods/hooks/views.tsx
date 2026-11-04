@@ -4,7 +4,7 @@
 import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, Doubt, Finding, PrComment, OrchestratorStep, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
-import { compact } from './aidw'
+import { agentModel, agentsLayout, agentTokens, compact } from './aidw'
 import { KIND_LABEL } from './artifacts'
 import { stateLabel } from './snapshot'
 
@@ -326,7 +326,7 @@ export type BandNav = {
  */
 function agentCard(ui: UI, a: RunningAgent, now: number) {
   const { Box, Text } = ui
-  const model = [a.model, a.effort].filter(Boolean).join(' ')
+  const model = agentModel(a)
   return (
     <Box
       key={`run-${a.key}`}
@@ -347,13 +347,54 @@ function agentCard(ui: UI, a: RunningAgent, now: number) {
       </Box>
       <Box key="bottom" justifyContent="space-between" alignItems="center" columnGap="md">
         <Text size="footnote" color={C.dim}>{a.label}</Text>
-        <Text size="footnote" color={C.dim} tabular>{a.tokens ? `${compact(a.tokens)} tokens` : 'começando'}</Text>
+        <Text size="footnote" color={C.dim} tabular>{agentTokens(a)}</Text>
       </Box>
     </Box>
   )
 }
 
-export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number, nav?: BandNav) {
+/**
+ * Os agentes rodando quando os cards não cabem numa linha: uma linha por agente, as colunas alinhadas (nome, modelo,
+ * label, tokens, tempo); os que não cabem na altura viram uma linha de resumo com o total de tokens.
+ */
+function agentList(ui: UI, running: RunningAgent[], shown: number, now: number) {
+  const { Box, Text } = ui
+  const rows = running.slice(0, shown).map(a => ({
+    key: a.key,
+    cells: [a.display ?? a.agent, agentModel(a), a.label, a.tokens ? compact(a.tokens) : 'começando',
+      secs(Math.max(0, Math.round((now - a.since) / 1000)))],
+  }))
+  const widths = [0, 1, 2, 3, 4].map(i => Math.max(...rows.map(r => r.cells[i].length)))
+  const rest = running.slice(shown)
+  const restTokens = rest.reduce((sum, a) => sum + (a.tokens ?? 0), 0)
+  return (
+    <Box key="running" flexDirection="column">
+      {rows.map(r => (
+        <Box key={`run-${r.key}`} columnGap={2} alignItems="center">
+          <Text size="footnote" color={C.claude}>●</Text>
+          {r.cells.map((cell, i) => (
+            <Box key={`c${i}`} minWidth={widths[i]} justifyContent={i >= 3 ? 'flex-end' : 'flex-start'}>
+              <Text size="footnote" weight={i === 0 ? 'semibold' : undefined} color={i === 0 ? undefined : C.dim} tabular={i >= 3}>
+                {cell}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ))}
+      {rest.length > 0 && (
+        <Text key="rest" size="footnote" color={C.dim}>
+          {`+${rest.length} ${rest.length === 1 ? 'agente' : 'agentes'}${restTokens ? ` · ${compact(restTokens)} tokens` : ''}`}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+/** O espaço que o engine dá à faixa (colunas e linhas); sem ele, a faixa não sabe a largura e mostra até 4 cards. */
+export type BandSpace = { columns: number; rows: number }
+
+export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage | null, now: number, nav?: BandNav,
+  space: BandSpace = { columns: 0, rows: 0 }) {
   const { Box, Text, Button } = ui
   const parts: unknown[] = []
   const add = (key: string, label: string, percent: number, text: string, color: string) => {
@@ -379,6 +420,9 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
   }
   // a etapa atual ao lado do id; o modelo quando não é desenvolvimento
   const where = [s.kind === 'desenvolvimento' ? '' : KIND_LABEL[s.kind], s.progress.current].filter(Boolean).join(' · ')
+  // os agentes: cards enquanto cabem numa linha; senão uma linha por agente, nas linhas que sobram da demanda, dos
+  // botões e dos espaços entre eles
+  const layout = agentsLayout(running, space.columns, space.rows - (nav ? 4 : 2))
   // três linhas (painel v4): a demanda e o consumo; os agentes rodando, quando há; os botões, numa linha só, à direita
   return (
     <Box flexDirection="column" rowGap={1}>
@@ -402,11 +446,14 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
           </Box>
         )}
       </Box>
-      {running.length > 0 && (
-        <Box key="running" flexWrap="wrap" gap={1}>
-          {running.map(a => agentCard(ui, a, now))}
-        </Box>
-      )}
+      {running.length > 0 &&
+        (layout.mode === 'cards' ? (
+          <Box key="running" flexWrap="wrap" gap={1}>
+            {running.map(a => agentCard(ui, a, now))}
+          </Box>
+        ) : (
+          agentList(ui, running, layout.shown, now)
+        ))}
       {nav && (
         <Box key="nav" justifyContent="flex-end" gap={1} flexWrap="nowrap">
           <Button key="open-geral" label="Geral" plain dimColor onPress={() => nav.open('geral')} />

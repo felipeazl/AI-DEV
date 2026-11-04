@@ -62,7 +62,9 @@ Três linhas (painel v4):
    revisão de código, teste manual, PR, revisão final) e, do outro lado, o contexto deste chat em % da janela do
    modelo, com os tokens, e as janelas de uso do plano (7d e 5h) em %, cada um com barra fina.
 2. **Os agentes rodando**, um card por agente: nome, modelo e effort (da variante), o tempo, o label e os tokens da última
-   resposta (andam a cada passo; antes do primeiro, `começando`); sem agente, a linha não aparece.
+   resposta (andam a cada passo; antes do primeiro, `começando`); sem agente, a linha não aparece. Quando os cards não
+   cabem numa linha (a largura que o engine dá à faixa), vira uma lista, uma linha por agente com as colunas
+   alinhadas; se nem a lista cabe na altura, os primeiros e `+N agentes · Xk tokens`.
 3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento; com o número do que espera decisão, em laranja), numa linha só,
    à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
 a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
