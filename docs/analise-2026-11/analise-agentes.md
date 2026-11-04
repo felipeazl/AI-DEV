@@ -1,0 +1,105 @@
+# Auditoria das definições do AiDW (2026-11-04)
+
+Método: li fontes (`agents/*/AGENT.md`, `contexts/safeweb/agents/*.md`, policies, skills, workflows, routing.toml, referências, docs) e medi os prompts gerados em `C:/AiDW/.claude/agents/*.md` e `C:/AiDW/CLAUDE.md`. Tokens ≈ bytes/3,5 (texto pt/en com markdown). As variantes (`-medium`, `-low`, `-high`) têm o mesmo tamanho do padrão (±0,3 KB).
+
+## 1. Tamanho dos prompts montados
+
+| Prompt | KB | ≈ tokens | Composição (KB) |
+|---|---|---|---|
+| Orquestrador (`CLAUDE.md`) | 42,5 | 12,1k | ORCHESTRATOR 8,2 (WORKFLOW) + 4,2 (demais seções) · Runtime/Team/How to delegate/Agents 5,5 · Workflows 2,5 · Systems (resumo) 3,2 · Reference 2,1 · Policies ~7,9 · contexto 5,6 |
+| `busca` (Haiku) | 36,4 | 10,4k | base 6,5 + ctx 2,2 · **Systems 13,9 · Policies 10,7** · Runtime/Skills/MCP/Reference 3,1 |
+| `plano` | 39,4 + to-spec 4,9 (pré-carregada) = 44,3 | 12,7k | base 5,4 + ctx 2,8 + plano-execucao 1,8 · Systems 13,9 · Policies 10,7 |
+| `dev` | 54,6 | 15,6k | base 6,4 + **coder.md 13,6** + guia-time 2,9 · Systems 13,9 · Policies 10,7 · Reference 3,8 |
+| `revisao` | 56,1 + code-review 7,4 (pré-carregada) = 63,5 | 18,1k | base 4,3 + **reviewer.md 18,4** + guia-time 2,9 · Systems 13,9 · Policies 10,7 |
+| `qa` | 42,3 (+ plano-testes-qa 4,6 sob demanda) | 12,1k–13,4k | base 7,7 + ctx 4,9 · Systems 13,9 · Policies 10,7 · Reference 1,9 |
+| `docs` | 35,1 (+ redigir-work-item 5,4 sob demanda) | 10k–11,6k | base 3,9 + ctx 3,1 · Systems 13,9 · Policies 10,7 |
+
+Fato central: **Systems (13,9 KB, 15 sistemas com Stack/Build/Notes) + Policies (10,7 KB) = 24,6 KB repetidos em todos os 6 agentes** (~7k tokens por execução). É 75–80% do prompt de `docs` e `busca`, ~70% de `plano` e `qa`, ~45% de `dev`/`revisao`. O conteúdo específico do papel é pequeno (3–7 KB) em 4 dos 6 agentes.
+
+### Onde cortar sem perder regra
+1. **Systems por agente** (`aidw.py` `systems_section(ctx, detailed=True)`, usado no `apply`): `dev`, `revisao` e `docs` não precisam dos 15 sistemas. `plano` já grava worktree + comando de build na entrega (`agents/planner/AGENT.md:49-50`), então `dev` só precisa do plano. `revisao` recebe plano + diff. `docs` só precisa de nomes. Mantê-lo em `busca` e `plano` (versão enxuta: repo, depende de, nota de conhecimento; os "Notes" longos vão para as notas de sistema). Economia: ~13 KB (3,7k tok) em `dev`/`revisao`/`docs`; ~10 KB em `qa` (deixar só os sistemas com tabela "Como testar").
+2. **Policies por agente** (10,7 KB → ~4,5 KB): `Policy — Autonomia e aprovações` (3,4 KB: pontos fixos do Felipe, aprovar PR de outro dev, criar US, comentários) é do orquestrador; `Cards no Azure DevOps` (1,6 KB) só interessa a `docs` e ao orquestrador (e ao `dev` pelo anexo `.sql`); as 5 policies do núcleo (1,8 KB) + `segredos.md` (0,4 KB) dizem a mesma coisa 6 vezes (ver §2.D). Economia ~6 KB por agente.
+3. **`reviewer.md` 18,4 KB → ~9 KB**: remover "Como Revisar PRs" (:133-144: `git diff`, `az repos pr show`, que contradizem a entrada por arquivo), "Sistemas da Squad" com Hope de exemplo e números velhos (:119-129: "21 projetos, 89 endpoints, Angular 9"), "Bibliotecas e Ferramentas" (:327-338), "Histórico de Contexto" (:342-344), "Diretrizes" genéricas (:97-115, já na skill `code-review`), o checklist duplicado de `guia-time.md:48-56`, e encurtar o modelo `review-<id>-r<N>.md` (:210-274, 6,6 KB) movendo-o para a skill `code-review` (que já descreve o formato do painel, :84-96). As armadilhas de bug/segurança do ecossistema (:281-323) ficam.
+4. **`coder.md` 13,6 KB → ~6 KB**: seções-ponteiro "Consulta sob demanda" (:11, :110, :235, :239, :245, :298: ~1,5 KB, já cobertas pela tabela *Reference* com `when`), checklist "Antes de codificar" (:14-40, 1,6 KB, voltado a um fluxo antigo: "confirmei com o tech lead", "mapa do ecossistema"), árvores ASCII (:44-104) que repetem Guideline/guia-time, exemplos C# de erro/log (:141-207, ~2,5 KB), "Mapeamento" duplicado (:226-228 e :289-292, e de novo em `guia-time.md:21-25`).
+5. **Runtime** (1,1 KB × 6): linha "Max retries: 3 … a build, a test" (aidw.py:1277) só serve ao `dev` (já está em `agents/coder/AGENT.md:39-41`); "Provider", "Project dirs" (inclui a pasta de histórico antigo do orquestrador) e "Put the whole result in your final message" (conflita com §2.E) não servem a sub-agentes.
+6. **`qa.md` × `plano-testes-qa`**: orçamento 2×(CA+RN), massa de dados, aprovações por bloco, dado pessoal e "SELECT só pelo validador" aparecem em `agents/qa/AGENT.md:44-53`, `contexts/.../qa.md:28-42` e na skill. Manter na skill; o agente só a chama. ~2 KB.
+
+Potencial total estimado: `dev` 54→~27 KB, `revisao` 63→~35 KB, `docs` 35→~14 KB, `busca` 36→~21 KB, `plano` 44→~33 KB, `qa` 42→~27 KB (−40 a −60%).
+
+## 2. Contradições, duplicações e regras obsoletas
+
+**A. Contradições reais**
+- **Guideline × padrão do repositório.** `contexts/safeweb/shared/guia-time.md:9` ("na dúvida ou divergência, vale o Guideline"), `agents/reviewer.md:101-105` ("a lei é o repositório Guideline") e `agents/coder.md:209-211` × `policies/escopo-squad-emissao.md:14` e `plano-execucao`/`guia-time.md:21-25` ("vale o padrão do repositório"). Dev e revisor (que recebem `guia-time`) leem as duas frases; o revisor pode apontar IMPORTANTE por divergência de Guideline em legado. Unificar numa regra só (a decisão de 2026-10-08).
+- **`HUMAN_APPROVAL` × `policy_requires_approval`.** `policies/ambientes-e-escrita.md:7` diz que os agentes "devolvem `HUMAN_APPROVAL`"; `HUMAN_APPROVAL` é uma *ação* do orquestrador, o *state* que os agentes devolvem é `policy_requires_approval` (agents/*, `database-safe`, `orchestrator/policies/permissions.md:5`).
+- **Revisor manda `git pull` no Guideline** (`reviewer.md:32-33`) e `aprovacoes.md` trava `pull` (pede OK; o agente não tem como pedir). Vai gerar negação de permissão ou contornar a regra. Trocar por "`git fetch` + `git diff`/`git show` do remoto", ou o orquestrador atualiza o Guideline uma vez por demanda.
+- **"Resultado curto" × "resultado completo".** `ORCHESTRATOR.md:7-9` ("keep agent results short") e `agents/explorer/AGENT.md:86-88` ("final message is only this JSON") × Runtime injetado (`aidw.py:1278`: "Put the whole result in your final message") × `reviewer.md:83-86` e `code-review/SKILL.md:84-86` ("lista completa de achados na MENSAGEM FINAL"). O JSON de achados (problem/why/fix/recommendation_why/comment) é o maior retorno e fica no contexto do orquestrador a demanda inteira, apesar de já existir `review-<id>-r<N>.md`.
+- **Plano de testes renomeado.** `agents/coder.md:217` e `reference/guia/testes.md:21` citam `plano-testes-<id>.md`, seção *Testes no código*; hoje o arquivo é `roteiro-testes-<id>.md` e não tem essa seção (as "Tests" estão nas entregas do plano: `to-spec/SKILL.md:77`). O dev procura algo que não existe.
+- **Figma sem dono.** `planner.md:27-28` pede "Figma salvo em `figma-<id>.md`" no plano, mas o planejador não tem MCP figma (`figma-mcp.md`: só dev, revisao, docs lêem) e nenhuma etapa do ORCHESTRATOR.md (1–3) manda ler/salvar o Figma antes do plano. Resultado: textos exatos de tela ficam para o dev depois da aprovação.
+- **Dois modelos de plano.** `to-spec/SKILL.md:44-87` (cabeçalhos em inglês: Decisions taken, Premises verified, Deliveries) × `plano-execucao.md` (Decisões tomadas, Premissas verificadas, "Plano de Execução v<N>", Branch e PR) incluído no `plano`; e JSON final da skill (:101-105, `spec`) × JSON do planejador (`planner/AGENT.md:57-70`, `plan`). O agente tem que adivinhar qual título/cabeçalho o painel lê.
+- **`ORCHESTRATOR.md:77` e `pr-review.md:30`: "the exception one level down"** é críptico; nomear `revisao-medium` / `revisao-low` (e o critério trivial) como na tabela *Agents and effort*.
+- **Reviewer "não afirme, pergunte" (`reviewer.md:42-56`) × `code-review` "um achado precisa de caminho rastreável"** estão alinhados, mas o ctx diz que o orquestrador "leva ao Pedro" — só o Felipe fala com o Pedro; o ORCHESTRATOR.md não tem passo para `doubts` (só `findings`, :70-73).
+
+**B. Estados do routing.toml**
+- Nenhum agente devolve `existing_work_found` (linha 15) nem `final_review_approved` (linha 44): são decisões do orquestrador; documentar como tal ou remover para não sugerir que o agente os emite.
+- Todos os `state` dos 6 agentes têm regra (conferido um a um). `environment_blocked` aparece em explorer, coder, qa, docs → `HUMAN_APPROVAL`, mas o ORCHESTRATOR.md (:38-39) manda resolver sozinho antes; o comentário da regra (linha 21) diz isso, a regra em si não.
+- Ações sem regra de entrada (`TEST_PLAN`, `PLAN_FIX`, `ESTIMATE`, `IMPLEMENT`) são só nomes de etapa; ok, mas `TEST_PLAN` não tem etapa própria no ORCHESTRATOR.md (o qa-plano roda dentro de IMPLEMENT).
+
+**C. Obsoletos / resíduos**
+- Nomes antigos em prompts: `explorer.md:10` e `qa.md:28` ("o que era do agente api"), `coder.md:1-5` ("Migrado de Codificador/…", "7 sistemas"), `reviewer.md:1-5` ("agente headless"), `reviewer.md:342-344`. Nenhuma referência viva a `bugs`, `seguranca`, `api-db` nos prompts gerados (só em docs de histórico); `aidw.py:5473` (`--effort … padrão: o do nível`) e a coluna `level` do metricas (aidw.py:4501, 4664) são resíduos de níveis.
+- `documenter.md:16,21` usa `wit_add_child_work_items` / `wit_update_work_item`; o MCP `ado` hoje expõe `wit_work_item`, `wit_work_item_write`, `wit_work_item_link_write` (as skills `ado-*`/`redigir-work-item` já usam os novos). O Haiku vai descobrir por ToolSearch, com tentativa e erro. `disallowed_tools` (context.toml) lista os nomes novos e antigos — ok.
+- `reference/documentador/payload-webhook.md`, `parsing-work-item.md`, `processo-analise.md`, `regras-por-sistema.md`, `templates.md` (≈19 KB) só são alcançáveis por `guia-documentacao.md` (19 KB) e descrevem o fluxo de webhook pré-v3.
+- `aidw.config.toml:17` comentário do worktree `<raiz>/<repo>/<id>` × real `<raiz>/<tipo-id>/<repo>` (`ORCHESTRATOR.md:115`).
+- `.claude/worktrees/strange-moser-7fba7c/` (3,9 MB) guarda cópia de agentes antigos (`bugs*`, `codificador*`); não é carregada, mas aparece em buscas e confunde auditoria.
+- `.claude/agents/*` e `.aidw/marketplace/plugins/aidw/agents/*` divergem de tamanho (ex. busca 36.431 × 36.527 B) — é o prefixo de namespace `aidw:`; ok, mas a ausência de um teste de equivalência de conteúdo deixa passar divergência real.
+
+**D. Duplicações (mesma regra em 3+ camadas)**
+- *Segredo só por nome/tamanho*: `orchestrator/policies/secrets.md`, `contexts/.../segredos.md`, `ambientes-e-escrita`, base de cada AGENT.md (RULES), `explorer.md:25`, `qa.md:40`, `plano-testes-qa`, skill `database-safe:6`.
+- *SELECT só pelo validador + forma exata do comando*: `database.md`, `ambientes-e-escrita:11`, `aprovacoes.md` (tabela), `explorer.md:16-20`, `qa.md:33-35`, `plano-testes-qa`, `agents/qa/AGENT.md:49-53`, `database-safe`.
+- *`AIDW-TESTE` vazio antes do commit*: ctx orchestrator.md:32, `testes.md:21-23`, `coder/AGENT.md:56`, hook de guarda, `fluxo.md:101`.
+- *Dado pessoal de terceiro → e-mail corporativo*: `ambientes-e-escrita:12`, `qa.md:40-42`, `plano-testes-qa`.
+- *Não mudar estado de Task/card, não comentar*: `ambientes-e-escrita:8-10`, `aprovacoes.md`, `cards-azure-devops`, orchestrator ctx:60-67, `documenter/AGENT.md:83`, `coder.md:309`, `reviewer.md:81`, `disallowed_tools`.
+- *Padrão de Guideline/Mapperly*: `escopo`, `guia-time` ×2, `coder.md` ×2, `reviewer.md:168`, `planner.md:14-16`.
+
+## 3. Lacunas
+
+**Referências citadas — existência confirmada:** `policies/aprovacoes.md` ✔ e `policies/cards-azure-devops.md` ✔ (em `contexts/safeweb/policies/`; nos prompts são inline, então o caminho relativo `policies/…` não resolve para o agente); `reference/ambiente-local-qa.md` ✔ (11,9 KB; regra 6 = servidor destacado não sobrevive, linha 20); `reference/guia/front/checklist-tela.md` ✔; `conhecimento/ambiente/apis-e-banco.md` e `figma-mcp.md` ✔; `reference/documentador/guia-documentacao.md` ✔; `tools/sql-consulta.ps1` e `msbuild.ps1` ✔.
+**Quebrada na prática:** `contexts/safeweb/agents/orchestrator.md:29-30` manda o orquestrador seguir *ambiente-local-qa* "regra 6", mas o arquivo só está registrado para `coder` e `qa` (`context.toml:352`, `:404`); `[agents.orchestrator].reference` (`context.toml:411-414`) não o lista, então o `CLAUDE.md` não o expõe (conferido na seção *Reference*).
+
+**Decisões do orquestrador que nenhum documento cobre**
+1. **Revisão com várias entregas.** Revisor recebe "a entrega `E<n>`" e devolve `delivery`, mas o arquivo é `review-<id>-r<N>.md` (`reviewer.md:74`) e a regra `review_approved → USER_REVIEW` é por resposta: não há definição se revisa-se por entrega ou o conjunto, se `r<N>` é por entrega ou global, nem quando disparar `USER_REVIEW`. Os patches já são `diff-<id>-<E1>-r<N>`.
+2. **Bug e Dívida técnica sem critérios de aceite.** O plano exige `CA`/`RN` "do card" e o QA exige "todo CA/RN em ao menos um passo"; Bug tem `ReproSteps`, Dívida muitas vezes nada. `to-spec` permite `CA (plano)` mas `planner.md:41` diz "só quando decisão ou código exigir". Falta a regra: Bug → CA1(plano) "o repro não falha mais" + regressão; Dívida → CA "sem mudança de comportamento".
+3. **Resultado sem sentido sem caminho de subida.** `ORCHESTRATOR.md:35-36` autoriza refazer "com a exceção que sobe", mas só `busca` e `qa` têm variante superior; `plano`, `dev`, `revisao` já são high e `docs` (Haiku) não tem Sonnet. Para esses, dizer: refazer no mesmo padrão com a causa nomeada, ou "pergunte ao Felipe pelo Opus".
+4. **`state` ausente/ inválido**: `ORCHESTRATOR.md:134` manda re-delegar "pedindo só o JSON", mas não diz com qual `subagent_type` nem se conta como a rodada única da etapa.
+5. **Dúvida para o Tech Lead (Pedro).** Reviewer manda; o ORCHESTRATOR.md (:70-73) só fala de achados. Falta: como registrar a dúvida respondida (`triagem-…`/`aprendizados`) e a volta ao reviewer.
+6. **Quem baixa o Figma e quando** (ver §2.A).
+7. **Subagente `docs` modo work item** (redigir US/Dívida): o OK dos campos vem "na tarefa", mas `policy_requires_approval` com rascunho é o único caminho; não há passo na orquestração para o rascunho de Dívida técnica gerado pela revisão (`orchestrator ctx:27-28`) além da frase.
+8. **MCP `claude-in-chrome`** é a ferramenta primária do QA (`qa.md:11`, frontmatter), mas não está em `aidw.config.toml [mcp].enabled` nem na tabela *MCP tools* do orquestrador/QA (só Playwright, DevTools, Figma, Context7); o orquestrador não pode "nomear" o MCP na tarefa como a regra exige.
+9. **Guideline desatualizado:** nada diz quem faz `git pull` no `C:\ProjetosTFS\Guideline` (o revisor tenta; é travado).
+10. **`caminho-curto.md`** manda "uma linha por correção em *Adendos* no fim do plano", mas o template (`to-spec`) não tem *Adendos*.
+
+## 4. Modelo e effort por papel
+
+| Agente | Atual | Coerência |
+|---|---|---|
+| orquestrador | Opus medium (chat) | Ok. É 76% do custo (memória `gasto-do-orquestrador`): o que reduz é o prompt (12k) + resultados curtos dos agentes (§2.A), não o modelo. |
+| busca | Haiku (sem effort) | **Arriscado em demandas com causa-raiz de bug, contrato entre sistemas e cadeia legado SOAP/HintPath**, onde o relatório "com `arquivo:linha`" é a base do plano. O padrão `busca-sonnet-medium` só existe "para refazer". Sugestão: manter Haiku para localizar/ids/SELECT; adicionar exceção "Sonnet medium: causa-raiz de Bug ou ≥2 sistemas envolvidos" (levantamento já usa high). Ver §5 item 8. |
+| plano | Sonnet high; medium no ajuste | Coerente. Plano errado custa uma rodada de revisão. |
+| dev | Sonnet high; medium em correção pequena | Coerente. Entregas triviais (texto, config) poderiam usar `dev-medium` — hoje a regra só permite em correção/ajuste. |
+| revisao | Sonnet high; medium/low na re-revisão | Coerente; é o prompt mais caro (18k): vale o corte do §1. Primeira rodada em high faz sentido (bugs com cenário). |
+| qa | Sonnet medium; high para refazer | Coerente para modo plano/automático. O modo teste com browser (E2E logado) e a escolha de `manual` pesa mais; se falhar por "não fez sentido" a escada existe. |
+| docs | Haiku | Ok para Tasks e texto da PR. **Fraco para** (a) modo work item (US/Dívida: `redigir-work-item` 5,4 KB, campos e linguagem de PO), (b) *Pendências para QA* extraídas do diff (chave do ConfigManager nova, scripts, projetos a versionar) — erro aqui vira comentário errado no card. Sugestão: `docs` Haiku em board/pr; exceção `docs-sonnet-medium` para work item e pr com diff grande. Sem hoje nenhuma variante acima do Haiku. |
+
+## 5. Melhorias concretas (arquivo:linha · impacto · esforço)
+
+1. **Systems e Policies por papel, não globais** — `aidw.py:1277-1290` (montagem), `contexts/safeweb/context.toml:296-420` (adicionar `systems = "none|short|full"` e `policies = [...]` por agente). Tirar Systems de `dev`/`revisao`/`docs`, Autonomia/Cards só de quem usa. **Impacto: −24 KB (≈7k tok) somados em 3 agentes e −6 KB nos demais, cada execução. Esforço: M** (mudança no `apply` + teste do gerador).
+2. **Enxugar `reviewer.md`** — `contexts/safeweb/agents/reviewer.md:97-144, 210-274, 327-344`; mover o modelo do review para `skills/code-review/SKILL.md:84-96`. **Impacto: −9 KB (~2,6k tok) por revisão, 2–4 revisões por demanda; remove o `git pull`/`az repos` conflitante. Esforço: S–M.**
+3. **Enxugar `coder.md` e unificar com `guia-time.md`** — `contexts/safeweb/agents/coder.md:11, 14-40, 44-104, 110, 141-207, 235-245, 289-298`; corrigir `:217` e `reference/guia/testes.md:21` (`roteiro-testes`/entrega do plano). **Impacto: −7 KB por dev e elimina a referência a `plano-testes-<id>`. Esforço: S.**
+4. **Retorno curto do revisor** — `agents/reviewer/AGENT.md:45-60`, `code-review/SKILL.md:84-86`, `reviewer.md:83-86`: JSON só com `id, severity, category, file, line, recommendation, problem (1 linha)`; detalhe e `comment` no `review-<id>-r<N>.md` (o `comment` do PR-review pode ficar). **Impacto: corta o maior bloco que permanece no contexto do orquestrador a demanda toda; maior alavanca no custo do chat. Esforço: S** (e o painel lê o `.md`).
+5. **Corrigir a receita de Task no `docs`** — `contexts/safeweb/agents/documenter.md:16-22`: nomes de ferramenta atuais (`wit_work_item_write`, `wit_work_item_link_write`) e criar skill `ado-criar-task` (campos, `AreaPath`/`IterationPath`, link ao pai) como `ado-ler-work-item`. **Impacto: menos erro/tentativa do Haiku; Esforço: S.**
+6. **Registrar `ambiente-local-qa` para o orquestrador** — `context.toml:411-414`: adicionar `{ path = "reference/ambiente-local-qa.md", when = "subir dev server/API local para o teste (regra 6)" }`. **Impacto: fecha a referência quebrada; Esforço: XS.**
+7. **Definir a revisão com várias entregas** — `ORCHESTRATOR.md:70-77` + `reviewer.md:74` + `routing.toml:30`: revisar por entrega (`review-<id>-<E1>-r<N>.md`, como o diff) e só ir a `USER_REVIEW` com todas aprovadas; dizer o que fazer com `doubts`. **Impacto: evita colisão de arquivos e USER_REVIEW prematuro; Esforço: S.**
+8. **Exceções de modelo com motivo** — `orchestrator/config/routing.toml` (nova entrada): `explorer` Sonnet medium "causa-raiz de Bug ou ≥2 sistemas/contrato"; `documenter` Sonnet medium "modo work item ou pendências de QA com diff grande"; `coder` medium "entrega sem lógica (texto/config)". Atualizar `docs/agentes.md:109-118` e *Agents and effort*. **Impacto: qualidade onde o Haiku falha sem custo no resto; Esforço: S** (requer `apply` e novo `subagent_type`).
+9. **Um só modelo de plano** — `skills/to-spec/SKILL.md:44-87, 101-105` × `contexts/safeweb/reference/orquestrador/plano-execucao.md` × `agents/planner/AGENT.md:57-70`: cabeçalhos em português (os que o painel lê), título `Plano de Execução v<N>`, um só JSON; regra de CA/RN para Bug e Dívida (`planner.md:41`). **Impacto: menos ambiguidade no plano, no painel e no QA; Esforço: S.**
+10. **Dono e passo do Figma** — `ORCHESTRATOR.md:47-58` (etapa Understand/Explore) e `contexts/.../planner.md:27-28`: se a demanda tem tela e link do Figma, o orquestrador (ou um `dev`/`docs` de leitura) grava `figma-<id>.md` antes do plano, uma leitura por demanda (cota 20/mês). **Impacto: plano com textos exatos; evita dev gastar cota depois; Esforço: S.**
+11. **Higiene dos prompts e do gerador** — remover "Max retries … a build, a test" e linhas inúteis do Runtime (`aidw.py:1277-1285`), trocar `HUMAN_APPROVAL` por `policy_requires_approval` (`ambientes-e-escrita.md:7`), "exception one level down" por nomes (`ORCHESTRATOR.md:77`, `pr-review.md:30`), limpar `aidw.py:5473`/colunas `level`, `aidw.config.toml:17`, apagar `.claude/worktrees/strange-moser-7fba7c`. **Impacto: coerência e ~0,5 KB/agente; Esforço: XS–S.**
+12. **Arquivar o legado do documentador e adicionar `claude-in-chrome` à config** — `contexts/safeweb/reference/documentador/{payload-webhook,parsing-work-item,processo-analise,regras-por-sistema,templates}.md` e `guia-documentacao.md` (19 KB, webhook pré-v3) para `docs/`; incluir `claude-in-chrome` em `aidw.config.toml [mcp].enabled`/`config/mcp.toml` para entrar na tabela de MCP (o QA o usa como primário). **Impacto: menos ruído na busca de referência; orquestrador pode nomear o MCP; Esforço: XS–S.**
