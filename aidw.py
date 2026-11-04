@@ -4552,6 +4552,7 @@ API_PRICES = (("claude-opus-5-5", 4, 20, 0.2), ("claude-opus", 5, 25, 0.5), ("cl
 ORCH_METRICS = "metricas-orquestrador.md"
 ORCH_COLS = ("Sessão", "Início", "Atualizado", "Modelo", "Turnos", "Duração", "Entrada", "Cache escrito",
              "Cache lido", "Saída", "Custo equiv. (USD)")
+STEP_COLS = ("Etapa", "Turnos", "Duração", "Entrada", "Cache escrito", "Cache lido", "Saída", "Custo equiv. (USD)")
 
 
 def api_cost(model: str, tokens_in: int, cache_write: int, cache_read: int, tokens_out: int) -> float | None:
@@ -4567,11 +4568,14 @@ def record_orchestrator(args: argparse.Namespace) -> int:
     f = Path(args.demand).resolve() / ORCH_METRICS
     session, model = args.session[:8], args.model or "?"
     rows: list[list[str]] = []
+    steps: list[list[str]] = []
     if f.exists():
         for line in f.read_text(encoding="utf-8").splitlines():
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if len(cells) == len(ORCH_COLS) and re.fullmatch(r"[0-9a-f-]{4,}", cells[0]):
                 rows.append(cells)
+            elif len(cells) == len(STEP_COLS) and re.fullmatch(r"[A-Z][A-Z_]*", cells[0]):
+                steps.append(cells)
 
     def num(s: str) -> int:
         return int(re.sub(r"\D", "", s) or 0)
@@ -4587,11 +4591,28 @@ def record_orchestrator(args: argparse.Namespace) -> int:
     f.parent.mkdir(parents=True, exist_ok=True)
     row[2:] = [now, model, str(sums[0]), f"{sums[1]}s", *(f"{n:,}" for n in sums[2:]),
                f"{cost:.2f}" if cost is not None else "—"]
+    # por etapa (a etapa gravada no demand.json quando o turno começou): soma o custo de cada turno no seu modelo
+    step = (args.step or "").strip().upper() or "SEM_ETAPA"
+    srow = next((r for r in steps if r[0] == step), None)
+    if srow is None:
+        srow = [step, "0", "0s", "0", "0", "0", "0", "—"]
+        steps.append(srow)
+    turn = (args.input, args.cache_write, args.cache_read, args.output)
+    ssums = [num(srow[1]) + 1, num(srow[2]) + round((args.duration_ms or 0) / 1000),
+             *(num(srow[3 + i]) + turn[i] for i in range(4))]
+    tcost = api_cost(model, *turn)
+    prev = None if srow[7] == "—" else float(srow[7].replace(",", "."))
+    scost = None if tcost is None and prev is None else (prev or 0) + (tcost or 0)
+    srow[1:] = [str(ssums[0]), f"{ssums[1]}s", *(f"{n:,}" for n in ssums[2:]),
+                f"{scost:.4f}" if scost is not None else "—"]
     f.write_text("# Métricas do orquestrador\n\nConsumo do chat principal (o orquestrador) por sessão e modelo, somado a "
                  "cada turno pelo mod aidw-mods. O custo é o equivalente em preço de API (cache escrito a 2× a entrada), "
                  "uma régua do peso no limite do plano, não a conta. As delegações ficam no metricas.md.\n\n"
                  "| " + " | ".join(ORCH_COLS) + " |\n|" + "---|" * len(ORCH_COLS) + "\n"
-                 + "".join("| " + " | ".join(r) + " |\n" for r in rows), encoding="utf-8", newline="\n")
+                 + "".join("| " + " | ".join(r) + " |\n" for r in rows)
+                 + "\n## Por etapa\n\nOs mesmos turnos somados pela etapa da demanda em que aconteceram.\n\n"
+                 "| " + " | ".join(STEP_COLS) + " |\n|" + "---|" * len(STEP_COLS) + "\n"
+                 + "".join("| " + " | ".join(r) + " |\n" for r in steps), encoding="utf-8", newline="\n")
     print(json.dumps({"ok": True, "file": f.as_posix(), "session": session, "model": model, "turns": sums[0],
                       "cost_usd": cost}, ensure_ascii=False))
     return 0
@@ -4685,6 +4706,8 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
            "tokens_out": None, "cost_usd": None, "limits": "—"}
     if args.tool_uses is not None:
         row["turns"] = args.tool_uses  # no subagente do Claude, a coluna guarda as chamadas de ferramenta
+    if args.usage_model:  # o mod somou o uso de cada resposta do subagente: o custo equivalente em preço de API
+        row["cost_usd"] = api_cost(args.usage_model, args.input, args.cache_write, args.cache_read, args.output)
     if provider == "codex" and args.codex_task:
         usage = codex_subagent_usage(args.codex_task)
         if usage:
@@ -5507,6 +5530,9 @@ def main() -> int:
     p_rec.add_argument("--tool-uses", type=int, help="Claude: tool_uses do resultado do Agent")
     p_rec.add_argument("--duration-ms", type=int, help="Claude: duration_ms do resultado do Agent")
     p_rec.add_argument("--codex-task", help="Codex: task_name do spawn (lê os tokens reais da sessão)")
+    p_rec.add_argument("--usage-model", help="Claude (mod): modelo das respostas do subagente, para o custo em US$")
+    for name in ("input", "cache-write", "cache-read", "output"):
+        p_rec.add_argument(f"--{name}", type=int, default=0, help=f"Claude (mod): tokens de {name} somados do subagente")
     p_orc = sub.add_parser("record-orchestrator",
                            help="soma um turno do orquestrador ao metricas-orquestrador.md (gravado pelo mod)")
     p_orc.add_argument("--demand", required=True, help="pasta da demanda")
@@ -5515,6 +5541,7 @@ def main() -> int:
     for name in ("input", "cache-write", "cache-read", "output"):
         p_orc.add_argument(f"--{name}", type=int, default=0, help=f"tokens de {name} do turno")
     p_orc.add_argument("--duration-ms", type=int, help="duração do turno")
+    p_orc.add_argument("--step", help="etapa da demanda em que o turno aconteceu")
     args = parser.parse_args()
     command = args.command or "setup"
     if command == "record-orchestrator":
