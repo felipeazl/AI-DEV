@@ -189,17 +189,6 @@ export function demandSetId(command: string): string | null {
   return /aidw\.py["']?\s+demand\s+set\s+["']?([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? null
 }
 
-/**
- * Os ids de demanda num texto (o argumento do `/aidw:go`): `us-116332`, `bug-143560`, e os números de work
- * item soltos ou num link (`.../edit/101662`), que acham a pasta `<tipo>-<número>`.
- */
-export function demandIds(text: string): { named: string[]; numbers: string[] } {
-  const lower = text.toLowerCase()
-  const named = [...new Set(lower.match(/\b[a-z]{1,6}-[a-z0-9]+(?:-[a-z0-9]+)*\b/g) ?? [])].filter(id => /\d/.test(id))
-  const numbers = [...new Set(lower.match(/\b\d{4,}\b/g) ?? [])]
-  return { named, numbers }
-}
-
 /** 1234567 → "1,2M"; 117050 → "117k". */
 export function compact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`

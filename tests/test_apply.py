@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 # ignore_cleanup_errors: o doctor roda `claude mcp list`, que pode deixar servidores MCP segurando a
@@ -981,6 +982,29 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn('"levantamento us-8"', ctx_lev)
             code, d = wt.aidw_json(root, "demand", "set", "us-8", "--step", "ESTIMATE", "--json")
             self.assertEqual((code, d["step"]), (0, "ESTIMATE"), d)
+
+            # session bind: liga o modo sem o hook (o terminal não manda o /aidw:go ao hook) e a demanda vem do
+            # registro, com contexto e pasta, para qualquer id (demanda livre sem número)
+            sessions = lambda: json.loads((root / "state" / "sessions.json").read_text(encoding="utf-8"))  # noqa: E731
+            with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t1"}):
+                code, d = wt.aidw_json(root, "session", "bind", "--json")
+                self.assertEqual((code, d.get("demand")), (0, None), d)
+                code, d = wt.aidw_json(root, "session", "bind", "--demand", "feat-nao-existe", "--json")
+                self.assertEqual(code, 1, "demanda sem demand.json não liga")
+                code, d = wt.aidw_json(root, "demand", "set", "feat-painel-v5", "--status", "active", "--json")
+                self.assertEqual(code, 0, d)
+                entry = sessions()["t1"]
+                self.assertEqual((entry["demand"], entry["context"]), ("feat-painel-v5", d["context"]))
+                self.assertTrue(entry["folder"].endswith("/feat-painel-v5"), entry)
+                code, d = wt.aidw_json(root, "session", "bind", "--demand", "us-8", "--json")
+                self.assertEqual((code, sessions()["t1"]["demand"]), (0, "us-8"), d)
+            out = json.loads(hook({"session_id": "t1", "hook_event_name": "SessionStart", "source": "compact"}))
+            self.assertIn("na demanda us-8", out["hookSpecificOutput"]["additionalContext"])
+            with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t2"}):
+                wt.aidw_json(root, "demand", "set", "us-8", "--step", "DONE", "--json")
+            self.assertNotIn("t2", sessions(), "demand set fora do modo orquestrador não liga a sessão")
+            code, d = wt.aidw_json(root, "session", "unbind", "--session", "t1", "--json")
+            self.assertNotIn("t1", sessions())
 
 
     def test_contexto_e_arquivo_corrompido(self) -> None:

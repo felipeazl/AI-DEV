@@ -6,7 +6,6 @@ import {
   IDLE_MIN,
   IDLE_MS,
   agentSpec,
-  demandIds,
   demandSetId,
   labelFor,
   parseDelegation,
@@ -234,40 +233,28 @@ async function fromCwd($: EngineInterface, cwd: string): Promise<string | null> 
 }
 
 /**
- * A demanda pelo que foi passado ao `/aidw:go` (`us-116332`, ou só o número), para a sessão aberta fora da
- * pasta da demanda (chat sem pasta, ou na pasta do contexto).
+ * Confere se esta sessão está no modo orquestrador e qual demanda ela conduz (os painéis só abrem pelo botão ou
+ * comando). A demanda é a pasta que o registro da sessão traz (`aidw.py session bind` ou `demand set`, em qualquer
+ * contexto e plataforma); sem ela, a pasta do chat quando ele abriu na demanda ou num worktree dela.
  */
-async function fromArgument($: EngineInterface, argument: string): Promise<string | null> {
-  const dir = await stateDir($)
-  if (!dir) return null
-  const ids = demandIds(argument)
-  for (const id of ids.named) if (await $.fs.exists(`${dir}/${id}/demand.json`)) return `${dir}/${id}`
-  if (!ids.numbers.length) return null
-  const folders = (await $.fs.list(dir).catch(() => [])).filter(f => f.kind === 'dir').map(f => f.name)
-  for (const n of ids.numbers) {
-    const hit = folders.find(f => f.endsWith(`-${n}`))
-    if (hit && (await $.fs.exists(`${dir}/${hit}/demand.json`))) return `${dir}/${hit}`
-  }
-  return null
-}
-
-/** Confere se esta sessão está no modo orquestrador; ao entrar, acha a demanda (os painéis só abrem pelo botão ou comando). */
 async function checkActive($: EngineInterface): Promise<boolean> {
   let on = false
-  let argument = ''
+  let folder = ''
   try {
-    const sessions = JSON.parse(await $.fs.read(`${root}/state/sessions.json`)) as Record<string, { argument?: string }>
+    const sessions = JSON.parse(await $.fs.read(`${root}/state/sessions.json`)) as Record<string, { folder?: string }>
     const id = await $.session.id()
     on = Object.prototype.hasOwnProperty.call(sessions, id)
-    argument = String(sessions[id]?.argument ?? '')
+    folder = String(sessions[id]?.folder ?? '')
   } catch {
     on = false
   }
   const was = await read($, active)
   if (on !== was) await update($, active, () => on)
-  if (on && !(await read($, snap))) {
-    const dir = (await fromCwd($, await $.session.cwd())) ?? (await fromArgument($, argument))
-    if (dir) await refresh($, dir)
+  if (on) {
+    const bound = folder && (await $.fs.exists(`${norm(folder)}/demand.json`)) ? norm(folder) : null
+    const current = (await read($, snap))?.dir
+    const dir = bound ?? (current ? null : await fromCwd($, await $.session.cwd()))
+    if (dir && dir !== current) await refresh($, dir)
   }
   if (on && !was) await measure($)
   if (!on && was) for (const id of Object.values(PANE)) await $.ui.close({ id }).catch(() => undefined)
