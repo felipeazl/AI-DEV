@@ -55,7 +55,16 @@ export type OrchestratorRow = {
   /** Equivalente em preço de API (não é a conta da assinatura). */
   cost: number | null
 }
-export type OrchestratorUsage = { rows: OrchestratorRow[]; turns: number; tokens: number; cost: number | null }
+/** Uma linha da seção *Por etapa* do metricas-orquestrador.md: os turnos do chat principal numa etapa da demanda. */
+export type OrchestratorStep = { step: string; turns: number; tokens: number; cost: number | null }
+export type OrchestratorUsage = {
+  rows: OrchestratorRow[]
+  /** A seção *Por etapa* (2026-11-04); vazia nos arquivos de antes. */
+  steps: OrchestratorStep[]
+  turns: number
+  tokens: number
+  cost: number | null
+}
 
 export type Finding = {
   id: string
@@ -224,6 +233,15 @@ export type RunningAgent = {
 export type Pending = { agent: string; level: string | null; label: string; demand: string }
 
 /** Uma janela de uso do plano (5h, 7d), da `$.session.usage().rateLimits`. */
+/** Os quatro números de uso de uma resposta (ou a soma de várias) e o modelo que respondeu. */
+export type TokenUsage = {
+  model: string
+  input_tokens: number
+  cache_creation_input_tokens: number
+  cache_read_input_tokens: number
+  output_tokens: number
+}
+
 export type Limit = { kind: '5h' | '7d'; percent: number; resetsAt: string }
 export type Usage = { percent: number; tokens: number; limits: Limit[] }
 
@@ -238,6 +256,11 @@ declare module 'claude-code' {
       running: RunningAgent[]
       /** Agentes do AiDW em segundo plano, pelo agentId: o registro sai quando cada um termina. */
       background: Record<string, Pending>
+      /**
+       * Uso de cada subagente pelo agentId: a última resposta (os tokens do registro) e a soma de todas (o custo).
+       * No estado, e não no módulo, para atravessar um `/reload-plugins` ou um `aidw.py install` (2026-11-04).
+       */
+      agentUsage: Record<string, { last: TokenUsage; sum: TokenUsage }>
       hidden: boolean
       /** A aba aberta em cada painel (`geral`, `metricas`, `decidir`). */
       tabs: Record<string, string>
