@@ -2926,6 +2926,21 @@ def pr_refresh(ctx: dict | None, e: dict, reg: dict) -> dict:
             "incremental_diff": incremental, **e}
 
 
+def fresh_base(main: Path, base: str) -> tuple[str, str]:
+    """Troca uma base local atrasada pela `origin/<base>` (o `desenvolvimento` local ficava velho; 2026-11-04)."""
+    if base.startswith("origin/") or git_proc(main, "rev-parse", "--verify", "-q", f"refs/heads/{base}").returncode:
+        return base, ""
+    remote = f"origin/{base}"
+    if git_proc(main, "rev-parse", "--verify", "-q", f"refs/remotes/{remote}").returncode:
+        return base, ""
+    local, upstream = git_out(main, "rev-parse", base), git_out(main, "rev-parse", remote)
+    if local == upstream:
+        return base, ""
+    if git_proc(main, "merge-base", "--is-ancestor", base, remote).returncode == 0:
+        return remote, f"a branch local {base} está atrás de {remote}: a base usada é {remote}"
+    return base, f"a branch local {base} tem commits que não estão em {remote}: a base usada é a local"
+
+
 def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str = "", pr: str = "") -> dict:
     """Cria (ou devolve, se já existe) o worktree da demanda. {ok, path, branch, base, ...} ou {ok: False, error}.
     Com `pr`: worktree destacado e só leitura na PR já mesclada no destino, para revisar a PR de outra pessoa."""
@@ -2982,6 +2997,9 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
         base = base or default_base(main)
         if git_proc(main, "rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
             return {"ok": False, "error": f"base {base!r} não existe em {main.as_posix()}"}
+        base, note = fresh_base(main, base)
+        if note:
+            warnings.append(note)
         main_dirty = bool(git_out(main, "status", "--porcelain"))
         if main_dirty:
             warnings.append("o working copy principal tem alterações locais; elas NÃO entram no worktree")
