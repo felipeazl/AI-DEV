@@ -55,6 +55,31 @@ let python = 'python'
 // O uso da última resposta de cada subagente (turn.step): é o tamanho do contexto no fim, o `totalTokens` do Agent e
 // o `subagent_tokens` da notificação. O `usage` do turn.complete soma todas as respostas (o cache relido a cada uma).
 const lastUsage = new Map<string, TurnUsage>()
+// A soma do uso de todas as respostas de cada subagente (o que a API cobra): o custo em US$ da delegação (2026-11-04).
+const sumUsage = new Map<string, TurnUsage>()
+
+function addUsage(id: string, u: TurnUsage): void {
+  const s = sumUsage.get(id)
+  sumUsage.set(id, s
+    ? {
+        ...u,
+        input_tokens: s.input_tokens + u.input_tokens,
+        cache_creation_input_tokens: s.cache_creation_input_tokens + u.cache_creation_input_tokens,
+        cache_read_input_tokens: s.cache_read_input_tokens + u.cache_read_input_tokens,
+        output_tokens: s.output_tokens + u.output_tokens,
+      }
+    : u)
+}
+
+/** Os argumentos do custo para o `aidw.py record` (vazio quando o mod não viu as respostas do subagente). */
+function costArgs(id: string | undefined): string[] {
+  const u = id ? sumUsage.get(id) : undefined
+  if (id) sumUsage.delete(id)
+  return u
+    ? ['--usage-model', u.model, '--input', String(u.input_tokens), '--cache-write', String(u.cache_creation_input_tokens),
+        '--cache-read', String(u.cache_read_input_tokens), '--output', String(u.output_tokens)]
+    : []
+}
 // As últimas mensagens do usuário (a trava de `model` confere se ele pediu outro modelo).
 const userPrompts: string[] = []
 let kbCache: { name: string; folder: string; path: string }[] | null = null
@@ -256,6 +281,7 @@ async function record(
   tokens: number,
   tools: number,
   ms: number,
+  agentId?: string,
 ): Promise<string | null> {
   const argv = [
     python, `${root}/aidw.py`, 'record',
@@ -263,6 +289,7 @@ async function record(
     '--tokens', String(tokens), '--tool-uses', String(tools), '--duration-ms', String(Math.round(ms)),
     ...(p.level ? ['--level', p.level] : []),
     ...(state ? ['--state', state] : []),
+    ...costArgs(agentId),
   ]
   try {
     const ran = await $.process.run(argv, { cwd: root, timeoutMs: 60_000 })
@@ -311,6 +338,7 @@ async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: num
     python, `${root}/aidw.py`, 'record-orchestrator', '--demand', s.dir, '--session', await $.session.id(),
     '--model', u.model, '--input', String(u.input_tokens), '--cache-write', String(u.cache_creation_input_tokens),
     '--cache-read', String(u.cache_read_input_tokens), '--output', String(u.output_tokens), '--duration-ms', String(Math.round(ms)),
+    '--step', s.step,
   ]
   await $.process.run(argv, { cwd: root, timeoutMs: 30_000 }).catch(() => null)
 }
@@ -485,8 +513,10 @@ export const register: Register = (on, options) => {
 
     const ran = await next(e)
     const result = ran.result as BuiltinToolResults['Agent'] | undefined
+    const agentId = (await read($, running)).find(r => r.key === key)?.agentId
     if (ran.deny !== undefined || ran.isError || !result) {
       await update($, running, list => list.filter(r => r.key !== key))
+      if (agentId) sumUsage.delete(agentId)
       return ran
     }
     if (result.status === 'async_launched') {
@@ -499,7 +529,7 @@ export const register: Register = (on, options) => {
     if (result.status !== 'completed') return ran
 
     const text = result.content.map(c => c.text).join('\n')
-    const header = await record($, p, parseState(text), result.totalTokens, result.totalToolUseCount, result.totalDurationMs)
+    const header = await record($, p, parseState(text), result.totalTokens, result.totalToolUseCount, result.totalDurationMs, agentId)
     return { ...ran, context: [...(ran.context ?? []), notice(header, p)] }
   })
 
@@ -519,6 +549,7 @@ export const register: Register = (on, options) => {
     const id = e.agentId
     if (id && r.usage) {
       lastUsage.set(id, r.usage)
+      addUsage(id, r.usage)
       const tokens = totalTokens(r.usage)
       if ((await read($, running)).some(x => x.agentId === id || x.key === id)) {
         await update($, running, list => list.map(x => (x.agentId === id || x.key === id ? { ...x, tokens } : x)))
@@ -557,7 +588,7 @@ export const register: Register = (on, options) => {
       await update($, running, list => list.filter(r => r.key !== id))
       const state = parseState(e.answer)
       const header = last
-        ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs)
+        ? await record($, p, state, totalTokens(last), await toolUses($, id), e.durationMs, id)
         : null
       await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: notice(header, p) }] } })
     } else if (!id && (await read($, active))) {
