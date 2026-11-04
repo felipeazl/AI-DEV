@@ -115,7 +115,8 @@ o que a PR fazia, os achados que importam para o sistema e se a PR foi aprovada.
 - Com demanda: `python "{{root}}/aidw.py" demand set <id> --status done --note "<uma linha do que foi entregue>"`.
 - Mostre a situação do worktree (`worktree inspect <id>`). Se estiver limpo e publicado, sugira
   `worktree remove <id>`. Não remova sem o usuário pedir: a branch ou o PR podem ainda estar em revisão.
-- Esta skill também encerra o modo orquestrador desta sessão, como o `sair`.
+- Esta skill também encerra o modo orquestrador desta sessão, como o `sair`: por último, rode
+  `python "{{root}}/aidw.py" session unbind` (no terminal, o hook não recebe o `/aidw:done`).
 
 ## 6. Relatório
 
