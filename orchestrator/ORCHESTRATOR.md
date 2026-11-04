@@ -52,7 +52,9 @@ is disabled (do them yourself, cheaply). `pr-review` and `levantamento` have the
 2. **Explore** (`EXPLORE`) — one {{agent:explorer}} task with the numbered questions the plan needs (where the change
    goes, current behavior, the contract of each dependency, the real ids and data it depends on). Its report
    `exploracao-<assunto>.md` stays in the folder. Skip it when the card already names the files and the change is
-   small: the planner reads them.
+   small: the planner reads them. A bug, or a card that says something "does not happen": question 1 is the proof of
+   the premise (reproduce it or show the cause with `file:line`, query or log). Not proven → bring it to the user
+   before planning, test data or environment.
 3. **Plan** (`PLAN`) — a fresh {{agent:planner}} with paths only (summary, exploration reports) writes `plano-<id>.md`:
    spec-driven, short, self-contained, with the card's `CA`/`RN` and the deliveries `E1…`. `plan_needs_exploration` →
    the explorer answers its `explore` questions, then a new planner. Only `open_questions` reach the user.
@@ -109,6 +111,9 @@ is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
 `UX_VALIDATION` — `demand set <id> --extra-step <STEP>` when the plan says the demand goes through one): only the user
 moves a demand into or out of them, never on your own — PR open → `CODE_REVIEW`; the team asked for changes → the fix
 step, by the short path; sent to QA → `QA_TEST`; QA returned a bug → the fix step again; accepted → `DONE`.
+**Long waits** (an outside step, the QA team, VPN, UX, the user away for hours): this chat costs a cache rewrite of its
+whole context each time it wakes. Leave the step recorded, tell the user to close this chat and to resume with
+`/aidw:go <id>` in a new one; the demand folder has everything.
 
 **Workspace** — a demand that changes code gets its own git worktree; read-only requests need none. Create it with
 `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id> --slug <slug> --base <base>` (skill

@@ -17,6 +17,8 @@ function isPlaceholder(value: string, keyed: boolean): boolean {
   )
 }
 
+const MASKED = /«segredo ocultado: [^»]*»/g
+
 type Rule = { name: string; re: RegExp; group: number; label?: (m: RegExpExecArray) => string }
 
 // A ordem importa: blocos inteiros (chave privada, connection string) antes das chaves soltas.
@@ -52,7 +54,10 @@ const RULES: Rule[] = [
 export function redact(text: string): Redaction {
   if (text.length < 8) return { text, hits: [] }
   const hits: string[] = []
-  let out = text
+  // Idempotente: uma máscara que já está no texto (resultado filtrado de novo) fica guardada e volta igual no fim;
+  // sem isso a regra de connection string mascarava o próprio «segredo ocultado…» (2026-11-04).
+  const kept: string[] = []
+  let out = text.replace(MASKED, m => `\u0000${kept.push(m) - 1}\u0000`)
   for (const rule of RULES) {
     out = out.replace(rule.re, (...args: unknown[]) => {
       const groups = args.slice(0, -2).filter((a): a is string => typeof a === 'string' || a === undefined) as string[]
@@ -65,6 +70,7 @@ export function redact(text: string): Redaction {
       return rule.group === 0 ? mask(name, value) : whole.replace(value, mask(name, value))
     })
   }
+  if (kept.length) out = out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => kept[Number(i)] ?? '')
   return { text: out, hits }
 }
 

@@ -16,7 +16,7 @@ import type { AgentDef } from './aidw'
 import type { DemandFile, ExternalStep } from './artifacts'
 import { checkDelegation } from './guards'
 import type { Runtime } from './guards'
-import { redactBlocks, redactValue } from './secrets'
+import { redactValue } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
 import { Band, Panel, pendingCount, tabHasData, viewFor, viewTitle, visibleTabs } from './views'
 import type { Actions, BandNav, UI, View } from './views'
@@ -566,16 +566,9 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // Filtro de segredos: nenhuma linha da conversa (do orquestrador ou dos agentes) leva o valor de um segredo.
-  // Onde a organização assenta um plugin de segurança acima (cc-plugin-sec-default), o session.append não chega
-  // aqui; o resultado de cada ferramenta, sim: o filtro roda nele também, antes de virar linha.
-  on('session.append', async ($, e, next) => {
-    if (!(await read($, active))) return next(e)
-    const r = redactBlocks(e.message.content)
-    if (!r.hits.length) return next(e)
-    hidSecrets($, r.hits)
-    return next({ ...e, message: { ...e.message, content: r.content } })
-  })
+  // Filtro de segredos: o resultado de cada ferramenta (do orquestrador ou dos agentes) é filtrado antes de virar
+  // linha da conversa. Não há hook de session.append: o plugin de segurança da organização (cc-plugin-sec-default)
+  // roda antes e o pulava, e o app avisava disso a cada sessão (removido em 2026-11-04).
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     // um resultado com erro e um negado ficam como estão; o resto vai como resultado próprio (o core o mapeia de novo)
