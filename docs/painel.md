@@ -161,6 +161,8 @@ em Métricas).
 - **Orquestrador:** cache lido, cache escrito, saída, a parte dele no total da demanda e uma linha por sessão e modelo
   (turnos, cache lido, tokens, custo equivalente). Vem do `metricas-orquestrador.md`, que o mod soma a cada turno
   (`aidw.py record-orchestrator`). O custo é o preço de API: uma régua do peso no limite do plano, não a conta.
+- **Orquestrador por etapa:** a seção *Por etapa* do `metricas-orquestrador.md` em barras, da etapa mais cara para a
+  mais barata, com tokens, turnos e custo equivalente (só nas demandas gravadas a partir de 2026-11-04).
 - **Tokens por dia** (colunas, com tooltip de chamadas e tempo), só com dois dias ou mais; **por modelo e effort** em
   barras.
 - **Resultado das chamadas e retrabalho:** etiquetas com contagem e as voltas.

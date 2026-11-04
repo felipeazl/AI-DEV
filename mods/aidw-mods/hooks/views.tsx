@@ -3,7 +3,7 @@
 
 import type { Elements, ThemeKey } from 'claude-code'
 
-import type { Delegation, DemandKind, Doubt, Finding, PrComment, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
+import type { Delegation, DemandKind, Doubt, Finding, PrComment, OrchestratorStep, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { compact } from './aidw'
 import { KIND_LABEL } from './artifacts'
 import { stateLabel } from './snapshot'
@@ -1120,6 +1120,40 @@ function hbars(ui: UI, key: string, label: string, groups: Group[]) {
   )
 }
 
+/** O orquestrador por etapa da demanda: onde o chat principal gastou (barra pelo custo, ou pelos tokens sem preço). */
+function stepsCard(ui: UI, steps: OrchestratorStep[]) {
+  const { Box, Text } = ui
+  const priced = steps.some(x => x.cost !== null)
+  const weight = (x: OrchestratorStep) => (priced ? (x.cost ?? 0) : x.tokens)
+  const sorted = [...steps].sort((a, b) => weight(b) - weight(a))
+  const max = Math.max(1e-9, ...sorted.map(weight))
+  return card(
+    ui,
+    'etapas',
+    'Orquestrador por etapa',
+    <Box flexDirection="column">
+      {sorted.map(x => (
+        <Box key={`et-${x.step}`} gap={2} alignItems="center">
+          <Box width={18}>
+            <Text>{x.step}</Text>
+          </Box>
+          <Box flexGrow={1}>{meter(ui, `et-${x.step}-m`, Math.round((weight(x) / max) * 100), C.claude, 260)}</Box>
+          <Box width={7} justifyContent="flex-end">
+            <Text color={C.text}>{compact(x.tokens)}</Text>
+          </Box>
+          <Box width={10} justifyContent="flex-end">
+            <Text color={C.dim}>{`${x.turns} turno${x.turns === 1 ? '' : 's'}`}</Text>
+          </Box>
+          <Box width={10} justifyContent="flex-end">
+            <Text color={C.mid}>{x.cost !== null ? `US$ ${x.cost.toFixed(2)}` : '—'}</Text>
+          </Box>
+        </Box>
+      ))}
+    </Box>,
+    'chat principal · tokens · turnos · custo equivalente',
+  )
+}
+
 function Metrics(ui: UI, v: ViewState) {
   const { Box, Text } = ui
   const s = v.snap
@@ -1196,6 +1230,7 @@ function Metrics(ui: UI, v: ViewState) {
           </Box>,
           'chat principal · uma linha por sessão e modelo',
         )}
+      {o.steps.length > 0 && stepsCard(ui, o.steps)}
       {days.length > 1 && card(ui, 'dias', 'Tokens por dia', dayChart(ui, days), ui.Svg ? 'passe o mouse para ver chamadas e tempo' : '')}
       {d.length > 0 && hbars(ui, 'md', 'Por modelo e effort', groupBy(d, x => `${modelName(x.model)} · ${x.effort}`).sort((a, b) => b.tokens - a.tokens))}
       {d.length > 0 &&

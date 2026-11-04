@@ -98,6 +98,9 @@ ferramenta, duração e o `state` lido do JSON final do agente.
   que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
   agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
   caminho não perde o registro.
+- **Robustez:** o uso de cada subagente fica no estado da sessão (atravessa um `/reload-plugins`); o mod lê a última
+  linha JSON da saída do `record`, e quando o `record` gravou mas não devolveu o header, o aviso diz que a linha já
+  está lá (o orquestrador não registra de novo).
 - **O custo da delegação:** o mod soma o uso de todas as respostas do subagente (entrada, cache escrito, cache lido e
   saída, no modelo delas) e passa ao `record`, que grava na coluna *Custo (USD)* o equivalente em preço de API. A
   coluna de tokens continua sendo o contexto no fim; o custo é o que a API cobra pela soma. Sem as respostas (o
@@ -154,10 +157,11 @@ fim da demanda.
 
 ## Filtro de segredos
 
-Toda linha da conversa do orquestrador e dos agentes passa pelo filtro antes de entrar no contexto e no transcript, e
-o resultado de cada ferramenta também, antes de virar linha. Com o plugin de segurança da organização
-(`cc-plugin-sec-default`), que fica acima dos plugins do usuário e passa as linhas adiante sem chamar os de baixo, é o
-filtro no resultado das ferramentas que vale; as linhas, o plugin da organização cuida.
+O resultado de cada ferramenta do orquestrador e dos agentes passa pelo filtro antes de virar linha da conversa,
+inclusive o que volta com erro (uma connection string numa exceção): esse volta como erro, com o texto filtrado. O
+texto do modelo e o que você digita, o plugin de segurança da organização (`cc-plugin-sec-default`) cuida: ele fica
+acima dos plugins do usuário e não chama os de baixo nas linhas, por isso o mod não tem hook de `session.append`
+(2026-11-04). O filtro é idempotente: um texto já mascarado passa de novo igual.
 Ele mascara o valor e mostra só o nome e o tamanho, como pede a policy de segredos:
 `Password=«segredo ocultado: Password, 11 caracteres»`.
 - **O que ele pega:**

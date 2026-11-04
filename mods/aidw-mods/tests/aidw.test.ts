@@ -28,7 +28,26 @@ describe('métricas do orquestrador', () => {
       ['dcc0d767', 1, 9, 2_105, 1_000, null],
     ])
     expect([o.turns, o.tokens, o.cost]).toEqual([3, 605_620, 2.51])
-    expect(parseOrchestrator('')).toEqual({ rows: [], turns: 0, tokens: 0, cost: null })
+    expect(parseOrchestrator('')).toEqual({ rows: [], steps: [], turns: 0, tokens: 0, cost: null })
+  })
+
+  test('seção Por etapa: os turnos do chat principal por etapa da demanda', async () => {
+    const md = [
+      '| Sessão | Início | Atualizado | Modelo | Turnos | Duração | Entrada | Cache escrito | Cache lido | Saída | Custo equiv. (USD) |',
+      '|---|---|---|---|---|---|---|---|---|---|---|',
+      '| 79aafeb8 | 2026-11-04 08:43 | 2026-11-04 09:10 | claude-opus-5-5 | 3 | 9s | 30 | 3,000 | 600,000 | 1,500 | 0.17 |',
+      '', '## Por etapa', '',
+      '| Etapa | Turnos | Duração | Entrada | Cache escrito | Cache lido | Saída | Custo equiv. (USD) |',
+      '|---|---|---|---|---|---|---|---|',
+      '| PLAN | 2 | 6s | 20 | 2,000 | 400,000 | 1,000 | 0.1160 |',
+      '| PLAN_APPROVAL | 1 | 3s | 10 | 1,000 | 200,000 | 500 | — |',
+    ].join('\n')
+    const o = parseOrchestrator(md)
+    expect(o.rows.length).toBe(1)
+    expect(o.steps).toEqual([
+      { step: 'PLAN', turns: 2, tokens: 403_020, cost: 0.116 },
+      { step: 'PLAN_APPROVAL', turns: 1, tokens: 201_510, cost: null },
+    ])
   })
 })
 

@@ -1,7 +1,7 @@
 // Leitura pura dos artefatos do AiDW: o prompt de uma delegação, o JSON final do agente, o metricas.md,
 // as rodadas de revisão e o routing.toml. Sem `$`, para os testes rodarem sem o engine.
 
-import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorUsage } from '../types'
+import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorStep, OrchestratorUsage } from '../types'
 
 export type Delegation = { demand: string; level: string | null; task: string | null }
 
@@ -116,8 +116,19 @@ export function parseOrchestrator(text: string): OrchestratorUsage {
     return Number.isFinite(n) ? n : 0
   }
   const rows: OrchestratorRow[] = []
+  const steps: OrchestratorStep[] = []
   for (const line of text.split(/\r?\n/)) {
     const c = line.split('|').map(x => x.trim())
+    // | Etapa | Turnos | Duração | Entrada | Cache escrito | Cache lido | Saída | Custo |
+    if (c.length === 10 && /^[A-Z][A-Z_]*$/.test(c[1] ?? '')) {
+      steps.push({
+        step: c[1] ?? '',
+        turns: num(c[2]),
+        tokens: num(c[4]) + num(c[5]) + num(c[6]) + num(c[7]),
+        cost: usd(c[8]),
+      })
+      continue
+    }
     if (c.length < 13 || !/^[0-9a-f-]{4,}$/.test(c[1] ?? '')) continue
     const [input, cacheWrite, cacheRead, output] = [num(c[7]), num(c[8]), num(c[9]), num(c[10])]
     rows.push({
@@ -135,6 +146,7 @@ export function parseOrchestrator(text: string): OrchestratorUsage {
   }
   return {
     rows,
+    steps,
     turns: rows.reduce((n, r) => n + r.turns, 0),
     tokens: rows.reduce((n, r) => n + r.tokens, 0),
     cost: rows.some(r => r.cost !== null) ? rows.reduce((n, r) => n + (r.cost ?? 0), 0) : null,
