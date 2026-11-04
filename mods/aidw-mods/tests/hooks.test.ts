@@ -97,11 +97,13 @@ type Fake = {
 /** O disco, o AiDW e o engine de mentira; `demand` é a pasta onde a sessão abre. `panel: false` é um contexto sem painel. */
 function fake(
   on: On,
-  opts: { orchestrating: boolean; demand: string; argument?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean; toolText?: string; toolError?: string; stdoutPrefix?: string },
+  opts: { orchestrating: boolean; demand: string; folder?: string; cwd?: string; contextTokens?: number; panel?: boolean; background?: boolean; toolText?: string; toolError?: string; stdoutPrefix?: string },
 ): Fake {
   const files: Record<string, string> = {
     'C:/AiDW/.aidw/runtime.json': JSON.stringify({ ...RUNTIME, panel: opts.panel ?? true }),
-    'C:/AiDW/state/sessions.json': JSON.stringify(opts.orchestrating ? { [SESSION]: { plugin: 'aidw', argument: opts.argument ?? '' } } : {}),
+    'C:/AiDW/state/sessions.json': JSON.stringify(
+      opts.orchestrating ? { [SESSION]: { plugin: 'aidw', argument: '', ...(opts.folder ? { folder: opts.folder } : {}) } } : {},
+    ),
   }
   for (const [id, entries] of Object.entries(DEMANDS)) {
     for (const [name, text] of Object.entries(entries)) files[`${STATE}/${id}/${name}`] = text
@@ -271,12 +273,22 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
   expect(f.opens).toBe(before + 2)
 })
 
-test('sessão fora da pasta da demanda: acha a demanda pelo argumento do /aidw:go', async ($, on) => {
-  fake(on, { orchestrating: true, demand: 'us-1', argument: 'us-1', cwd: 'C:/AiDW/contexts/x' })
+test('sessão fora da pasta da demanda: acha a demanda pela pasta do registro da sessão', async ($, on) => {
+  fake(on, { orchestrating: true, demand: 'us-1', folder: `${STATE}/us-1`, cwd: 'C:/AiDW/contexts/x' })
   await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW/contexts/x' })
   const pane = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'Pane', requestId: 'aidw-geral', props: PROPS_PANE })
   await has(pane, /^Rota fast$/)
   await pane.unmount()
+})
+
+test('o registro da sessão muda de demanda: o mod segue a pasta nova', async ($, on) => {
+  const f = fake(on, { orchestrating: true, demand: 'us-1', folder: `${STATE}/us-1`, cwd: 'C:/AiDW/contexts/x' })
+  await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW/contexts/x' })
+  f.files['C:/AiDW/state/sessions.json'] = JSON.stringify({ [SESSION]: { plugin: 'aidw', folder: `${STATE}/pr-7` } })
+  await $.prompt.submit({ text: 'segue', origin: { kind: 'composer' } } as never)
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^pr-7$/)
+  await band.unmount()
 })
 
 test('travas: variante fora da tabela e model sem pedido são recusados', async ($, on) => {
