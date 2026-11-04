@@ -164,11 +164,9 @@ def pre_tool_use(data: dict) -> dict | None:
     return None
 
 
-def user_prompt_submit(data: dict) -> None:
-    m = MODE_RE.match(data.get("prompt") or "")
-    session = data.get("session_id")
-    if not m or not session:
-        return None
+def update_sessions(change) -> dict:
+    """Aplica `change(sessions)` ao state/sessions.json sob a trava entre sessões e devolve o registro gravado.
+    Usado pelo hook (/aidw:go, /aidw:sair) e pelo `aidw.py session bind`."""
     SESSIONS.parent.mkdir(parents=True, exist_ok=True)
     lock = SESSIONS.with_name("sessions.lock")
     for _ in range(40):  # trava leve entre sessões (~2 s); sem ela, grava mesmo assim
@@ -183,13 +181,7 @@ def user_prompt_submit(data: dict) -> None:
         sessions = read_json(SESSIONS, {})
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=14)).isoformat(timespec="seconds")
         sessions = {k: v for k, v in sessions.items() if v.get("since", "") >= cutoff}  # sessões antigas saem
-        if m.group(3) in ("go", "lev"):  # a skill go entende "levantamento <id>"
-            argument = ("levantamento " if m.group(3) == "lev" else "") + m.group(4).strip()
-            sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
-                                 "argument": argument.strip()[:200], "cwd": data.get("cwd"),
-                                 "since": datetime.datetime.now().isoformat(timespec="seconds")}
-        else:
-            sessions.pop(session, None)
+        change(sessions)
         tmp = SESSIONS.with_name(f"sessions.json.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(sessions, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         os.replace(tmp, SESSIONS)
@@ -197,6 +189,25 @@ def user_prompt_submit(data: dict) -> None:
         if fd is not None:
             os.close(fd)
             os.unlink(lock)
+    return sessions
+
+
+def user_prompt_submit(data: dict) -> None:
+    m = MODE_RE.match(data.get("prompt") or "")
+    session = data.get("session_id")
+    if not m or not session:
+        return None
+
+    def change(sessions: dict) -> None:
+        if m.group(3) in ("go", "lev"):  # a skill go entende "levantamento <id>"; a demanda vem do `session bind`
+            argument = ("levantamento " if m.group(3) == "lev" else "") + m.group(4).strip()
+            sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
+                                 "argument": argument.strip()[:200], "cwd": data.get("cwd"),
+                                 "since": datetime.datetime.now().isoformat(timespec="seconds")}
+        else:
+            sessions.pop(session, None)
+
+    update_sessions(change)
     return None
 
 
@@ -209,6 +220,8 @@ def session_start(data: dict) -> dict | None:
              MARKETPLACE / "plugins" / entry["plugin"] / "skills" / "go" / "SKILL.md")
     leave = "$aidw-sair" if codex else f"/{entry['plugin']}:sair"
     arg = f' (pedido literal do usuário: "{entry["argument"]}")' if entry.get("argument") else ""
+    if entry.get("demand"):
+        arg += f", na demanda {entry['demand']} do contexto {entry.get('context') or '?'} ({entry.get('folder')})"
     text = (f"AiDW: esta sessão está no modo orquestrador{arg} desde {entry['since']}. Antes de continuar, releia "
             f"{skill.as_posix()} e o demand.json da demanda (python \"{ROOT.as_posix()}/aidw.py\" demand list "
             f"--active) e retome da etapa gravada. {leave} encerra o modo.")

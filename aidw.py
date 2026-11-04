@@ -2214,10 +2214,17 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         *survey_intro,
         f"Depois de uma compactação da conversa, releia `{skill_path.as_posix()}` antes de continuar.", "",
         "## Ao ser chamado: abrir ou retomar a demanda", "",
-        f"1. Rode `{aidw} project detect --json` (pasta atual) e `{aidw} demand list --active --json`.",
+        f"1. Rode `{aidw} project detect --json` (pasta atual) e `{aidw} demand list --active --json`"
+        + ("." if codex else
+           f"; e `{aidw} session bind`, que liga o modo orquestrador nesta sessão (faixa, métricas e travas dos "
+           "mods) em qualquer cliente. Escolhida a demanda, `session bind --demand <id>` (o `demand set` já liga "
+           "a demanda que ele grava)."),
         "2. **Qual demanda:** a do pedido, se ele citar uma (ex.: `1234` → `us-1234`, `bug-5678`); senão "
         "a da pasta (`demand`, quando o chat está num worktree); senão a única ativa deste repositório. Mais de "
-        "uma candidata, ou nenhuma e sem pedido: pergunte ao usuário, com as opções.",
+        "uma candidata, ou nenhuma e sem pedido: pergunte ao usuário, com as opções. **Demanda sem card** (uma "
+        "melhoria livre, um pedido em texto): o id é `<tipo>-<slug>`, o tipo de conventional commits (`feat`, "
+        "`fix`, `refactor`, `perf`, `test`, `docs`, `chore`) e um slug curto do pedido, ex.: "
+        "`feat-painel-v5`, `fix-registro-terminal`; se já existir, `-2`.",
         *(["3. **Retomar:** se a demanda já tem `levantamento-<id>.md`, leia só ele e o que mudou no card; o que "
            "a exploração já respondeu não volta ao explorador.",
            f"4. **Nova:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<título>\"` e siga "
@@ -2410,8 +2417,8 @@ def global_managed_settings(cfg: dict, ctx: dict | None, servers: dict) -> dict:
     forms = {"Bash": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', gitbash])),
              "PowerShell": list(dict.fromkeys([f'"{posix}"', posix, f'"{windows}"', windows]))}
     aidw_rules = [f"{tool}(python {form} {sub})" for tool, tool_forms in forms.items() for form in tool_forms
-                  for sub in ("record *", "show", "doctor", "project *", "demand *", "worktree *", "context *",
-                              "kb *")]
+                  for sub in ("record *", "show", "doctor", "project *", "demand *", "session *", "worktree *",
+                              "context *", "kb *")]
     return {
         "allow": list(dict.fromkeys([*perms.get("allow", []), *aidw_rules,
                                      *[f"mcp__{k}" for k, s in servers.items() if s.get("allow")]])),
@@ -3375,6 +3382,7 @@ def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: 
     path = demand_path(ctx, demand)
     write_json_atomic(path, data)
     exclude_root_claude_md(path.parent)
+    session_follow(ctx, demand, path.parent)
     return {"ok": True, "folder": path.parent.as_posix(), **({"warning": warning} if warning else {}), **data}
 
 
@@ -3415,6 +3423,81 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
                     "updated": d.get("updated"),
                     "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
     return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# Sessão do orquestrador ↔ demanda (state/sessions.json)
+# ---------------------------------------------------------------------------
+# O registro diz que a sessão está no modo orquestrador e qual demanda (contexto, id e pasta) ela conduz; o
+# aidw-mods lê a pasta dele, sem deduzir a demanda do texto. O hook do /aidw:go liga o modo onde o cliente o manda
+# ao hook (o app); o `session bind` da skill go liga em qualquer cliente (o terminal não manda o comando de barra).
+
+SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
+
+
+def guard_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("aidw_guard", GUARD_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def session_follow(ctx: dict | None, demand: str, folder: Path) -> None:
+    """`demand set` numa sessão já no modo orquestrador: o registro passa a apontar para esta demanda."""
+    session = os.environ.get(SESSION_ENV)
+    if not session:
+        return
+    try:
+        guard = guard_module()
+        if session not in guard.read_json(guard.SESSIONS, {}):
+            return
+        def change(sessions: dict) -> None:
+            if session in sessions:  # saiu do modo entre a leitura e a trava: não religa
+                sessions[session].update(context=ctx["name"] if ctx else None, demand=demand,
+                                         folder=folder.as_posix())
+
+        guard.update_sessions(change)
+    except Exception:  # o registro da sessão nunca derruba o demand set
+        pass
+
+
+def session_command(cfg: dict, args: argparse.Namespace) -> int:
+    session = (args.session or os.environ.get(SESSION_ENV) or "").strip()
+    if not session:
+        result = {"ok": False, "error": f"sem id de sessão: passe --session ou rode dentro do Claude Code "
+                                        f"({SESSION_ENV})"}
+    elif args.ss_action == "unbind":
+        guard_module().update_sessions(lambda s: s.pop(session, None))
+        result = {"ok": True, "session": session, "bound": False}
+    else:
+        ctx = load_context(cfg, Report(quiet=True))
+        fields: dict = {}
+        if args.demand:
+            demand = args.demand.strip().lower()
+            path = demand_path(ctx, demand)
+            if not DEMAND_RE.match(demand) or not path.exists():
+                print(json.dumps({"ok": False, "error": f"demanda {demand!r} sem demand.json em "
+                                  f"{state_dir(ctx).as_posix()} (crie com `demand set`)"}, ensure_ascii=False))
+                return 1
+            fields = {"context": ctx["name"] if ctx else None, "demand": demand, "folder": path.parent.as_posix()}
+
+        def change(sessions: dict) -> None:
+            entry = sessions.get(session) or {
+                "plugin": plugin_name(ctx), "provider": "claude", "argument": "", "cwd": os.getcwd(),
+                "since": datetime.now().isoformat(timespec="seconds")}
+            sessions[session] = {**entry, **fields}
+
+        entry = guard_module().update_sessions(change)[session]
+        result = {"ok": True, "session": session, **entry}
+    if args.json or not result["ok"]:
+        print(json.dumps(result, ensure_ascii=False))
+    elif args.ss_action == "unbind":
+        print(f"sessão {session[:8]}: fora do modo orquestrador")
+    else:
+        print(f"sessão {session[:8]}: modo orquestrador" + (f", demanda {result['demand']} ({result['context']})"
+                                                             if result.get("demand") else ", sem demanda ainda"))
+    return 0 if result["ok"] else 1
 
 
 def demand_command(cfg: dict, args: argparse.Namespace) -> int:
@@ -5487,6 +5570,14 @@ def main() -> int:
     d_list.add_argument("--active", action="store_true", help="só as não concluídas")
     for d in dm.choices.values():
         d.add_argument("--json", action="store_true", help="saída em JSON")
+    p_ss = sub.add_parser("session", help="liga esta sessão ao modo orquestrador e à demanda: bind, unbind")
+    ss = p_ss.add_subparsers(dest="ss_action", required=True)
+    s_bind = ss.add_parser("bind", help="registra a sessão no modo orquestrador (e a demanda que ela conduz)")
+    s_bind.add_argument("--demand", help="id da demanda do contexto ativo (a pasta com demand.json)")
+    ss.add_parser("unbind", help="tira a sessão do modo orquestrador")
+    for s in ss.choices.values():
+        s.add_argument("--session", help=f"id da sessão (padrão: ${SESSION_ENV})")
+        s.add_argument("--json", action="store_true", help="saída em JSON")
     p_kb = sub.add_parser("kb", help="base de conhecimento do contexto: show, search, check, index, collect")
     kb = p_kb.add_subparsers(dest="kb_action", required=True)
     k_show = kb.add_parser("show", help="uma nota com os links dela e quem a cita")
@@ -5590,6 +5681,8 @@ def main() -> int:
         return worktree_command(cfg, args)
     if command == "demand":
         return demand_command(cfg, args)
+    if command == "session":
+        return session_command(cfg, args)
     if command == "context":
         return context_command(cfg, catalog, args)
     if command == "kb":
