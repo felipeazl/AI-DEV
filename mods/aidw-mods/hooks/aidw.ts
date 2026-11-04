@@ -1,7 +1,7 @@
 // Leitura pura dos artefatos do AiDW: o prompt de uma delegação, o JSON final do agente, o metricas.md,
 // as rodadas de revisão e o routing.toml. Sem `$`, para os testes rodarem sem o engine.
 
-import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorStep, OrchestratorUsage } from '../types'
+import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorStep, OrchestratorUsage, RunningAgent } from '../types'
 
 export type Delegation = { demand: string; level: string | null; task: string | null }
 
@@ -187,6 +187,36 @@ export function roundFor(step: string, files: string[], loop?: string | null): {
 /** `aidw.py demand set <id>` num comando de shell: o id da demanda. */
 export function demandSetId(command: string): string | null {
   return /aidw\.py["']?\s+demand\s+set\s+["']?([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? null
+}
+
+/** O modelo e o effort do agente, como a faixa os mostra (`Sonnet high`). */
+export function agentModel(a: RunningAgent): string {
+  return [a.model, a.effort].filter(Boolean).join(' ')
+}
+
+/** Os tokens do agente, como a faixa os mostra (`42k tokens`; antes da primeira resposta, `começando`). */
+export function agentTokens(a: RunningAgent): string {
+  return a.tokens ? `${compact(a.tokens)} tokens` : 'começando'
+}
+
+/** Colunas de um card de agente na faixa: o texto mais largo das duas linhas, no mínimo 30, com borda e padding. */
+export function agentCardWidth(a: RunningAgent): number {
+  const model = agentModel(a)
+  const top = 2 + (a.display ?? a.agent).length + (model ? model.length + 1 : 0) + 2 + 5
+  const bottom = a.label.length + 2 + agentTokens(a).length
+  return Math.max(30, Math.max(top, bottom) + 4)
+}
+
+/**
+ * Como a faixa mostra os agentes rodando no espaço que o engine dá: cards, enquanto cabem numa linha só; senão uma
+ * linha por agente. Se nem as linhas cabem na altura, as primeiras e um resumo do resto (`shown` < total). Sem a
+ * largura (0), até 4 cards.
+ */
+export function agentsLayout(running: RunningAgent[], columns: number, rows: number): { mode: 'cards' | 'list'; shown: number } {
+  const width = running.reduce((sum, a) => sum + agentCardWidth(a), 0) + Math.max(0, running.length - 1)
+  if (columns > 0 ? width <= columns : running.length <= 4) return { mode: 'cards', shown: running.length }
+  const budget = Math.max(2, rows)
+  return { mode: 'list', shown: running.length <= budget ? running.length : budget - 1 }
 }
 
 /** 1234567 → "1,2M"; 117050 → "117k". */
