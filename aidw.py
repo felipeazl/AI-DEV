@@ -2253,7 +2253,10 @@ def exit_skill(plugin: str, provider: str = "claude") -> str:
         *([] if codex else ["disable-model-invocation: true"]), "---", "",
         "Saia do modo orquestrador AiDW. Se há uma demanda aberta nesta sessão, grave onde parou: "
         f"`{aidw_command(True)} demand set <id> --status paused --note \"<próximo passo>\"` e, se ajudar, um "
-        "`estado.md` curto na pasta dela. Depois responda normalmente, sem as regras do orquestrador, até "
+        "`estado.md` curto na pasta dela. "
+        + ("" if codex else f"Por último, `{aidw_command(True)} session unbind`, que tira a sessão do modo (no "
+           "terminal, o hook não recebe o comando de barra). ")
+        + "Depois responda normalmente, sem as regras do orquestrador, até "
         f"`{'$aidw-go' if codex else '/' + plugin + ':go'}` ser chamado de novo (ele retoma da etapa "
         "gravada).", "",
     ])
