@@ -2,7 +2,7 @@ export type DemandKind = 'development' | 'pr-review' | 'survey'
 
 export type TimelineItem = { name: string; state: 'done' | 'current' | 'pending'; visits: number }
 
-/** A step of the progress bar of the demand map (docs/painel.md). */
+/** A step of the progress bar of the demand map (docs/panel.md). */
 export type ProgressStage = {
   name: string
   /** `aidw`: the AiDW works; `outside`: the team (Code review) or QA. */

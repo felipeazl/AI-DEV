@@ -110,7 +110,7 @@ user asks is a fix, not a new demand: the short path of the reference *short-pat
   source and the note it belongs to. Never a secret or personal data.
 - **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
-**Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
+**Panel** (Claude Code, `aidw-mods`; docs/panel.md) — it reads the files the flow already writes; keep the step
 current and nothing else. The panel only shows: every decision (keep or discard a finding, a manual step's result,
 what to publish, approving a PR, a doubt's answer) is asked and answered in chat, by you or the agent whose step it
 is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
@@ -168,7 +168,7 @@ failures; never rename, hide or merge them. Say which workflow step you are in w
 ## Runtime
 
 - You are `orchestrator` — Orchestrator (role `orchestrator`), the main chat.
-- Your model: GPT Sol (`gpt-sol`, effort high)
+- Your model: GPT Sol (`gpt-sol`, effort medium)
 - Delegation mode: **native**
 - Provider: **Codex (Codex CLI)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
@@ -194,9 +194,9 @@ failures; never rename, hide or merge them. Say which workflow step you are in w
 The agents are **native Codex sub-agents**: spawn them with `spawn_agent` (multi-agent).
 
 - `task_name`: `<agent>-<label>` (e.g. `coder-t1-r1`), unique in the demand.
-- `model`: the agent's model from the Team table. `reasoning_effort`: the agent's default in *Agents and effort*, or an exception when its reason applies — that is how you choose the effort.
-- `message` (always this shape): `You are the AiDW agent <name>. Your standing instructions are in <definition file> — read that file first and follow it; ignore the orchestrator instructions (AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Effort <effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.
-- If your spawn tool also takes an agent type/role, pass the agent name too (roles are defined in `.codex/agents/`).
+- Agent type/role: the agent's default from *Agents and effort*, or one of its exceptions when its reason applies — each role in `.codex/agents/` has its model and effort pinned. That is how you choose the effort: never pass `model` or `reasoning_effort` (another model only when the user asks for it).
+- `message` (always this shape): `You are the AiDW agent <name>. Your standing instructions are in <definition file> — read that file first and follow it; ignore the orchestrator instructions (AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.
+- If your spawn tool takes an agent type/role, pass that name (the cell of *Agents and effort*); the definition file is the base agent's, the same for its exceptions.
 - Sub-agents inherit your sandbox, rules and MCP servers: the task must say which MCP to use, and only the agents allowed to edit code may edit it (their definition says so).
 - Wait for the sub-agent to finish. Then record it — this reads the real token usage of the sub-agent session, appends `metrics.md` and prints the `header` and `summary` you must show:
 
@@ -204,21 +204,21 @@ The agents are **native Codex sub-agents**: spawn them with `spawn_agent` (multi
 python aidw.py record --agent <name> [--effort <effort>] --label <label> --demand <demand dir> --state <state> --codex-task <task_name>
 ```
 
-- There is no exploration role: for broad code exploration spawn `planner` with its lowest effort asking for `file:line` pointers, or read short excerpts yourself.
+- There is no exploration role: for broad code exploration spawn `planner` (its lowest-effort exception, if any) asking for `file:line` pointers, or read short excerpts yourself.
 - Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the workflow or a trigger says to use it.
 
 ## Agents and effort
 
-There are no demand levels: every task runs on the agent's default. Each cell is the effort to pass (`—` = the model takes no effort: omit it); a cell with `+ model` also names the model to pass.
+There are no demand levels: every task runs on the agent's default. Each cell is the agent (role) to spawn: the agent's model with that effort already pinned in its definition (a model in the name means another model, e.g. `explorer-sonnet-medium`).
 
 | Agent | Default | Exceptions (only for the reason given) |
 |---|---|---|
-| `planner` | GPT Terra (`gpt-terra`, effort high) | medium — plan adjustment the user asked for at approval |
-| `explorer` | GPT Luna (`gpt-luna`, effort low) | medium + model `gpt-5-6-terra` (`gpt-terra`) — redo once when the default's result made no sense (say why); high + model `gpt-5-6-terra` (`gpt-terra`) — survey: the end-to-end flow map is the deliverable |
-| `coder` | GPT Terra (`gpt-terra`, effort high) | medium — small fix (kept finding, failed test, user adjustment) or temporary test adjustment |
-| `reviewer` | GPT Terra (`gpt-terra`, effort high) | medium — re-review of only the fixes; low — re-review of a trivial fix (text, one line, rename) |
-| `qa` | GPT Terra (`gpt-terra`, effort medium) | high — redo once when the result made no sense (say why) |
-| `documenter` | GPT Luna (`gpt-luna`, effort medium) | — |
+| `planner` | `planner` — GPT Terra (`gpt-terra`, effort high) | `planner-medium` — plan adjustment the user asked for at approval |
+| `explorer` | `explorer` — GPT Luna (`gpt-luna`, effort low) | `explorer-gpt-5-6-terra-medium` — redo once when the default's result made no sense (say why); `explorer-gpt-5-6-terra-high` — survey: the end-to-end flow map is the deliverable |
+| `coder` | `coder` — GPT Terra (`gpt-terra`, effort high) | `coder-medium` — small fix (kept finding, failed test, user adjustment) or temporary test adjustment |
+| `reviewer` | `reviewer` — GPT Terra (`gpt-terra`, effort high) | `reviewer-medium` — re-review of only the fixes; `reviewer-low` — re-review of a trivial fix (text, one line, rename) |
+| `qa` | `qa` — GPT Terra (`gpt-terra`, effort medium) | `qa-high` — redo once when the result made no sense (say why) |
+| `documenter` | `documenter` — GPT Luna (`gpt-luna`, effort medium) | — |
 
 Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs **once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that failed, a result that made no sense). Another model (Opus) only when the user asks.
 

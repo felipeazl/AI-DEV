@@ -1,241 +1,196 @@
-# Mods (só Claude Code)
+# Mods (Claude Code only)
 
-Mods são plugins de *function hooks* do Claude Code: código que roda dentro da sessão, desenha na tela (faixa acima
-do prompt, painel, status) e reage a eventos (uma ferramenta chamada, uma mensagem enviada, um subagente que
-terminou). O AiDW traz os dele no plugin **`aidw-mods`**, que o `install` instala junto com o plugin `aidw`.
+Mods are Claude Code *function-hook* plugins: code that runs inside the session, draws on screen (a strip above the
+prompt, panels, status) and reacts to events (a tool call, a message sent, a subagent that finished). AiDW ships its
+own in the **`aidw-mods`** plugin, which `install` installs together with the `aidw` plugin.
 
-**Só existem no Claude Code.** O Codex não tem mods ([claude-e-codex.md](claude-e-codex.md)).
+**They exist only on Claude Code.** Codex has no mods ([claude-and-codex.md](claude-and-codex.md)).
 
-## Quando ficam ligados
+The mods speak the `[ui] language` of `aidw.config.toml` (a `pt*` tag shows them in Portuguese, anything else in
+English; [configuration.md](configuration.md#language)).
 
-Os mods do AiDW ficam ligados **só no modo orquestrador**:
-- **Ligar:** `/aidw:go` ou `/aidw:survey` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse
-  registro a cada mensagem. Quem grava é a skill `go`, com `aidw.py session bind` (lê `CLAUDE_CODE_SESSION_ID`), e
-  o hook do guard, onde o cliente manda o comando de barra a ele (o app sim, o terminal não).
-- **Qual demanda:** o registro guarda o contexto, o id e a pasta da demanda (`session bind --demand <id>`, e todo
-  `demand set` numa sessão já registrada). O mod lê a pasta dali, sem deduzir a demanda do texto: vale para qualquer
-  id, com card de qualquer plataforma ou livre (`feat-<slug>`, `fix-<slug>`…). Sem demanda no registro, vale a pasta
-  do chat quando ele abriu na demanda ou num worktree dela.
-- **Desligar:** `/aidw:exit` ou `/aidw:done` tiram a sessão do registro, e o painel fecha.
+## When they are on
 
-Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
+The AiDW mods are on **only in orchestrator mode**:
 
-**Os painéis valem em todo contexto.** Eles mostram os artefatos do fluxo do AiDW (cobertura de critérios, revisão
-em cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto pode desligá-lo no `context.toml`:
+- **On:** `/aidw:go` or `/aidw:survey` register the session in `state/sessions.json`, and `aidw-mods` checks that
+  registry on every message. The `go` skill writes it with `aidw.py session bind` (reads `CLAUDE_CODE_SESSION_ID`), and
+  so does the guard hook where the client sends it the slash command (the desktop app does, the terminal does not).
+- **Which demand:** the registry keeps the context, the id and the demand folder (`session bind --demand <id>`, and
+  every `demand set` in a registered session). The mod reads the folder from there, without guessing the demand from
+  the text, so any id works. With no demand in the registry, the chat's folder counts when it opened in the demand or
+  one of its worktrees.
+- **Off:** `/aidw:exit` or `/aidw:done` remove the session from the registry, and the panels close.
+
+Outside orchestrator mode they do not block, record, filter or show anything.
+
+**The panels are on in every context.** A context can turn them off in `context.toml`:
 
 ```toml
 [mods]
 panel = false
 ```
 
-Desligado, os painéis não abrem, `/panel`, `/metrics` e `/review-tests` não são registrados e a faixa acima do prompt
-fica sem os botões (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
-segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
+Then the panels do not open, `/panel`, `/metrics` and `/review-tests` are not registered and the strip has no buttons.
+Everything else (metrics, locks, secret filter, notes in the prompt, state after compaction) works in any context.
 
-## Visão geral
+## Overview
 
-| Mod | Para quê | Onde aparece |
+| Mod | What for | Where |
 |---|---|---|
-| [Faixa da demanda](#faixa-da-demanda) | Demanda, contexto, 7d e 5h com barras, e os agentes rodando | acima do prompt |
-| [Painéis do AiDW](#painéis-do-aidw) | Geral, Métricas e Testes e Review, só informativos ([painel.md](painel.md)); desligados só no contexto com `[mods] panel = false` | ao lado do chat, pelo botão da faixa ou pelo comando |
-| [Métricas sozinhas](#métricas-sozinhas) | Cada delegação vira linha do `metricas.md`; cada turno do orquestrador soma no `metricas-orquestrador.md` | resultado do agente, fim do turno |
-| [Travas da delegação](#travas-da-delegação) | Regras do orquestrador que o modelo pode esquecer, conferidas antes do agente rodar | recusa da chamada |
-| [Contexto enxuto](#contexto-enxuto) | Compacta sozinho a conversa parada há 50 min (a partir de 100k tokens), antes de o cache expirar | fim do turno |
-| [Economia do orquestrador](#economia-do-orquestrador) | Código lido no chat do orquestrador | aviso ao modelo |
-| [Filtro de segredos](#filtro-de-segredos) | Nenhuma linha da conversa leva o valor de um segredo | status |
-| [Notas no prompt](#notas-da-base-de-conhecimento) | `[[nota]]` numa mensagem leva a nota junto | contexto da mensagem |
-| [Estado depois da compactação](#estado-depois-da-compactação) | O orquestrador não perde o fio | linha na conversa |
+| [Demand strip](#demand-strip) | Demand, step, context and plan usage bars, running agents, panel buttons | above the prompt |
+| [Panels](#panels) | General, Metrics and Tests and Review, read-only ([panel.md](panel.md)) | next to the chat, by button or command |
+| [Automatic metrics](#automatic-metrics) | Each delegation becomes a line of `metrics.md`; each orchestrator turn adds to `orchestrator-metrics.md` | agent result, end of turn |
+| [Delegation locks](#delegation-locks) | Orchestrator rules the model may forget, checked before the agent runs | the call is denied |
+| [Lean context](#lean-context) | Compacts an idle conversation before the cache expires | end of turn |
+| [Orchestrator economy](#orchestrator-economy) | Code read in the orchestrator's chat | a note to the model |
+| [Secret filter](#secret-filter) | No conversation line carries a secret's value | status |
+| [Notes in the prompt](#notes-in-the-prompt) | `[[note]]` in a message brings the note along | the message context |
+| [State after compaction](#state-after-compaction) | The orchestrator does not lose the thread | a line in the conversation |
 
-## Faixa da demanda
+## Demand strip
 
 ```text
-AiDW us-128734 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
+AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renews 16:40
 ╭──────────────────────────────────╮
-│ ● Dev Sonnet medium        2m10s │
-│ correção r1          184k tokens │
+│ ● Coder Sonnet medium      2m10s │
+│ fix r1               184k tokens │
 ╰──────────────────────────────────╯
-                                                                          Geral  Métricas  Testes e Review 4
+                                                                  General  Metrics  Tests and Review 4
 ```
 
-Três linhas (painel v4):
-1. **A demanda e o consumo:** o id, a etapa, **● espera você** em laranja quando a etapa é sua (aprovação, triagem,
-   revisão de código, teste manual, PR, revisão final) e, do outro lado, o contexto deste chat em % da janela do
-   modelo, com os tokens, e as janelas de uso do plano (7d e 5h) em %, cada um com barra fina.
-2. **Os agentes rodando**, um card por agente: nome, modelo e effort (da variante), o tempo, o label e os tokens da última
-   resposta (andam a cada passo; antes do primeiro, `começando`); sem agente, a linha não aparece. Quando os cards não
-   cabem numa linha (a largura que o engine dá à faixa), vira uma lista, uma linha por agente com as colunas
-   alinhadas; se nem a lista cabe na altura, os primeiros e `+N agentes · Xk tokens`.
-3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento; com o número do que espera decisão, em laranja), numa linha só,
-   à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
-a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
-`DONE`. **`/strip`** esconde e mostra.
+1. **Demand and usage:** the id, the step, **● waits for you** when the step is yours (approval, triage, your code
+   review, manual test, PR, final review) and, on the other side, this chat's context as a % of the model's window,
+   and the plan's usage windows (7d and 5h), each with a thin bar.
+2. **Running agents**, one card each: name, model and effort, elapsed time, label and the tokens of its latest
+   response. With no agent, the line does not appear. When the cards do not fit in one line, they become a list.
+3. **The buttons** **General**, **Metrics** and **Tests and Review** (**Questions** in a survey), with the number of
+   items waiting for a decision.
 
-**Ao vivo, sem esperar o fim do turno** (2026-11-04): o contexto anda a cada resposta do orquestrador (`turn.step`), e o
-contexto e as janelas 5h/7d também quando o engine os empurra (`session.measure`); a demanda é relida quando um `Write`
-ou `Edit` (seu ou de um agente) grava na pasta dela e, a cada 5 s, quando um arquivo da pasta mudou de tamanho ou data
-(você no editor, outro chat, um script). Nada disso gasta token: roda no mod, fora do contexto do modelo. Só o custo do
-chat principal no `metricas-orquestrador.md` segue por turno.
+Bars turn yellow from 75% and red from 90%; from 75% the 7d and 5h windows show the local time they renew. The usage
+windows appear only on a subscription account. The strip disappears in `DONE`; **`/strip`** hides and shows it. It
+updates live: the context on every response, the demand when a file in its folder changes.
 
-## Painéis do AiDW
+## Panels
 
-Três painéis, cada um ao lado do chat, abertos só quando você pede: pelo botão na faixa ou pelo comando (painel v4,
-decisão, 2026-11-03). Com dois ou mais abertos, o app mostra as abas entre eles. O que cada um mostra, de onde vem cada
-dado e o que os agentes gravam para isso está em **[painel.md](painel.md)**:
+Three panels, each next to the chat, opened only when you ask, by the strip button or the command:
 
-| Painel | Comando | Desenvolvimento | Revisão de PR | Levantamento |
+| Panel | Command | Development | PR review | Survey |
 |---|---|---|---|---|
-| Geral | `/panel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
-| Métricas | `/metrics` | consumo | consumo | consumo |
-| Testes e Review (Dúvidas no levantamento) | `/review-tests` | Revisão · Testes | Comentários | Dúvidas |
+| General | `/panel [tab]` | demand map, criteria and rules | map | map, card × code, estimate |
+| Metrics | `/metrics` | usage | usage | usage |
+| Tests and Review | `/review-tests` | Review · Tests | Comments | Questions |
 
-A Geral e as Métricas são uma página só; em Testes e Review, aba sem dados fica oculta, e a linha de abas só aparece com duas ou mais. Testes e Review abre na primeira aba que espera
-você. `/panel <aba>` abre o painel da aba (`/panel revisao` abre Testes e Review). Os painéis só informam: toda decisão é no chat. No terminal, as teclas `1`, `2`… trocam
-de aba; no app, as abas são só clique. O diff fica com o app (*Alterações* na barra lateral e o painel de diff dele).
+`/panel <tab>` opens the panel that has the tab (`/panel review`, `/panel tests`, `/panel comments`,
+`/panel questions` open Tests and Review). **The panels only inform:** keeping or discarding a finding, a manual
+step's result, what to publish, approving a PR and answering a question are decided in the chat. What each panel shows
+and where its data comes from: [panel.md](panel.md).
 
-Os painéis só informam (decisão, 2026-11-03): manter ou descartar um achado, o resultado de um passo do teste manual, o
-que publicar e se o AiDW aprova uma PR, comentar no card e responder uma dúvida são decididos no chat, com o
-orquestrador e o agente da etapa.
+## Automatic metrics
 
-## Métricas sozinhas
+Every AiDW delegation (an `Agent` call whose prompt has `Demand folder:`) becomes a line in `metrics.md` when the agent
+finishes. The mod runs `aidw.py record` with the numbers Claude Code measured: tokens, tool calls, duration and the
+`state` read from the agent's final JSON.
 
-Toda delegação do AiDW (um `Agent` cujo prompt traz `Pasta da demanda:`) vira uma linha no `metricas.md` quando o
-agente termina. O mod chama o próprio `aidw.py record` com os números medidos pelo Claude Code: tokens, chamadas de
-ferramenta, duração e o `state` lido do JSON final do agente.
-- **Rótulo:** vem do nome da tarefa (`tarefa-codificador-rota.md` → `rota`); sem tarefa, da descrição da chamada.
-- **O que o orquestrador recebe:** o resultado volta com a linha `AiDW: delegação registrada…` e o `header` e o
-  `resumo` para mostrar. Com ela, o orquestrador **não** roda o `record`. Sem ela, ou se o mod disser que não
-  conseguiu, ele roda à mão.
-- **Agente em segundo plano:** a linha é gravada quando ele termina, e o aviso chega como uma nota na conversa. Os
-  números são os mesmos da notificação do agente (`subagent_tokens`, `tool_uses`): os tokens são o uso da
-  última resposta dele (o contexto no fim, como o `totalTokens` de um agente em primeiro plano), não a soma do turno,
-  que conta o cache relido a cada resposta e sai de 10 a 30 vezes maior; as ferramentas são contadas no transcript do
-  agente. O agente pendente fica no estado da sessão, então um `/reload-plugins` ou um `aidw.py install` no meio do
-  caminho não perde o registro.
-- **Robustez:** o uso de cada subagente fica no estado da sessão (atravessa um `/reload-plugins`); o mod lê a última
-  linha JSON da saída do `record`, e quando o `record` gravou mas não devolveu o header, o aviso diz que a linha já
-  está lá (o orquestrador não registra de novo).
-- **O custo da delegação:** o mod soma o uso de todas as respostas do subagente (entrada, cache escrito, cache lido e
-  saída, no modelo delas) e passa ao `record`, que grava na coluna *Custo (USD)* o equivalente em preço de API. A
-  coluna de tokens continua sendo o contexto no fim; o custo é o que a API cobra pela soma. Sem as respostas (o
-  agente atravessou uma recarga do mod), o custo fica —.
-- **O orquestrador:** no fim de cada turno do chat principal, o mod soma o uso do turno (entrada, cache escrito, cache
-  lido e saída, como a API informou) no `metricas-orquestrador.md` da demanda, pelo `aidw.py record-orchestrator`: uma
-  linha por sessão e modelo, com o custo equivalente em preço de API, e a seção *Por etapa* com os mesmos turnos
-  somados pela etapa da demanda (`step` do `demand.json` no começo do turno). É o que o `metricas.md` não mostra e
-  costuma ser a maior parte do gasto (≥ 95 % na medição de 2026-11-04).
+- **Label:** from the task file name (`task-coder-fee.md` → `fee`); without a task, from the call's description.
+- **What the orchestrator gets:** the result comes back with `AiDW: delegation recorded…` and the header and summary to
+  show. Then the orchestrator does **not** run `record`; without that line, or if the mod says it could not record, it
+  runs it itself.
+- **Background agents:** the line is written when the agent finishes, and the notice arrives as a note in the
+  conversation. The pending agent is kept in the session state, so a `/reload-plugins` or an `install` in the middle
+  does not lose it.
+- **Cost:** the mod adds up the usage of all the subagent's responses (input, cache written, cache read, output) and
+  `record` writes the API-price equivalent in the *Cost (USD)* column.
+- **The orchestrator:** at the end of each main-chat turn, the mod adds the turn's usage to the demand's
+  `orchestrator-metrics.md` through `aidw.py record-orchestrator`: one line per session and model, with the equivalent
+  cost, and a *By step* section. It is what `metrics.md` does not show and is usually most of the spending.
 
-## Travas da delegação
+## Delegation locks
 
-Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Agents and effort*, que o `apply` grava em
-`.aidw/runtime.json` (`variants`: o padrão e as exceções de cada agente). Ele recusa, com o motivo, quando:
+Before an AiDW agent runs, the mod checks the call against the *Agents and effort* table, which `apply`/`install`
+write to `.aidw/runtime.json`. It refuses, with the reason (`AiDW (delegation lock): …`), when:
 
-| Regra | Recusa quando |
+| Rule | Refuses when |
 |---|---|
-| Modelo | a chamada passa `model` e o usuário não falou de modelo nas últimas mensagens |
-| Formato | falta `Pasta da demanda:` no prompt |
-| Tabela | o `subagent_type` não é o padrão nem uma exceção do agente, ou o agente está desligado |
-| Insumo colado | o prompt passa de 6.000 caracteres (diff, plano e review vão por caminho) |
+| Model | the call passes `model` and you did not mention a model in your recent messages |
+| Format | the prompt lacks `Demand folder:` |
+| Table | the `subagent_type` is neither the agent's default nor one of its exceptions, or the agent is off |
+| Pasted input | the prompt is over 6,000 characters (diff, plan and review go by path) |
 
-Um `runtime.json` de antes do fluxo v3 (sem `variants`) desliga a trava até o próximo `aidw.py apply`.
+There is no round lock: a demand iterates until it is done.
 
-Não há trava de rodadas: a demanda itera até terminar (painel v4).
+## Lean context
 
-## Sem avisos próprios
+Coming back after an hour idle rewrites the whole conversation into the cache, at full price. So at the end of each
+orchestrator turn the mod schedules a compaction **50 minutes** later (before the cache expires):
 
-O mod não levanta toast nem notificação (painel v4, decisão, 2026-11-03): o app do Claude já avisa quando o turno
-acaba. O agente em segundo plano que termina chega como nota na conversa (*Métricas sozinhas*), e o resultado de um
-`/panel` que não coube volta no próprio comando.
+- Any message before then cancels it; a new one is scheduled at the end of the next turn.
+- When the time comes, it measures the context again and compacts only with **100k tokens or more**; the summary keeps
+  what is with you (the question, the approval), the next action, the running agents and unrecorded decisions, and the
+  demand state comes back right after.
+- The limits are `IDLE_MS` and `IDLE_MIN` in `hooks/aidw.ts`.
 
-## Contexto enxuto
+## Orchestrator economy
 
-Uma volta depois de 1h parado regrava a conversa inteira no cache, ao preço cheio. Por isso, no fim de cada turno do
-orquestrador, o mod agenda uma compactação para **50 minutos** depois (antes de o cache expirar):
-- Se você mandar qualquer mensagem antes, o agendamento cai e um novo começa no fim do próximo turno.
-- Quando o tempo passa, ele mede o contexto de novo e só compacta com **100k tokens ou mais**; o resumo guarda o que
-  está com você (a pergunta, a aprovação ou o pacote), a próxima ação, os agentes em andamento e as decisões não
-  gravadas, e o estado da demanda volta em seguida (*Estado depois da compactação*).
-- Fora disso, a compactação é sua (`/compact`) ou a nativa do Claude, perto do limite da janela. Uma demanda pode ser
-  retomada num chat novo: o estado está nos arquivos e o conhecimento na base.
-- Os limites ficam em `hooks/aidw.ts` (`IDLE_MS`, `IDLE_MIN`). A regra antiga (espera longa e troca de etapa, a partir
-  de 150k) saiu em 2026-10-30: não disparava.
+The most expensive rule to break is the orchestrator reading code in its own chat, because that text stays in the
+context until the end of the demand. When the orchestrator reads a code file outside the AiDW folder, the mod counts it
+and adds a note to the result to delegate to the explorer. A one-off premise check (skill `verify-premise`) is fine.
 
-## Economia do orquestrador
+## Secret filter
 
-A regra mais cara de quebrar é o orquestrador ler código no próprio chat, porque esse texto fica no contexto até o
-fim da demanda.
-- **Aviso:** quando o orquestrador lê um arquivo de código fora da pasta do AiDW, o mod conta a leitura e acrescenta ao
-  resultado um aviso para delegar ao explorador. Uma verificação pontual de premissa (skill `verificar-premissa`)
-  continua valendo.
-- **Onde aparece:** só no aviso ao modelo; o painel não mostra a contagem.
+Every tool result of the orchestrator and the agents goes through the filter before it becomes a conversation line,
+including error results (a connection string in an exception). It masks the value and keeps only the name and length,
+as the secrets policy asks: `Password=«secret hidden: Password, 5 characters»`.
 
-## Filtro de segredos
+- **Catches:** connection-string passwords (`Password`, `Pwd`, `AccountKey`, `SharedAccessKey`, `Client Secret`); JSON
+  fields for password, secret, token, `apiKey`, `connectionString`; environment variables `*_TOKEN`, `*_SECRET`,
+  `*_PASSWORD`, `*_API_KEY`, `*_PAT`; `Bearer` tokens, JWTs, PEM private keys and known API key formats.
+- **Does not catch:** placeholders (`${VAR}`, `%VAR%`, `<password>`) and code.
+- **Status:** how many secrets were hidden. The filter is idempotent.
 
-O resultado de cada ferramenta do orquestrador e dos agentes passa pelo filtro antes de virar linha da conversa,
-inclusive o que volta com erro (uma connection string numa exceção): esse volta como erro, com o texto filtrado. O
-texto do modelo e o que você digita, um plugin de segurança da organização, quando há um, cuida: ele fica
-acima dos plugins do usuário e não chama os de baixo nas linhas, por isso o mod não tem hook de `session.append`
-(2026-11-04). O filtro é idempotente: um texto já mascarado passa de novo igual.
-Ele mascara o valor e mostra só o nome e o tamanho, como pede a policy de segredos:
-`Password=«segredo ocultado: Password, 11 caracteres»`.
-- **O que ele pega:**
-  - senha de connection string (`Password`, `Pwd`, `AccountKey`, `SharedAccessKey`, `Client Secret`);
-  - campos JSON de senha, segredo, token, `apiKey`, `connectionString` e `stringConexao`;
-  - variáveis de ambiente `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY` e `*_PAT`;
-  - `Bearer`, JWT, chave privada PEM e chaves de API conhecidas.
-- **O que ele não pega:** placeholders (`${VAR}`, `%VAR%`, `<senha>`) e código (`Password = request.Password`).
-- **No status:** quantos segredos foram ocultados.
+## Notes in the prompt
 
-## Notas da base de conhecimento
+In your message, `[[note-name]]` brings the text of that knowledge base note along with the message (up to three notes
+per message).
 
-Numa mensagem sua, `[[nome-da-nota]]` leva o texto da nota da base de conhecimento do contexto junto da mensagem (até
-três notas por mensagem).
+## State after compaction
 
-## Estado depois da compactação
+When the orchestrator's conversation is compacted, the mod rereads the demand from disk and adds a summary of the state
+to your **first message after the compaction**, once: the step, the folder and worktrees, the loop round and open
+findings, and a reminder to reread the skill and the artifacts.
 
-Quando a conversa do orquestrador é compactada, o mod relê a demanda do disco e põe na conversa um resumo do estado:
-- o uso, a etapa e o modo;
-- a pasta e os worktrees;
-- a rodada do laço e os achados abertos;
-- o lembrete de reler a skill e os artefatos.
+## Configuration
 
-O resumo vai junto da **sua primeira mensagem depois da compactação**, uma vez só. O mod percebe a compactação pela
-dele mesmo (a ociosa) ou pelo contexto que caiu para menos da metade, a partir de 40k tokens. Não vai pelo evento da
-compactação nem pelo `SessionStart`: um plugin de segurança da organização, quando há um, passa os dois
-adiante sem chamar os plugins do usuário. Uma seção fixa no prompt de sistema mudaria a cada etapa e regravaria o
-cache da conversa inteira.
+`install` writes this machine's AiDW root into the plugin. Two fields can be changed in Claude Code's plugin settings:
+`aidwRoot` (the folder of `aidw.py`) and `python` (the Python command, default `python`).
 
-## Configuração
+## Developing a mod
 
-O `install` grava a raiz do AiDW desta máquina no plugin. Dois campos podem ser trocados no menu de configuração do
-Claude Code (`pluginConfigs`): `aidwRoot` (a pasta do `aidw.py`) e `python` (o comando do Python, padrão `python`).
+- **Source:** `mods/aidw-mods/` is the plugin and the source of truth. `install` copies everything but `tests/` into
+  `.aidw/marketplace/plugins/aidw-mods/`, where Claude Code reads it. After changing the source: `python aidw.py install`
+  and `/reload-plugins` (or a new chat).
 
-## Desenvolver um mod
-
-- **Fonte:** `mods/aidw-mods/` é o plugin e a fonte da verdade. O `install` copia tudo, menos `tests/`, para
-  `.aidw/marketplace/plugins/aidw-mods/`, onde o Claude Code o lê. Depois de mudar a fonte: `python aidw.py install` e
-  `/reload-plugins` (ou um chat novo).
-- **Arquivos:**
-
-| Arquivo | O que tem |
+| File | Content |
 |---|---|
-| `hooks/register.tsx` | **o único arquivo que toca o engine (`$`)**: hooks, leitura do disco, `git`, `aidw.py record`. O `$` não atravessa `import` |
-| `hooks/views.tsx` | as telas da faixa e dos painéis; recebem a tabela de elementos e as ações de navegação, nunca o `$` |
-| `hooks/snapshot.ts` | o retrato da demanda (`wanted` diz o que ler, `buildSnapshot` monta) |
-| `hooks/artifacts.ts` | os parsers dos artefatos (achados, triagem, critérios, roteiro, levantamento…) |
-| `hooks/guards.ts` | as travas da delegação |
-| `hooks/secrets.ts` | o filtro de segredos |
-| `hooks/aidw.ts` | prompt da delegação, `metricas.md`, `metricas-orquestrador.md`, `routing.toml`, limites do contexto |
-| `types/index.d.ts` | o contrato do estado (`PluginState['aidw-mods']`) e os tipos do retrato |
+| `hooks/register.tsx` | **the only file that touches the engine (`$`)**: hooks, disk reads, `git`, `aidw.py record`. `$` does not cross an `import` |
+| `hooks/views.tsx` | the strip and panel screens; they get the element table and navigation actions, never `$` |
+| `hooks/snapshot.ts` | the demand snapshot (`wanted` says what to read, `buildSnapshot` builds it) |
+| `hooks/artifacts.ts` | the artifact parsers (findings, triage, criteria, script, survey…) |
+| `hooks/guards.ts` | the delegation locks |
+| `hooks/secrets.ts` | the secret filter |
+| `hooks/i18n.ts` | every user-visible string, in English and Portuguese |
+| `hooks/names.ts` | the new and old (Portuguese) artifact names the mod accepts |
+| `hooks/aidw.ts` | delegation prompt, `metrics.md`, `orchestrator-metrics.md`, `routing.toml`, context limits |
+| `types/index.d.ts` | the state contract (`PluginState['aidw-mods']`) and the snapshot types |
 
-- **Um mod novo:** entra como mais hooks no `register.tsx`. A lógica pura vai num arquivo próprio, com teste. O mod
-  liga só no modo orquestrador (o atom `active`).
-- **Conferir:**
+- **A new mod** goes in as more hooks in `register.tsx`; pure logic goes in its own file, with a test. Mods turn on only
+  in orchestrator mode (the `active` atom).
+- **Check:**
 
 ```powershell
 claude plugin validate mods/aidw-mods
 claude plugin test mods/aidw-mods
 ```
 
-O primeiro lê o manifesto e o módulo como o engine vai ler. O segundo roda `tests/*.test.ts` contra o engine: os
-hooks do teste fazem o papel do disco, do `aidw.py`, do relógio e das ferramentas, com as três demandas de exemplo,
-uma por uso.
+The first reads the manifest and the module as the engine will. The second runs `tests/*.test.ts` against the engine,
+with sample demands for each use.

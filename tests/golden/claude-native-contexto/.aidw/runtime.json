@@ -12,7 +12,7 @@
       "enabled": true,
       "model": "opus",
       "model_id": "opus",
-      "effort": "high",
+      "effort": "medium",
       "skills": [
         "to-spec",
         "verify-premise",

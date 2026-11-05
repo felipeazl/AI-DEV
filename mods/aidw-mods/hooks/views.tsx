@@ -1,4 +1,4 @@
-// The strip and panel screens (v4, docs/painel.md). They get the surface's element table (not `$`), the
+// The strip and panel screens (v4, docs/panel.md). They get the surface's element table (not `$`), the
 // data and the navigation actions (tabs, round, filters); the panels only inform: every decision is in the chat.
 
 import type { Elements, ThemeKey } from 'claude-code'
@@ -157,7 +157,7 @@ export function viewFor(kind: DemandKind, arg: string): { view: View; tab: strin
 // Colors and common pieces
 
 /**
- * The colors (docs/painel.md › Colors): Claude theme keys, which the app paints in the light or dark theme. There is no
+ * The colors (docs/panel.md › Colors): Claude theme keys, which the app paints in the light or dark theme. There is no
  * neutral background key, so a card is only a border and nothing gets a background.
  */
 export const C = {
