@@ -2,7 +2,7 @@
 # trusted: setup offers to mark it). `python aidw.py chat` passes the same values as flags.
 
 model = "gpt-6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "medium"
 project_doc_max_bytes = 98304
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"

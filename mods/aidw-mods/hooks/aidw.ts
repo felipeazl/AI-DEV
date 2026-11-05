@@ -51,18 +51,28 @@ export function slug(text: string): string {
 }
 
 /** Delegations, summed tokens and the level of the last line of the metrics file. */
+/**
+ * Whether the metrics file has the old Level column (`| Date | Agent | Level | …`, before flow v3). New files
+ * (`| Date | Agent | Model | …`) do not; a file without a header line is read as the old layout.
+ */
+export function metricsHasLevel(text: string): boolean {
+  const head = text.split(/\r?\n/).find(l => /^\|\s*(?:Date|Data)\s*\|/i.test(l))
+  return head ? /\|\s*(?:Level|N[ií]vel)\s*\|/i.test(head) : true
+}
+
 export function parseMetrics(text: string): { rows: number; tokens: number; level: string | null } {
   let rows = 0
   let tokens = 0
   let level: string | null = null
+  const o = metricsHasLevel(text) ? 0 : -1 // the cells after Agent move one to the left without the Level column
   for (const line of text.split(/\r?\n/)) {
     const cells = line.split('|').map(c => c.trim())
-    if (cells.length < 12 || !/^\d{4}-\d{2}-\d{2}$/.test(cells[1] ?? '')) continue
+    if (cells.length < 12 + o || !/^\d{4}-\d{2}-\d{2}$/.test(cells[1] ?? '')) continue
     rows += 1
-    level = cells[3] || level
-    const n = Number((cells[10] ?? '').replace(/[.,\s]/g, ''))
+    if (o === 0) level = cells[3] || level
+    const n = Number((cells[10 + o] ?? '').replace(/[.,\s]/g, ''))
     if (Number.isFinite(n)) tokens += n
-    const out = Number((cells[11] ?? '').replace(/[.,\s]/g, ''))
+    const out = Number((cells[11 + o] ?? '').replace(/[.,\s]/g, ''))
     if (Number.isFinite(out)) tokens += out
   }
   return { rows, tokens, level }
@@ -84,21 +94,22 @@ export function parseDelegations(text: string): MetricsRow[] {
     return Number.isFinite(n) ? n : 0
   }
   const out: MetricsRow[] = []
+  const o = metricsHasLevel(text) ? 0 : -1 // new files have no Level column
   for (const line of text.split(/\r?\n/)) {
     const c = line.split('|').map(x => x.trim())
-    if (c.length < 12 || !/^\d{4}-\d{2}-\d{2}$/.test(c[1] ?? '')) continue
+    if (c.length < 12 + o || !/^\d{4}-\d{2}-\d{2}$/.test(c[1] ?? '')) continue
     out.push({
       date: c[1] ?? '',
       agent: c[2] ?? '',
-      level: c[3] ?? '',
-      model: c[4] ?? '',
-      effort: c[5] ?? '',
-      label: c[6] ?? '',
-      state: c[7] ?? '',
-      tools: num(c[8]),
-      seconds: num((c[9] ?? '').replace(/s$/, '')),
-      tokens: num(c[10]) + num(c[11]),
-      cost: usd(c[12]),
+      level: o === 0 ? (c[3] ?? '') : '',
+      model: c[4 + o] ?? '',
+      effort: c[5 + o] ?? '',
+      label: c[6 + o] ?? '',
+      state: c[7 + o] ?? '',
+      tools: num(c[8 + o]),
+      seconds: num((c[9 + o] ?? '').replace(/s$/, '')),
+      tokens: num(c[10 + o]) + num(c[11 + o]),
+      cost: usd(c[12 + o]),
     })
   }
   return out

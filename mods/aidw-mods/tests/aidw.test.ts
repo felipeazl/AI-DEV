@@ -8,6 +8,7 @@ import {
   demandSetId,
   labelFor,
   parseDelegation,
+  parseDelegations,
   parseMetrics,
   parseOrchestrator,
   parseState,
@@ -105,6 +106,21 @@ describe('estado da demanda', () => {
       '| 2026-09-29 | codificador | padrao | gpt | high | t1 | ok | 3 | 10s | 1,000 | 500 | 0.1 | — |',
     ].join('\n')
     expect(parseMetrics(md)).toEqual({ rows: 3, tokens: 105_474, level: 'padrao' })
+  })
+
+  test('reads the new metrics.md, without the Level column', async () => {
+    const md = [
+      '| Date | Agent | Model | Effort | Label | State | Turns or tools | Duration | Input tokens (with cache) | Output tokens | Cost (USD) | Plan limits |',
+      '|---|---|---|---|---|---|---|---|---|---|---|---|',
+      '| 2026-11-05 | reviewer | sonnet | high | plan-r1 | review_findings | 17 | 278s | 103,974 | — | 0.4200 | — |',
+      '| 2026-11-05 | coder | sonnet | medium | e1-r1 | implementation_complete | 3 | 10s | 1,000 | 500 | — | — |',
+    ].join('\n')
+    expect(parseMetrics(md)).toEqual({ rows: 2, tokens: 105_474, level: null })
+    const rows = parseDelegations(md)
+    expect(rows.map(r => [r.agent, r.level, r.model, r.effort, r.label, r.tools, r.seconds, r.cost])).toEqual([
+      ['reviewer', '', 'sonnet', 'high', 'plan-r1', 17, 278, 0.42],
+      ['coder', '', 'sonnet', 'medium', 'e1-r1', 3, 10, null],
+    ])
   })
 
   test('rodada da revisão do código e do plano', async () => {

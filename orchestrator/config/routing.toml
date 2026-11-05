@@ -45,8 +45,9 @@ final_review_approved = "DONE"
 policy_requires_approval = "HUMAN_APPROVAL"     # locked action (commit, push, write SQL...)
 
 # ---------------------------------------------------------------------------------------------
-# Effort: exceptions to each agent's default (aidw.config.toml). Each one becomes a variant (`subagent_type` in
-# Claude, the effort/model to pass in Codex) and is valid only for the reason in its `when`. Without `model`, it is the
+# Effort: exceptions to each agent's default (aidw.config.toml). Each one becomes a variant with its model and
+# effort pinned (a Claude subagent `<name>-<effort>`, a Codex role `aidw-<name>-<effort>`), spawned by name, and is
+# valid only for the reason in its `when`. Without `model`, it is the
 # agent's; a model of another provider becomes the equivalent by tier (opus → top, sonnet → mid, haiku → fast).
 
 [[effort.variants.planner]]

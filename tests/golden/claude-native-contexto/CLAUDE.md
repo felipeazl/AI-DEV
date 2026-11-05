@@ -108,7 +108,7 @@ user asks is a fix, not a new demand: the short path of the reference *short-pat
   source and the note it belongs to. Never a secret or personal data.
 - **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
-**Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
+**Panel** (Claude Code, `aidw-mods`; docs/panel.md) — it reads the files the flow already writes; keep the step
 current and nothing else. The panel only shows: every decision (keep or discard a finding, a manual step's result,
 what to publish, approving a PR, a doubt's answer) is asked and answered in chat, by you or the agent whose step it
 is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.
@@ -166,7 +166,7 @@ failures; never rename, hide or merge them. Say which workflow step you are in w
 ## Runtime
 
 - You are `orchestrator` — Orchestrator (role `orchestrator`), the main chat.
-- Your model: the one selected in this chat (recommended: Claude Opus (`claude-opus`, effort high))
+- Your model: the one selected in this chat (recommended: Claude Opus (`claude-opus`, effort medium))
 - Delegation mode: **native**
 - Provider: **Claude (Claude Code)** — every agent runs on it
 - Project dirs (search here for repositories): `C:/pasta-de-teste-inexistente`
@@ -211,7 +211,7 @@ python aidw.py record --agent <name> [--effort <effort>] --label <label> --deman
 
 ## Agents and effort
 
-There are no demand levels: every task runs on the agent's default. Each cell is the `subagent_type` to use: the agent's model with that effort already pinned in its definition (a `-<alias>-` in the name means another model, e.g. `explorer-sonnet-medium`).
+There are no demand levels: every task runs on the agent's default. Each cell is the `subagent_type` to use: the agent's model with that effort already pinned in its definition (a model in the name means another model, e.g. `explorer-sonnet-medium`).
 
 | Agent | Default | Exceptions (only for the reason given) |
 |---|---|---|
