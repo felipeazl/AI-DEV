@@ -5,18 +5,18 @@
 | Claude | Codex | O que faz |
 |---|---|---|
 | `/aidw:go [demanda]` | `$aidw-go` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo até a revisão final. Só roda quando você chama |
-| `/aidw:lev <card ou texto>` | `$aidw-lev` | Levantamento antes de implementar (workflow `levantamento`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `levantamento-<id>.md` com horas, story points, complexidade e dúvidas ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
-| `/aidw:sair` | `$aidw-sair` | Grava a etapa e o próximo passo (`paused`) e volta o chat ao normal |
+| `/aidw:survey <card ou texto>` | `$aidw-survey` | Levantamento antes de implementar (workflow `levantamento`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `levantamento-<id>.md` com horas, story points, complexidade e dúvidas ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
+| `/aidw:exit` | `$aidw-exit` | Grava a etapa e o próximo passo (`paused`) e volta o chat ao normal |
 | `/aidw:diff [repo\|sair]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demandas-e-worktrees.md](demandas-e-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base de conhecimento que ela tocou; build e ambiente no `context.toml`), valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
-| `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | Consulta a base de conhecimento do contexto: a nota de um sistema, contrato, conceito ou demanda, com os links e quem a cita; corrige uma nota quando você pede ([contextos.md](contextos.md#base-de-conhecimento)) |
-| `/aidw:contexto-listar` | `$aidw-contexto-listar` | Contextos, qual está ativo, repositório, sistemas, situação do plugin |
-| `/aidw:contexto-usar <nome>` | `$aidw-contexto-usar` | Valida e ativa um contexto e regenera o ambiente |
-| `/aidw:contexto-criar` | `$aidw-contexto-criar` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
-| `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
-| `/painel [aba]` | — | Abre o painel Geral da demanda (mod do Claude Code), ou o painel da aba pedida ([painel.md](painel.md)) |
-| `/metricas` | — | Abre o painel de métricas da demanda |
-| `/testes-review` | — | Abre o painel Testes e Review (achados da revisão, roteiro, comentários de PR; Dúvidas no levantamento), só informativo |
+| `/aidw:knowledge [tema]` | `$aidw-knowledge` | Consulta a base de conhecimento do contexto: a nota de um sistema, contrato, conceito ou demanda, com os links e quem a cita; corrige uma nota quando você pede ([contextos.md](contextos.md#base-de-conhecimento)) |
+| `/aidw:context list` | `$aidw-context list` | Contextos, qual está ativo, repositório, sistemas, situação do plugin |
+| `/aidw:context use <nome>` | `$aidw-context use` | Valida e ativa um contexto e regenera o ambiente |
+| `/aidw:context create` | `$aidw-context create` | Cria um contexto novo (análise + no mínimo 10 perguntas) |
+| `/strip` | — | Esconde ou mostra a faixa da demanda acima do prompt (mod do Claude Code, [mods.md](mods.md)) |
+| `/panel [aba]` | — | Abre o painel Geral da demanda (mod do Claude Code), ou o painel da aba pedida ([painel.md](painel.md)) |
+| `/metrics` | — | Abre o painel de métricas da demanda |
+| `/review-tests` | — | Abre o painel Testes e Review (achados da revisão, roteiro, comentários de PR; Dúvidas no levantamento), só informativo |
 
 ## Linha de comando (`python aidw.py …`)
 

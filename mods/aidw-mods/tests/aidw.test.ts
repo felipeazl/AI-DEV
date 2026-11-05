@@ -55,13 +55,13 @@ describe('métricas do orquestrador', () => {
 describe('delegação do AiDW', () => {
   test('lê pasta da demanda, nível e tarefa do prompt', async () => {
     const d = parseDelegation(
-      'Tarefa: C:/AiDW/contexts/acme/demandas/us-1/tarefa-codificador-rota.md. ' +
-        'Pasta da demanda: C:/AiDW/contexts/acme/demandas/us-1. Nível: padrao. No MCP tools needed.',
+      'Tarefa: C:/AiDW/contexts/exemplo/demandas/us-1/tarefa-codificador-rota.md. ' +
+        'Pasta da demanda: C:/AiDW/contexts/exemplo/demandas/us-1. Nível: padrao. No MCP tools needed.',
     )
     expect(d).toEqual({
-      demand: 'C:/AiDW/contexts/acme/demandas/us-1',
+      demand: 'C:/AiDW/contexts/exemplo/demandas/us-1',
       level: 'padrao',
-      task: 'C:/AiDW/contexts/acme/demandas/us-1/tarefa-codificador-rota.md',
+      task: 'C:/AiDW/contexts/exemplo/demandas/us-1/tarefa-codificador-rota.md',
     })
   })
 
@@ -87,7 +87,7 @@ describe('resultado do agente', () => {
   test('rótulo vem da tarefa, sem tarefa- e sem o agente', async () => {
     expect(labelFor('C:/d/tarefa-codificador-rota-fast.md', 'aidw:codificador-high', 'x')).toBe('rota-fast')
     expect(labelFor('tarefa-aidw-revisor-pr7586.md', 'revisor', 'x')).toBe('pr7586')
-    expect(labelFor(null, 'explorador', 'Explorar fluxo de emissão')).toBe('explorar-fluxo-de-emissao')
+    expect(labelFor(null, 'explorador', 'Explorar fluxo de cadastro')).toBe('explorar-fluxo-de-cadastro')
   })
 })
 

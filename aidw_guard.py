@@ -6,8 +6,8 @@
   não tem regra: o usuário continua livre no working copy dele.
 - PreToolUse (Bash/PowerShell) — `git commit` num worktree ativo de demanda que ainda tem a marca `AIDW-TESTE`
   (ajuste temporário de teste) é recusado, para qualquer sessão: o ajuste é revertido antes do commit.
-- UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:go` ou `/aidw:lev`
-  no Claude, `$aidw-go` ou `$aidw-lev` no Codex) ou saiu dele (`/aidw:sair`, `$aidw-sair`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
+- UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:go` ou `/aidw:survey`
+  no Claude, `$aidw-go` ou `$aidw-survey` no Codex) ou saiu dele (`/aidw:exit`, `$aidw-exit`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
 - SessionStart (compact|resume) — numa sessão no modo orquestrador, lembra de reler a skill e o
   demand.json (o Claude recoloca só o começo da skill depois de uma compactação).
 """
@@ -29,7 +29,7 @@ RUNTIME = ROOT / ".aidw" / "runtime.json"
 MARKETPLACE = ROOT / ".aidw" / "marketplace"
 CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
 # Claude: /aidw:go · Codex: $aidw-go (levantamento também entra no modo); sair e done encerram o modo
-MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(go|lev|sair|done)\b(.*)", re.S)
+MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(go|survey|exit|done)\b(.*)", re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
 # `git [-C <pasta>] [-c k=v] commit`; o grupo 1 tem as opções antes do subcomando
 GIT_COMMIT_RE = re.compile(r"\bgit((?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|\S+))*)\s+commit\b")
@@ -166,7 +166,7 @@ def pre_tool_use(data: dict) -> dict | None:
 
 def update_sessions(change) -> dict:
     """Aplica `change(sessions)` ao state/sessions.json sob a trava entre sessões e devolve o registro gravado.
-    Usado pelo hook (/aidw:go, /aidw:sair) e pelo `aidw.py session bind`."""
+    Usado pelo hook (/aidw:go, /aidw:exit) e pelo `aidw.py session bind`."""
     SESSIONS.parent.mkdir(parents=True, exist_ok=True)
     lock = SESSIONS.with_name("sessions.lock")
     for _ in range(40):  # trava leve entre sessões (~2 s); sem ela, grava mesmo assim
@@ -199,8 +199,8 @@ def user_prompt_submit(data: dict) -> None:
         return None
 
     def change(sessions: dict) -> None:
-        if m.group(3) in ("go", "lev"):  # a skill go entende "levantamento <id>"; a demanda vem do `session bind`
-            argument = ("levantamento " if m.group(3) == "lev" else "") + m.group(4).strip()
+        if m.group(3) in ("go", "survey"):  # a skill go entende "levantamento <id>"; a demanda vem do `session bind`
+            argument = ("levantamento " if m.group(3) == "survey" else "") + m.group(4).strip()
             sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
                                  "argument": argument.strip()[:200], "cwd": data.get("cwd"),
                                  "since": datetime.datetime.now().isoformat(timespec="seconds")}
@@ -218,7 +218,7 @@ def session_start(data: dict) -> dict | None:
     codex = entry.get("provider") == "codex"
     skill = (CODEX_SKILLS / "aidw-go" / "SKILL.md" if codex else
              MARKETPLACE / "plugins" / entry["plugin"] / "skills" / "go" / "SKILL.md")
-    leave = "$aidw-sair" if codex else f"/{entry['plugin']}:sair"
+    leave = "$aidw-exit" if codex else f"/{entry['plugin']}:exit"
     arg = f' (pedido literal do usuário: "{entry["argument"]}")' if entry.get("argument") else ""
     if entry.get("demand"):
         arg += f", na demanda {entry['demand']} do contexto {entry.get('context') or '?'} ({entry.get('folder')})"

@@ -111,8 +111,8 @@ Para quem vai responder (PO, Tech Lead, outro time), não para quem leu o códig
 
 Exemplo de tom:
 
-> ❌ "Como tratar o valor 0 do enum de status no fluxo de reemissão?"
-> ✅ "- **D4. Quando o pedido ainda não tem status, o sistema deve deixar reemitir ou bloquear?** Bloquear exige
+> ❌ "Como tratar o valor 0 do enum de status no fluxo de cancelamento?"
+> ✅ "- **D4. Quando o pedido ainda não tem status, o sistema deve deixar cancelar ou bloquear?** Bloquear exige
 > mensagem nova na tela. *Para:* PO *Muda a estimativa:* +4 h se bloquear"
 
 ## 6. `levantamento-<id>.md`
@@ -178,7 +178,7 @@ cabeçalhos, as colunas e os rótulos `**Riscos:**`, `*Para:*` e `*Muda a estima
    os campos do card (story points inclusive) sem ele pedir.
 3. `demand set <id> --step FINAL_REVIEW --status active --note "levantamento: <SP> SP, <min>–<max> h"`. A demanda
    fica nessa etapa enquanto houver dúvidas; `DONE` só pelo `/aidw:done` ou quando o `/aidw:go` a leva para a
-   implementação (Alex, 03/11).
+   implementação (decisão, 03/11).
 
 Se a demanda for implementada depois, o `/orquestrar` reaproveita `resumo-<id>.md`, `pontos-<id>.md` e
 `exploracao-levantamento.md` (seção *Levantamento*).

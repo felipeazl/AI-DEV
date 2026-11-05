@@ -8,9 +8,9 @@ passo a passo em toda demanda, sem depender de o modelo lembrar.
 
 | Tipo | Como se reconhece | Quem chama | Exemplo |
 |---|---|---|---|
-| **De uso direto** | frontmatter `aidw: admin` | você, a qualquer momento, fora de uma demanda | `contexto-usar`, `done` |
-| **Do plugin** | geradas pelo `install` | você | `orquestrar`, `sair`, `diff` |
-| **De fluxo** | as demais | o orquestrador ou um agente, quando a etapa pede | `to-spec`, `code-review` |
+| **De uso direto** | frontmatter `aidw: admin` | você, a qualquer momento, fora de uma demanda | `context use`, `done` |
+| **Do plugin** | geradas pelo `install` | você | `go`, `survey`, `exit`, `diff` |
+| **De fluxo** | as demais (`user-invocable: false` no plugin: não aparecem no menu `/`) | o orquestrador ou um agente, quando a etapa pede | `to-spec`, `code-review` |
 
 Uma skill de fluxo **só vale dentro de uma demanda** conduzida pelo orquestrador. `disable-model-invocation: true`
 impede que o modelo chame a skill sozinho (o `done` só roda quando você chama).
@@ -21,14 +21,15 @@ impede que o modelo chame a skill sozinho (o `done` só roda quando você chama)
 
 | Skill | O que faz |
 |---|---|
-| `orquestrar [demanda] [modo]` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, pergunta o modo, cria o worktree e conduz o fluxo |
-| `sair` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
+| `go [demanda] [modo]` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, pergunta o modo, cria o worktree e conduz o fluxo |
+| `survey <card ou texto>` | Levantamento antes de implementar, só leitura ([fluxo.md](fluxo.md#levantamento-de-demanda)) |
+| `exit` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
 | `diff [repo\|sair]` | Só no Claude. Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue. Sem argumento, vai para o próximo em círculo; `sair` volta para a pasta da demanda ([demandas-e-worktrees.md](demandas-e-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `done` | Fecha a tarefa: grava no contexto só o que foi verificado e vale para as próximas demandas — a nota da demanda e as notas da base de conhecimento que ela tocou (sistema, contrato, conceito, decisão), ligadas sem duplicar; build, bloqueios e como destravar no `context.toml` —, valida, reinstala, faz commit e push do repositório do contexto, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal |
-| `conhecimento [tema]` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda (`kb show` + `kb search`), seguindo os links só até onde a pergunta pede; corrige ou completa uma nota quando você pede ([contextos.md](contextos.md#base-de-conhecimento)) |
-| `contexto-listar` | Mostra os contextos, qual está ativo, o repositório de cada um (remoto só pelo host), os sistemas e se o plugin está instalado |
-| `contexto-usar <nome>` | Valida e ativa um contexto, regenera o ambiente e o plugin; avisa se há demanda ativa |
-| `contexto-criar` | Cria um contexto novo a partir da análise dos repositórios e de no mínimo 10 perguntas ([contextos.md](contextos.md#criar-um-contexto)) |
+| `knowledge [tema]` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda (`kb show` + `kb search`), seguindo os links só até onde a pergunta pede; corrige ou completa uma nota quando você pede ([contextos.md](contextos.md#base-de-conhecimento)) |
+| `context list` (ou só `context`) | Mostra os contextos, qual está ativo, o repositório de cada um (remoto só pelo host), os sistemas e se o plugin está instalado |
+| `context use <nome>` | Valida e ativa um contexto, regenera o ambiente e o plugin; avisa se há demanda ativa |
+| `context create` | Cria um contexto novo a partir da análise dos repositórios e de no mínimo 10 perguntas ([contextos.md](contextos.md#criar-um-contexto)) |
 
 ### O fluxo chama
 

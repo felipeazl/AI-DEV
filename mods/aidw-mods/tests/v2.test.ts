@@ -67,9 +67,9 @@ describe('progresso do Mapa da demanda', () => {
 
 describe('critérios, regras e cenários', () => {
   test('itens numerados e cobertura', async () => {
-    const plan = ['## Critérios de aceite', '- CA1: abre a rota', '## Regras de negócio', '- RN1: IP na 3ª posição', '| CN1 | A1 pelo AVP | x |'].join('\n')
+    const plan = ['## Critérios de aceite', '- CA1: abre a rota', '## Regras de negócio', '- RN1: IP na 3ª posição', '| CN1 | A1 pelo App | x |'].join('\n')
     expect(parseItems(plan, 'RN')).toEqual([{ id: 'RN1', text: 'IP na 3ª posição' }])
-    expect(parseItems(plan, 'CN')).toEqual([{ id: 'CN1', text: 'A1 pelo AVP' }])
+    expect(parseItems(plan, 'CN')).toEqual([{ id: 'CN1', text: 'A1 pelo App' }])
     const matrix = '| CA | Cenário | Passos |\n|---|---|---|\n| CA1 | CN2 — A1 online | 1. emitir |'
     expect(parseItems(matrix, 'CN')).toEqual([{ id: 'CN2', text: 'A1 online' }])
     const cov = parseCoverage('| ID | Status | Evidência |\n|---|---|---|\n| CA1 | coberto | E2E |\n| RN1 | Implementado | x.cs |\n')
@@ -131,7 +131,7 @@ describe('revisão V2', () => {
   test('decisão pela triagem', async () => {
     expect(decisionOf('Corrigir: summary na classe')).toBe('mantido')
     expect(decisionOf('Cai — o card já tem as PRs')).toBe('descartado')
-    expect(decisionOf('Mantida, vai ao Alex/Bruno')).toBe('pendente')
+    expect(decisionOf('Mantida, vai ao usuário/Tech Lead')).toBe('pendente')
     expect(decisionOf('')).toBe('pendente')
   })
 
@@ -164,7 +164,7 @@ describe('teste manual V2', () => {
       '## 0. Preparação',
       '| # | Passo | Quem | Resultado |',
       '|---|---|---|---|',
-      '| P0 | VPN conectada | Alex | |',
+      '| P0 | VPN conectada | usuário | |',
       '## 1. Critérios do card',
       '| # | Cenário | Passo | Esperado | Resultado |',
       '|---|---|---|---|---|',
@@ -183,12 +183,12 @@ describe('teste manual V2', () => {
 describe('levantamento V2', () => {
   const lev = [
     '## 1. O que o card pede × o que existe',
-    '**Card:** integrar o Assistente ao Hub. **Sem critérios de aceite.**',
+    '**Card:** integrar o App ao Portal. **Sem critérios de aceite.**',
     '',
     '| Hoje no código | Efeito para a demanda |',
     '|---|---|',
     '| Nuvem só pelo SafeID | Nenhum outro PSC entra |',
-    '| Vendas em si | **Não mudam**: a origem é que muda. |',
+    '| Cadastro em si | **Não mudam**: a origem é que muda. |',
     '| Plurio só como tipo | Nada a reaproveitar. |',
     '',
     '## 3. Esforço e story points',
@@ -217,7 +217,7 @@ describe('levantamento V2', () => {
   ].join('\n')
 
   test('card × código, esforço, quebra e números', async () => {
-    expect(parseCardAsk(lev)).toBe('integrar o Assistente ao Hub. Sem critérios de aceite.')
+    expect(parseCardAsk(lev)).toBe('integrar o App ao Portal. Sem critérios de aceite.')
     expect(parseCardPoints(lev).map(p => p.situation)).toEqual(['precisa mudar', 'não muda', 'nada a reaproveitar'])
     expect(parseEffort(lev)).toEqual([
       { name: 'PoC no Hub', min: 1, max: 2, label: '1–2' },
@@ -268,12 +268,12 @@ describe('levantamento V2', () => {
       '- **D2. Tablet conta como celular?** Dois jeitos hoje. *Para:* PO',
       '**Respondidas em 03/11**',
       '- **D3.** O limite é 10, fora da',
-      '  demanda (Alex, 03/11). *Para:* Tech Lead',
+      '  demanda (usuário, 03/11). *Para:* Tech Lead',
     ].join('\n')
     expect(parseDoubts(text).map(x => [x.id, x.group, x.question, x.why, x.to, x.affects])).toEqual([
       ['D1', 'Escopo', 'O limite vale por protocolo, guardado no servidor, para que reabrir o link não zere a contagem?', 'Hoje recarregar zera.', 'Tech Lead', '−8 SP'],
       ['D2', 'Escopo', 'Tablet conta como celular?', 'Dois jeitos hoje.', 'PO', ''],
-      ['D3', 'Respondidas em 03/11', 'O limite é 10, fora da demanda (Alex, 03/11).', '', 'Tech Lead', ''],
+      ['D3', 'Respondidas em 03/11', 'O limite é 10, fora da demanda (usuário, 03/11).', '', 'Tech Lead', ''],
     ])
   })
 })
@@ -291,8 +291,8 @@ describe('cores', () => {
 
 describe('painel v3', () => {
   test('seção do levantamento até a próxima seção', async () => {
-    const text = ['# L', '', '## Onde a mudança toca', '- **Nexus**: lê as frases', '  - teste', '', '## Estimativa', 'x'].join('\n')
-    expect(parseSection(text, /Onde a mudan[çc]a toca/i)).toBe('- **Nexus**: lê as frases\n  - teste')
+    const text = ['# L', '', '## Onde a mudança toca', '- **App**: lê as frases', '  - teste', '', '## Estimativa', 'x'].join('\n')
+    expect(parseSection(text, /Onde a mudan[çc]a toca/i)).toBe('- **App**: lê as frases\n  - teste')
     expect(parseSection(text, /Riscos/)).toBe('')
   })
 
@@ -333,7 +333,7 @@ describe('painel v3', () => {
     expect(parseEstimate(lines('## Estimativa', '- **Story points:** 3')).risks).toBe('')
   })
 
-  test('painel v4: o argumento do /painel leva ao painel e à aba', async () => {
+  test('painel v4: o argumento do /panel leva ao painel e à aba', async () => {
     expect(viewFor('desenvolvimento', '')).toEqual({ view: 'geral', tab: '' })
     expect(viewFor('desenvolvimento', 'critérios')).toEqual({ view: 'geral', tab: '' })
     expect(viewFor('desenvolvimento', 'revisao')).toEqual({ view: 'decidir', tab: 'revisao' })

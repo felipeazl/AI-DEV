@@ -80,7 +80,7 @@ export type Finding = {
   status: string
   triage: string
   comment: string
-  /** A PR do rascunho de comentário (revisão de PR): "7639", "7639 e 7640". */
+  /** A PR do rascunho de comentário (revisão de PR): "1234", "1234 e 5678". */
   target: string
   published: boolean
   /** Código antes e depois (blocos `**Antes:**` e `**Depois:**` do revisor); vazios quando o achado não propõe código. */

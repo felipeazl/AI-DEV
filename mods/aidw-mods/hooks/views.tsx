@@ -49,7 +49,7 @@ export type View = 'geral' | 'metricas' | 'decidir'
 export const VIEWS: Record<View, { title: string; command: string; tabs: Record<DemandKind, [string, string][]> }> = {
   geral: {
     title: 'Geral',
-    command: 'painel',
+    command: 'panel',
     tabs: {
       desenvolvimento: [['geral', 'Geral']],
       'pr-review': [['geral', 'Geral']],
@@ -58,12 +58,12 @@ export const VIEWS: Record<View, { title: string; command: string; tabs: Record<
   },
   metricas: {
     title: 'Métricas',
-    command: 'metricas',
+    command: 'metrics',
     tabs: { desenvolvimento: [['metricas', 'Métricas']], 'pr-review': [['metricas', 'Métricas']], levantamento: [['metricas', 'Métricas']] },
   },
   decidir: {
     title: 'Testes e Review',
-    command: 'testes-review',
+    command: 'review-tests',
     tabs: {
       desenvolvimento: [['revisao', 'Revisão'], ['manual', 'Testes']],
       'pr-review': [['comentarios', 'Comentários']],
@@ -77,7 +77,7 @@ export function viewTitle(view: View, kind: DemandKind): string {
   return view === 'decidir' && kind === 'levantamento' ? 'Dúvidas' : VIEWS[view].title
 }
 
-/** Nomes antigos das abas (`/painel fluxo`) e apelidos. */
+/** Nomes antigos das abas (`/panel fluxo`) e apelidos. */
 const TAB_ALIAS: Record<string, string> = {
   fluxo: 'geral',
   agentes: 'metricas',
@@ -125,11 +125,11 @@ export function visibleTabs(s: Snapshot, view: View): [string, string][] {
 /** Dúvida já respondida: o levantamento a põe num grupo "Respondidas …". */
 const answered = (d: Doubt) => /respondid/i.test(d.group)
 
-/** O painel e a aba de um argumento (`/painel revisao`): um painel pelo nome, ou o painel que tem a aba; senão, a Geral. */
+/** O painel e a aba de um argumento (`/panel revisao`): um painel pelo nome, ou o painel que tem a aba; senão, a Geral. */
 export function viewFor(kind: DemandKind, arg: string): { view: View; tab: string } {
   const id = TAB_ALIAS[arg] ?? arg
   if (id === 'decidir' || id === 'metricas') return { view: id, tab: '' }
-  if (['decisoes', 'decisões', 'testes-review', 'review'].includes(id)) return { view: 'decidir', tab: '' }
+  if (['decisoes', 'decisões', 'review-tests', 'testes-review', 'review'].includes(id)) return { view: 'decidir', tab: '' }
   const view = (Object.keys(VIEWS) as View[]).find(v => VIEWS[v].tabs[kind].some(([t]) => t === id))
   return view ? { view, tab: id } : { view: 'geral', tab: '' }
 }

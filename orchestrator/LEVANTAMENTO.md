@@ -25,7 +25,7 @@ question an answer of the user raised — and then the agent's default, with onl
 
 `UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `FINAL_REVIEW`; every step: `python "{{root}}/aidw.py" demand set <id> --step <STEP>`.
 The levantamento stays in `FINAL_REVIEW` with status `active` while the user answers the doubts; it is never closed
-here. `DONE` comes only from `/aidw:done` or when `/aidw:go <id>` takes the demand into implementation (Alex, 03/11).
+here. `DONE` comes only from `/aidw:done` or when `/aidw:go <id>` takes the demand into implementation (decision, 03/11).
 The explorer ends with `"state"`: `exploration_complete` → `ESTIMATE`; `environment_blocked` → fix it yourself when you
 can, otherwise take it to the user (never redo the task for it). A missing `state` is a failed result: delegate once
 more asking only for the missing JSON.

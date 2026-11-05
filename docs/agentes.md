@@ -70,7 +70,7 @@ retry/timer, um dado gravado e não exibido, um erro engolido no log. O plano di
 
 ### Revisor
 Revisa o **diff** de cada entrega contra o plano numa passada (skill `code-review`, pré-carregada):
-- **qualidade**: os padrões do time (no acme, o Guideline) e as convenções do repositório;
+- **qualidade**: os padrões do time (ex.: o guia de código da empresa) e as convenções do repositório;
 - **bugs**: defeitos reais, cada um com o cenário de falha rastreável no código;
 - **segurança**: vulnerabilidades exploráveis, cada uma com o caminho de ataque.
 
