@@ -7,30 +7,30 @@
   "state_dir": "<ROOT>/contexts/exemplo/demandas",
   "agents": {
     "orchestrator": {
-      "name": "orquestrador",
-      "display": "Orquestrador",
+      "name": "orchestrator",
+      "display": "Orchestrator",
       "enabled": true,
       "model": "gpt-6-sol",
       "model_id": "gpt-6-sol",
       "effort": "high",
       "skills": [
         "to-spec",
-        "verificar-premissa",
-        "preparar-worktree",
+        "verify-premise",
+        "prepare-worktree",
         "skill-exemplo"
       ],
       "preload": []
     },
     "planner": {
-      "name": "planejador",
-      "display": "Planejador",
+      "name": "planner",
+      "display": "Planner",
       "enabled": true,
       "model": "gpt-5-6-terra",
       "model_id": "gpt-5.6-terra",
       "effort": "high",
       "skills": [
         "to-spec",
-        "verificar-premissa"
+        "verify-premise"
       ],
       "preload": [
         "to-spec"
@@ -44,8 +44,8 @@
       }
     },
     "explorer": {
-      "name": "explorador",
-      "display": "Explorador",
+      "name": "explorer",
+      "display": "Explorer",
       "enabled": true,
       "model": "gpt-5-6-luna",
       "model_id": "gpt-5.6-luna",
@@ -63,14 +63,14 @@
       }
     },
     "coder": {
-      "name": "codificador",
-      "display": "Codificador",
+      "name": "coder",
+      "display": "Coder",
       "enabled": true,
       "model": "gpt-5-6-terra",
       "model_id": "gpt-5.6-terra",
       "effort": "high",
       "skills": [
-        "preparar-worktree",
+        "prepare-worktree",
         "skill-exemplo"
       ],
       "preload": [],
@@ -88,15 +88,15 @@
       }
     },
     "reviewer": {
-      "name": "revisor",
-      "display": "Revisor",
+      "name": "reviewer",
+      "display": "Reviewer",
       "enabled": true,
       "model": "gpt-5-6-terra",
       "model_id": "gpt-5.6-terra",
       "effort": "high",
       "skills": [
         "code-review",
-        "verificar-premissa"
+        "verify-premise"
       ],
       "preload": [
         "code-review"
@@ -134,8 +134,8 @@
       }
     },
     "documenter": {
-      "name": "documentador",
-      "display": "Documentador",
+      "name": "documenter",
+      "display": "Documenter",
       "enabled": true,
       "model": "gpt-5-6-luna",
       "model_id": "gpt-5.6-luna",
@@ -160,30 +160,30 @@
   ],
   "claude_settings": {},
   "variants": {
-    "planejador": [
-      "planejador",
-      "planejador-medium"
+    "planner": [
+      "planner",
+      "planner-medium"
     ],
-    "explorador": [
-      "explorador",
-      "explorador-gpt-5-6-terra-medium",
-      "explorador-gpt-5-6-terra-high"
+    "explorer": [
+      "explorer",
+      "explorer-gpt-5-6-terra-medium",
+      "explorer-gpt-5-6-terra-high"
     ],
-    "codificador": [
-      "codificador",
-      "codificador-medium"
+    "coder": [
+      "coder",
+      "coder-medium"
     ],
-    "revisor": [
-      "revisor",
-      "revisor-medium",
-      "revisor-low"
+    "reviewer": [
+      "reviewer",
+      "reviewer-medium",
+      "reviewer-low"
     ],
     "qa": [
       "qa",
       "qa-high"
     ],
-    "documentador": [
-      "documentador"
+    "documenter": [
+      "documenter"
     ]
   },
   "panel": true,

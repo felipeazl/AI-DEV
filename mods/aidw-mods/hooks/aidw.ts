@@ -1,15 +1,18 @@
-// Leitura pura dos artefatos do AiDW: o prompt de uma delegação, o JSON final do agente, o metricas.md,
-// as rodadas de revisão e o routing.toml. Sem `$`, para os testes rodarem sem o engine.
+// Pure reading of the AiDW artifacts: the prompt of a delegation, the agent's final JSON, the metrics file,
+// the review rounds and routing.toml. No `$`, so the tests run without the engine.
 
 import type { Delegation as MetricsRow, OrchestratorRow, OrchestratorStep, OrchestratorUsage, RunningAgent } from '../types'
+import { t } from './i18n'
+import { TERM, fam } from './names'
 
 export type Delegation = { demand: string; level: string | null; task: string | null }
 
-const DEMAND = /Pasta da demanda:\s*`?([A-Za-z]:[\\/][^`\s]*?|\/[^`\s]*?)`?\.?(?=\s|$)/
-const LEVEL = /N[íi]vel:\s*`?([a-z]+)/
-const TASK = /Tarefa:\s*`?([^`\s]+?\.md)/
+// `Demand folder:`, `Level:`, `Task:` (and the old `Pasta da demanda:`, `Nível:`, `Tarefa:`)
+const DEMAND = new RegExp(`${TERM.demandFolder}:\\s*\`?([A-Za-z]:[\\\\/][^\`\\s]*?|\\/[^\`\\s]*?)\`?\\.?(?=\\s|$)`)
+const LEVEL = new RegExp(`${TERM.level}:\\s*\`?([a-z]+)`)
+const TASK = new RegExp(`${TERM.taskLabel}:\\s*\`?([^\`\\s]+?\\.md)`)
 
-/** A delegação do AiDW: o prompt traz a pasta da demanda (sem ela, não é do AiDW). */
+/** An AiDW delegation: the prompt carries the demand folder (without it, it is not AiDW's). */
 export function parseDelegation(prompt: string): Delegation | null {
   const demand = DEMAND.exec(prompt)?.[1]
   if (!demand) return null
@@ -20,18 +23,18 @@ export function parseDelegation(prompt: string): Delegation | null {
   }
 }
 
-/** O último `"state": "<key>"` do texto final do agente. */
+/** The last `"state": "<key>"` of the agent's final text. */
 export function parseState(text: string): string | null {
   const all = [...text.matchAll(/"state"\s*:\s*"([a-z_]+)"/g)]
   return all.at(-1)?.[1] ?? null
 }
 
-/** Rótulo da linha do metricas.md: o nome da tarefa sem `tarefa-` e sem o agente; sem tarefa, a descrição. */
+/** Label of the metrics line: the task name without `task-`/`tarefa-` and without the agent; with no task, the description. */
 export function labelFor(task: string | null, agent: string, description: string): string {
   const base = (agent.split(':').pop() ?? agent).split('-')[0] ?? agent
   if (task) {
     const stem = (task.replace(/\\/g, '/').split('/').pop() ?? '').replace(/\.md$/, '')
-    const label = stem.replace(/^tarefa-/, '').replace(/^aidw-/, '').replace(new RegExp(`^${base}-`), '')
+    const label = stem.replace(new RegExp(`^${fam('task')}-`), '').replace(/^aidw-/, '').replace(new RegExp(`^${base}-`), '')
     if (label) return label
   }
   return slug(description) || base
@@ -47,8 +50,8 @@ export function slug(text: string): string {
     .slice(0, 40)
 }
 
-/** Delegações, tokens somados e o nível da última linha do metricas.md. */
-export function parseMetricas(text: string): { rows: number; tokens: number; level: string | null } {
+/** Delegations, summed tokens and the level of the last line of the metrics file. */
+export function parseMetrics(text: string): { rows: number; tokens: number; level: string | null } {
   let rows = 0
   let tokens = 0
   let level: string | null = null
@@ -65,7 +68,7 @@ export function parseMetricas(text: string): { rows: number; tokens: number; lev
   return { rows, tokens, level }
 }
 
-/** "$0.42", "0,42", "1,234.50" → número; "—" ou vazio → null. */
+/** "$0.42", "0,42", "1,234.50" → number; "—" or empty → null. */
 export function usd(cell: string | undefined): number | null {
   let s = (cell ?? '').replace(/[^\d.,]/g, '')
   if (!/\d/.test(s)) return null
@@ -74,7 +77,7 @@ export function usd(cell: string | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** As linhas do metricas.md, mais antiga primeiro. */
+/** The lines of the metrics file, oldest first. */
 export function parseDelegations(text: string): MetricsRow[] {
   const num = (s: string | undefined) => {
     const n = Number((s ?? '').replace(/[.,\s]/g, ''))
@@ -102,14 +105,14 @@ export function parseDelegations(text: string): MetricsRow[] {
 }
 
 /**
- * Compactação por ociosidade: IDLE_MS depois do fim de um turno do orquestrador sem mensagem nova, com o contexto em
- * IDLE_MIN tokens ou mais, ele compacta sozinho — antes do cache de 1h expirar, para a volta não regravar a conversa
- * inteira (decisão, 2026-10-30: a regra antiga, por etapa e espera, não disparava).
+ * Idle compaction: IDLE_MS after the end of an orchestrator turn with no new message, with the context at
+ * IDLE_MIN tokens or more, it compacts by itself — before the 1h cache expires, so coming back does not rewrite the whole
+ * conversation (decision, 2026-10-30: the old rule, by step and wait, never fired).
  */
 export const IDLE_MS = 50 * 60_000
 export const IDLE_MIN = 100_000
 
-/** As linhas do metricas-orquestrador.md (`aidw.py record-orchestrator`): o chat principal por sessão e modelo. */
+/** The lines of the orchestrator metrics file (`aidw.py record-orchestrator`): the main chat per session and model. */
 export function parseOrchestrator(text: string): OrchestratorUsage {
   const num = (s: string | undefined) => {
     const n = Number((s ?? '').replace(/[.,\s]|s$/g, ''))
@@ -119,7 +122,7 @@ export function parseOrchestrator(text: string): OrchestratorUsage {
   const steps: OrchestratorStep[] = []
   for (const line of text.split(/\r?\n/)) {
     const c = line.split('|').map(x => x.trim())
-    // | Etapa | Turnos | Duração | Entrada | Cache escrito | Cache lido | Saída | Custo |
+    // | Step | Turns | Duration | Input | Cache written | Cache read | Output | Cost | (or the old Portuguese header)
     if (c.length === 10 && /^[A-Z][A-Z_]*$/.test(c[1] ?? '')) {
       steps.push({
         step: c[1] ?? '',
@@ -153,7 +156,7 @@ export function parseOrchestrator(text: string): OrchestratorUsage {
   }
 }
 
-/** Orçamento de tokens da demanda (soma das delegações) por nível: passar dele avisa, não trava. */
+/** Token budget of the demand (sum of the delegations) per level: going over it warns, it does not block. */
 export const BUDGET: Record<string, number> = {
   trivial: 300_000,
   simples: 800_000,
@@ -169,37 +172,37 @@ export function budgetFor(level: string | null): number {
 const PLAN_STEPS = new Set(['PLAN', 'SPEC', 'TEST_PLAN', 'PLAN_REVIEW', 'PLAN_FIX', 'EXPLORE'])
 
 /**
- * A rodada que importa na etapa: a da revisão do plano ou a da revisão do código. Com um laço (`demand set --loop
- * bug-1234`, o caminho curto depois da entrega), só contam as revisões dele: `review-<id>-<laço>-r<N>.md`.
+ * The round that matters at the step: the plan review's or the code review's. With a loop (`demand set --loop
+ * bug-1234`, the short path after delivery), only its reviews count: `review-<id>-<loop>-r<N>.md`.
  */
-export function roundFor(step: string, files: string[], loop?: string | null): { round: number; kind: 'plano' | 'revisão' | null } {
+export function roundFor(step: string, files: string[], loop?: string | null): { round: number; kind: 'plan' | 'review' | null } {
   const max = (re: RegExp) =>
     files.reduce((m, f) => Math.max(m, Number(re.exec(f)?.[1] ?? 0)), 0)
   if (PLAN_STEPS.has(step)) {
-    const round = max(/^revisao-plano-.*-r(\d+)\.md$/)
-    return { round, kind: round ? 'plano' : null }
+    const round = max(new RegExp(`^${fam('planReview')}-.*-r(\\d+)\\.md$`))
+    return { round, kind: round ? 'plan' : null }
   }
   const tag = loop ? loop.replace(/[^a-z0-9-]/gi, '') : ''
   const round = max(tag ? new RegExp(`^review-.*-${tag}-r(\\d+)\\.md$`) : /^review-.*-r(\d+)\.md$/)
-  return { round, kind: round ? 'revisão' : null }
+  return { round, kind: round ? 'review' : null }
 }
 
-/** `aidw.py demand set <id>` num comando de shell: o id da demanda. */
+/** `aidw.py demand set <id>` in a shell command: the demand id. */
 export function demandSetId(command: string): string | null {
   return /aidw\.py["']?\s+demand\s+set\s+["']?([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? null
 }
 
-/** O modelo e o effort do agente, como a faixa os mostra (`Sonnet high`). */
+/** The agent's model and effort, as the strip shows them (`Sonnet high`). */
 export function agentModel(a: RunningAgent): string {
   return [a.model, a.effort].filter(Boolean).join(' ')
 }
 
-/** Os tokens do agente, como a faixa os mostra (`42k tokens`; antes da primeira resposta, `começando`). */
+/** The agent's tokens, as the strip shows them (`42k tokens`; before the first answer, `starting`). */
 export function agentTokens(a: RunningAgent): string {
-  return a.tokens ? `${compact(a.tokens)} tokens` : 'começando'
+  return a.tokens ? `${compact(a.tokens)} tokens` : t('band.starting')
 }
 
-/** Colunas de um card de agente na faixa: o texto mais largo das duas linhas, no mínimo 30, com borda e padding. */
+/** Columns of an agent card in the strip: the widest text of the two lines, at least 30, with border and padding. */
 export function agentCardWidth(a: RunningAgent): number {
   const model = agentModel(a)
   const top = 2 + (a.display ?? a.agent).length + (model ? model.length + 1 : 0) + 2 + 5
@@ -208,9 +211,9 @@ export function agentCardWidth(a: RunningAgent): number {
 }
 
 /**
- * Como a faixa mostra os agentes rodando no espaço que o engine dá: cards, enquanto cabem numa linha só; senão uma
- * linha por agente. Se nem as linhas cabem na altura, as primeiras e um resumo do resto (`shown` < total). Sem a
- * largura (0), até 4 cards.
+ * How the strip shows the running agents in the space the engine gives: cards, while they fit on one line; otherwise one
+ * line per agent. If not even the lines fit in the height, the first ones and a summary of the rest (`shown` < total). With no
+ * width (0), up to 4 cards.
  */
 export function agentsLayout(running: RunningAgent[], columns: number, rows: number): { mode: 'cards' | 'list'; shown: number } {
   const width = running.reduce((sum, a) => sum + agentCardWidth(a), 0) + Math.max(0, running.length - 1)
@@ -230,12 +233,12 @@ const MODELS = new Set(['haiku', 'sonnet', 'opus', 'fable'])
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 const cap = (x: string) => (x ? x[0]!.toUpperCase() + x.slice(1) : x)
 
-/** O agente do runtime.json, no que a faixa mostra. */
+/** The runtime.json agent, in what the strip shows. */
 export type AgentDef = { name: string; display?: string; model?: string; effort?: string }
 
 /**
- * O nome, o modelo e o effort de uma variante (`busca`, `busca-sonnet-medium`, `dev-medium`): o que o nome não diz
- * vem do agente base no runtime.json; um modelo trocado sem effort no nome fica sem effort.
+ * The name, model and effort of a variant (`busca`, `busca-sonnet-medium`, `dev-medium`): what the name does not say
+ * comes from the base agent in runtime.json; a model swapped without effort in the name has no effort.
  */
 export function agentSpec(variant: string, agents: AgentDef[]): { display: string; model: string; effort: string } {
   const v = variant.split(':').pop() ?? variant

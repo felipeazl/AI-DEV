@@ -1,0 +1,186 @@
+---
+when: do the survey of a demand (workflow survey) — the card's points, the explorer's task, the estimation rubric, how to write the open questions and the format of survey-<id>.md
+---
+
+# Demand survey
+
+Workflow `survey` (the orchestrator's *Survey* section): understand the card, validate each of its points in the code,
+map the flow end to end and estimate. **Read only:** no worktree, plan, build or code; nothing written to an
+environment or to the board without the user's OK.
+
+## 0. The flow
+
+- **Understand:** `summary-<id>.md`, then every point the card asks or asserts, numbered, in `points-<id>.md`.
+- **Explore** (`EXPLORE`): one {{agent:explorer}} task in survey mode with the survey exception of
+  *Agents and effort*: it validates each point, maps the flow end to end and returns the size signals in
+  `exploration-survey.md`.
+- **Estimate** (`ESTIMATE`): apply the rubric and write `survey-<id>.md` in the reference's model exactly (the
+  panel reads its tables).
+- **End:** show the estimate and the open questions, offer the card comment (a locked action), then `FINAL_REVIEW`
+  with status `active`: the demand waits there while questions are open. It goes to `DONE` only by `/aidw:done` or
+  when `/aidw:go` takes it into implementation. Never change the card's state or fields. A demand whose folder has
+  `survey-<id>.md` and no plan starts its development from `EXPLORE`, reusing the summary, the points and the
+  exploration; ask the explorer only what the plan still needs.
+
+## 1. The card's points
+
+After `summary-<id>.md`, number in `points-<id>.md` (in the demand folder) everything the card asks or asserts,
+one point per line, with its origin:
+
+- each behavior asked in the description (a sentence that asks for two things becomes two points);
+- each acceptance criterion;
+- each decision in the comments of the card and of the linked US/Technical debts (author and date);
+- each statement about the system that the card takes for granted ("screen X already shows Y", "the API returns Z");
+- what the card mentions without detail (screen, report, integration, user profile, environment).
+
+Format: `P01 — <the point, in one sentence> — origin: description | criterion 2 | comment by <author> on <date>`.
+
+A request without a card (text only): the points come from the user's text; everything they did not say and the code
+does not answer becomes an open question.
+
+## 2. The explorer's task
+
+`task-explorer-survey.md`, for the {{agent:explorer}} on the survey exception of *Agents and effort*
+(Sonnet high: the exploration of the whole flow is the deliverable). It carries:
+
+- the paths of `summary-<id>.md` and `points-<id>.md` (do not paste the content);
+- the likely systems and the repositories from *Systems* (and the ones they consume, from *Depends on*); if you do not
+  know which, the Runtime's project roots;
+- **survey mode** and the report `exploration-survey.md` in the demand folder;
+- extra questions, numbered, only if the card leaves a specific technical point open;
+- "No MCP tools needed", unless a clear trigger of the *MCP tools* table applies.
+
+The explorer's survey mode already covers: each point confirmed, divergent or not found in the code, the flow end to
+end with `file:line`, the size signals and the open questions the code does not answer.
+
+## 3. The rubric
+
+Use the active context's rubric when the *Reference* list has *regua-estimativa*; it prevails over the default
+below.
+
+**Default rubric** — story points in Fibonacci; effort in hours.
+
+| SP | When | Hours (dev + test + review) |
+|---|---|---|
+| 1 | Text or configuration adjustment, one file, no new rule | up to 4 h |
+| 2 | Targeted change with a simple rule, 1–2 files, one system | 4–8 h |
+| 3 | New business rule in one system, a few files, direct test | 8–16 h |
+| 5 | Several touch points in one system, or a simple contract with another | 16–24 h |
+| 8 | Two or more systems, a contract between them, database, or fragile legacy | 24–40 h |
+| 13 | Several systems and contracts, data migration, high uncertainty | 40–64 h |
+| > 13 | Too big for one card | propose the split |
+
+**Complexity** (independent of size: a small card can be of high complexity):
+- **Low** — straightforward logic, one system, current behavior clear.
+- **Medium** — a business rule with cases, or a contract with another system already known.
+- **High** — several systems, concurrency, UI thread, polling, database, security, legacy without tests.
+- **Very high** — the current flow is not clear even after the exploration, or it depends on a decision not yet made.
+
+## 4. Estimate
+
+Apply the rubric to the report's **size signals**, never to the impression the card gives:
+
+1. **Complexity** with the reason in one line (the signals that weighed).
+2. **Effort in hours per front:** analysis/plan adjustment, development per system, tests (automatic and manual,
+   with the environment they need), review and fixes, and what the context adds (SQL script, package for QA,
+   coordinated deploy). Give a **range** (minimum–maximum), not a single number.
+3. **Story points:** the rubric value that matches the total range; between two, the larger when confidence is low.
+4. **Confidence** (high, medium or low) and **what would change it**: usually the open questions. Say which questions,
+   answered one way or the other, raise or lower the estimate.
+5. **Above 13 SP:** propose the split into smaller cards, each with its estimate and what it delivers on its own.
+6. **Risks:** what can blow the estimate (legacy without tests, QA environment, another team, test data).
+
+## 5. The open questions
+
+For whoever will answer (PO, Tech Lead, another team), not for whoever read the code:
+
+- **One question per item**, in one or two sentences, ending in `?`.
+- **Business language:** what the person sees or decides (screen, message, rule, status), not a class, method, enum
+  or table name. The technical detail, if it helps, goes in the context, short.
+- **With options** when there are clear paths ("A or B?"), and your recommendation when you have one.
+- **Context:** right after the question, what led to it and what it changes in the delivery.
+- **For:** who answers, in each question (PO, Tech Lead, another team or QA).
+- **Changes the estimate:** only in the ones that change the size, with how much (`+3 SP if migrating`, `+8 h`).
+- **Grouped by theme** (`**Scope and product**`, `**Contract with <system>**`, `**Experience**`, `**Rules**`…),
+  numbered `D1`, `D2`… in document order.
+- Order within the theme: the ones that block the start first; then the ones that change the estimate; last the
+  detail ones.
+- Do not ask what the code already answered; that goes as a fact in the survey.
+- **Answered:** it leaves the theme and goes to the group `**Answered on <dd/mm>**`, at the end, in one line with the
+  answer and who decided (`- **D3.** Only the card's 5 fields are handled (PO and TL, 20/10). *For:* PO`); the panel
+  shows this group collapsed and counts only the open ones.
+
+Example of tone:
+
+> ❌ "How to handle the value 0 of the status enum in the cancellation flow?"
+> ✅ "- **D4. When the order has no status yet, should the system allow cancelling or block it?** Blocking needs a
+> new message on the screen. *For:* PO *Changes the estimate:* +4 h if blocking"
+
+## 6. `survey-<id>.md`
+
+In the demand folder:
+
+```markdown
+# Survey — <type> <id>: <title>
+
+**Estimate:** <SP> SP · <min>–<max> h · complexity <level> · confidence <high|medium|low>
+
+## What the card asks
+
+**Card:** <3 to 6 lines, in business language; say if the card has no acceptance criteria>
+
+## Card × code
+| Today in the code | For the demand | Status |
+|---|---|---|
+| <what exists, with `file:line`> | <what it means for the demand> | must change / is the pain / does not change / nothing to reuse |
+
+## Current flow (end to end)
+<the steps, from start to end, with system and `file:line`>
+
+## Where the change touches
+<systems, repositories and touch points; contracts between systems; database; screens>
+
+## Estimate
+| Block | Dev (h) |
+|---|---|
+| <work block> | <min>–<max> |
+| **Total dev** | **<min>–<max> h** |
+| Integrated QA | <min>–<max> h |
+
+- **Story points:** <SP> — <why, by the rubric>
+- **Complexity:** <level> — <the signals that weighed>
+- **Confidence:** <level> — <what would change it>
+- **Risks:** <...>
+
+<only above 13 SP: the split>
+| # | Item | SP |
+|---|---|---|
+| 1 | <item> | <SP> |
+
+Total **≈ <sum> SP**.
+
+## Open questions
+
+**<Theme>**
+- **D1. <question>?** <context> *For:* <PO | Tech Lead | another team | QA> *Changes the estimate:* <only when it changes>
+
+## Sources
+summary-<id>.md · points-<id>.md · exploration-survey.md
+```
+
+The AiDW panels (*Card × code* and *Estimate* in General, *Open questions* in the Open questions panel) read exactly
+these tables and markers: keep the headings, the columns and the labels `**Risks:**`, `*For:*` and
+`*Changes the estimate:*` as they are.
+
+## 7. Close
+
+1. In chat: the **Estimate** line, the estimate table, the open questions in full and the file path.
+2. **Offer** to publish on the card a comment with the estimate and the open questions, short and in the active
+   context's standard. Publishing is a locked action: only with the user's explicit OK, with the text they approved.
+   Never change the card's state or fields (story points included) unless they ask.
+3. `demand set <id> --step FINAL_REVIEW --status active --note "survey: <SP> SP, <min>–<max> h"`. The demand
+   stays in that step while there are open questions; `DONE` only by `/aidw:done` or when `/aidw:go` takes it into
+   implementation (decision, 03/11).
+
+If the demand is implemented later, `/aidw:go` reuses `summary-<id>.md`, `points-<id>.md` and
+`exploration-survey.md` (*Survey* section).

@@ -2,6 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { agentOf, checkDelegation } from '../hooks/guards'
 import type { DelegationCheck, Runtime } from '../hooks/guards'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 const RUNTIME: Runtime = {
   variants: {

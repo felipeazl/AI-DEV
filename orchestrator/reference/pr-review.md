@@ -1,26 +1,26 @@
 ---
-when: conduzir a revisão da PR de outro dev (workflow pr-review): entender, worktree só leitura, revisor no modo PR, triagem, revisão final e nova versão da PR
+when: conduct the review of another dev's PR (workflow pr-review): understand, read-only worktree, reviewer in PR mode, triage, final review and a new version of the PR
 ---
 
-# Revisão de PR de outro dev (workflow pr-review)
+# Review of another dev's PR (workflow pr-review)
 
 **PR review** (`pr-review`: someone else's pull request; no plan, coder or fix loop — the author fixes). Name the
 demand after its work item (or `pr-<n>` without one); one demand may hold PRs of several repositories.
-- **Understand:** `resumo-<id>.md` as usual, plus per PR: number, repository, author, title, description, target
+- **Understand:** `summary-<id>.md` as usual, plus per PR: number, repository, author, title, description, target
   branch, linked work items and what reviewers already commented or approved (read only).
-- **Worktree:** per PR, `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <tipo-id> --pr <n>`: a
+- **Worktree:** per PR, `python "{{root}}/aidw.py" worktree create --repo <repo> --demand <type-id> --pr <n>`: a
   read-only detached worktree of the PR already merged into its target, and `diff-pr<n>-<repo>.patch` in the demand
   folder. Run the system's build in it once, output to `build-pr<n>-<repo>.txt` (only its tail in this chat).
 - `REVIEW`: one {{agent:reviewer}} task with every PR of the demand, in PR mode (summary, PR data, diffs, worktree paths
-  with `base`/`source`, build output). `pr_review_done` → triage (skill `verificar-premissa` before dropping a finding)
-  following the reference *triagem-pr*: findings that say the same thing become one comment (`C1`…).
+  with `base`/`source`, build output). `pr_review_done` → triage (skill `verify-premise` before dropping a finding)
+  following the reference *pr-triage*: findings that say the same thing become one comment (`C1`…).
 - **Final review** (`FINAL_REVIEW`): per PR, its comments — ID, severity, `file:line`, the draft text, your
   recommendation. The user picks the comments, edits their text (or asks you to improve one) and answers, per PR,
-  **"Aprovar a PR?"**: `manual` (the default: you do not approve, they decide in the tool), `sim` (you approve it) or
-  `não` (you do not approve). No vote scale and no suggested vote. Commenting, approving and completing the PR are
+  **"Approve the PR?"**: `manual` (the default: you do not approve, they decide in the tool), `yes` (you approve it) or
+  `no` (you do not approve). No vote scale and no suggested vote. Commenting, approving and completing the PR are
   locked actions: only with their explicit OK, exactly what they approved; never touch the work item's state. Record
   what was published (thread ids) and each PR's approval in the triage.
 - **The author updated the PR:** run the same `worktree create --pr <n>` again (writes
   `diff-pr<n>-<repo>-r<N>.patch` with only what changed); a fresh reviewer (the exception one level down) gets the
   previous review and that diff (round N, same IDs).
-- **At the end:** `worktree remove <tipo-id>`.
+- **At the end:** `worktree remove <type-id>`.

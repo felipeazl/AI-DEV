@@ -1,10 +1,11 @@
 # context list
 
-1. Rode `python "{{root}}/aidw.py" context list` ({{root}} é a raiz do AiDW) — exatamente nessa forma, com as aspas: é a que as regras de permissão liberam sem pedir aprovação.
-2. Mostre ao usuário, numa tabela curta: nome, descrição, se está **ativo** (`*`), repositório (git próprio,
-   remoto só pelo host — nunca mostre URL completa), sistemas e plugin instalado.
-3. Aponte o que merece atenção, se houver: contexto sem repositório git próprio, contexto sem remoto (o
-   conteúdo só existe nesta máquina), erro no `context.toml`.
-4. Termine com o próximo passo possível: `/aidw:context use <nome>` para trocar, `/aidw:context create` para um novo.
+1. Run `python "{{root}}/aidw.py" context list` ({{root}} is the AiDW root) — exactly in this form, with the quotes: it is the one the permission rules allow without asking for approval.
+2. Show the user, in a short table: name, description, whether it is **active** (`*`), repository (its own git, the
+   remote only by host — never show the full URL), systems and whether the plugin is installed.
+3. Point out what deserves attention, if any: a context without its own git repository, a context without a remote
+   (its content exists only on this machine), an error in `context.toml`.
+4. Finish with the possible next step: `/aidw:context use <name>` to switch, `/aidw:context create` for a new one.
 
-Não altere nada: esta skill só lê.
+Change nothing: this skill only reads. Talk to the user in the AiDW UI language (`[ui] language`, shown by
+`python "{{root}}/aidw.py" show`).

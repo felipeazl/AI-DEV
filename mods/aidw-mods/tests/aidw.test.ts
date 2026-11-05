@@ -8,11 +8,15 @@ import {
   demandSetId,
   labelFor,
   parseDelegation,
-  parseMetricas,
+  parseMetrics,
   parseOrchestrator,
   parseState,
   roundFor,
 } from '../hooks/aidw'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 describe('métricas do orquestrador', () => {
   test('soma as sessões do metricas-orquestrador.md', async () => {
@@ -100,21 +104,21 @@ describe('estado da demanda', () => {
       '| 2026-09-28 | revisor | simples | sonnet | medium | plano-r2 | ok | 17 | 278s | 103,974 | — | — | — |',
       '| 2026-09-29 | codificador | padrao | gpt | high | t1 | ok | 3 | 10s | 1,000 | 500 | 0.1 | — |',
     ].join('\n')
-    expect(parseMetricas(md)).toEqual({ rows: 3, tokens: 105_474, level: 'padrao' })
+    expect(parseMetrics(md)).toEqual({ rows: 3, tokens: 105_474, level: 'padrao' })
   })
 
   test('rodada da revisão do código e do plano', async () => {
     const files = ['review-131190-r1.md', 'review-131190-r4.md', 'revisao-plano-131190-r2.md', 'plano-131190.md']
-    expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'revisão' })
-    expect(roundFor('PLAN_FIX', files)).toEqual({ round: 2, kind: 'plano' })
+    expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'review' })
+    expect(roundFor('PLAN_FIX', files)).toEqual({ round: 2, kind: 'plan' })
     expect(roundFor('IMPLEMENT', ['plano.md'])).toEqual({ round: 0, kind: null })
   })
 
   test('com um laço depois da entrega, só as revisões dele contam', async () => {
     const files = ['review-9001-r4.md', 'review-9001-bug-1234-r1.md', 'review-9001-bug-1235-r2.md']
-    expect(roundFor('CODER_FIX', files, 'bug-1234')).toEqual({ round: 1, kind: 'revisão' })
+    expect(roundFor('CODER_FIX', files, 'bug-1234')).toEqual({ round: 1, kind: 'review' })
     expect(roundFor('CODER_FIX', files, 'bug-1')).toEqual({ round: 0, kind: null })
-    expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'revisão' })
+    expect(roundFor('CODER_FIX', files)).toEqual({ round: 4, kind: 'review' })
   })
 
   test('demand set no shell', async () => {

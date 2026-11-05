@@ -1,0 +1,14 @@
+name: survey
+description: Survey of a demand before implementing it — validates each point of the card in the code, maps the flow end to end and estimates effort, story points and complexity, with the open questions that remain. Read only; no worktree, plan, tickets or code.
+steps:
+  - id: understand      # summary-<id>.md (card, criteria, decisions from the comments) + numbered list of the card's points
+    agent: orchestrator
+  - id: explore         # explorer on the survey exception (Sonnet high), survey mode: each point confirmed or not in the
+    agent: explorer     # code, the flow end to end and the size signals → exploration-survey.md
+  - id: estimate        # survey-<id>.md: the rubric (reference *survey*) applied to the signals, and the open questions
+    agent: orchestrator
+  - id: final_review    # the user sees the survey; publishing on the card is a locked action
+    agent: orchestrator
+gates:
+  - before: publish
+    require: human_approval

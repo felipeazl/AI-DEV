@@ -11,7 +11,7 @@ description: Turn a request into a persistent, self-contained specification (spe
    finds this in the demand summary and puts any doubt in its open questions).
    Read the work item's **comments** and its **linked items** (parent, related, predecessors):
    decisions often live only there and override the description.
-3. Start from the exploration reports in the demand folder (`exploracao-*.md`); read code only to
+3. Start from the exploration reports in the demand folder (`exploration-*.md`); read code only to
    verify a premise or close a small gap. With no report and a large unknown area, ask for an
    exploration (the explorer agent, or the cheapest exploration available) instead of sweeping the
    code. The *Systems* section gives repo, stack and commands — do not re-derive them.
@@ -20,7 +20,7 @@ description: Turn a request into a persistent, self-contained specification (spe
    lists where each dependency lives.
 5. Describe current behavior from the code, not from assumptions.
 6. Run the checklists below and write the spec to `<state dir>/specs/<slug>.md` (or the location
-   the active context defines, e.g. `plano-<id>.md` in the demand folder).
+   the active context defines, e.g. `plan-<id>.md` in the demand folder).
 7. **Open questions:** if there is a real doubt or more than one valid path, list them with
    options and your recommendation — that is the only reason to stop for the user. Otherwise
    the spec is final and goes to the user for approval.
@@ -46,7 +46,7 @@ description: Turn a request into a persistent, self-contained specification (spe
 
 (from v2 on: what changed since the previous version)
 
-## Decisions taken
+## Decisions made
 | # | Topic | Decision | Who / when |
 
 ## Premises verified
@@ -60,7 +60,7 @@ description: Turn a request into a persistent, self-contained specification (spe
 
 ## Acceptance criteria
 - CA1: <the card's text>
-- CA2 (plano): <added by a decision or by the code, and why>
+- CA2 (plan): <added by a decision or by the code, and why>
 
 ## Business rules
 - RN1: <the card's text, or a rule the change must keep or introduce, with its source>

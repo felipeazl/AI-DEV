@@ -1,15 +1,17 @@
-"""Hooks do plugin do AiDW, num script só (rápido: só biblioteca padrão; qualquer erro libera a sessão).
+"""AiDW plugin hooks, in a single script (fast: standard library only; any error lets the session through).
 
-- PreToolUse (Edit/Write/MultiEdit/NotebookEdit) — guard: um agente do AiDW não escreve no working copy
-  principal de um repositório que tem worktree ativo de demanda (state/worktrees.json); ele trabalha no
-  worktree. Arquivo de outro repositório git aninhado nele (ex.: contexts/<nome>) não conta. A conversa principal
-  não tem regra: o usuário continua livre no working copy dele.
-- PreToolUse (Bash/PowerShell) — `git commit` num worktree ativo de demanda que ainda tem a marca `AIDW-TESTE`
-  (ajuste temporário de teste) é recusado, para qualquer sessão: o ajuste é revertido antes do commit.
-- UserPromptSubmit — registra a sessão que entrou no modo orquestrador (`/aidw:go` ou `/aidw:survey`
-  no Claude, `$aidw-go` ou `$aidw-survey` no Codex) ou saiu dele (`/aidw:exit`, `$aidw-exit`), em state/sessions.json. Nas outras mensagens só compara o texto e sai.
-- SessionStart (compact|resume) — numa sessão no modo orquestrador, lembra de reler a skill e o
-  demand.json (o Claude recoloca só o começo da skill depois de uma compactação).
+- PreToolUse (Edit/Write/MultiEdit/NotebookEdit) — guard: an AiDW agent does not write to the main working copy
+  of a repository that has an active demand worktree (state/worktrees.json); it works in the worktree. A file of
+  another git repository nested in it (e.g. contexts/<name>) does not count. The main conversation has no rule:
+  the user stays free in their own working copy.
+- PreToolUse (Bash/PowerShell) — `git commit` in an active demand worktree that still has the `AIDW-TEST` mark
+  (temporary test adjustment; the old `AIDW-TESTE` matches too) is refused, for any session: the adjustment is
+  reverted before the commit.
+- UserPromptSubmit — records the session that entered orchestrator mode (`/aidw:go` or `/aidw:survey`
+  on Claude, `$aidw-go` or `$aidw-survey` on Codex) or left it (`/aidw:exit`, `$aidw-exit`), in
+  state/sessions.json. On any other message it only matches the text and returns.
+- SessionStart (compact|resume) — in a session in orchestrator mode, reminds it to re-read the skill and the
+  demand.json (Claude puts back only the start of the skill after a compaction).
 """
 from __future__ import annotations
 
@@ -28,13 +30,15 @@ SESSIONS = ROOT / "state" / "sessions.json"
 RUNTIME = ROOT / ".aidw" / "runtime.json"
 MARKETPLACE = ROOT / ".aidw" / "marketplace"
 CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
-# Claude: /aidw:go · Codex: $aidw-go (levantamento também entra no modo); sair e done encerram o modo
+# Claude: /aidw:go · Codex: $aidw-go (survey also enters the mode); exit and done end the mode
 MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(go|survey|exit|done)\b(.*)", re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
-# `git [-C <pasta>] [-c k=v] commit`; o grupo 1 tem as opções antes do subcomando
+# `git [-C <dir>] [-c k=v] commit`; group 1 holds the options before the subcommand
 GIT_COMMIT_RE = re.compile(r"\bgit((?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|\S+))*)\s+commit\b")
 GIT_DIR_RE = re.compile(r"-C\s+(\"[^\"]*\"|'[^']*'|\S+)")
-TEST_MARK = "AIDW-TESTE"  # marca dos ajustes temporários de teste (codificador, modo ajuste de teste)
+# mark of the temporary test adjustments (coder, test-adjust mode); a fixed-string grep for it also matches the
+# old mark `AIDW-TESTE`, so worktrees adjusted before the rename are still caught
+TEST_MARK = "AIDW-TEST"
 
 
 def norm(p: str) -> str:
@@ -47,7 +51,7 @@ def inside(child: str, parent: str) -> bool:
 
 
 def in_nested_repo(target: str, repo: str) -> bool:
-    """O arquivo fica num outro repositório git aninhado no repo (ex.: contexts/<nome> dentro do AiDW)."""
+    """The file lives in another git repository nested in the repo (e.g. contexts/<name> inside AiDW)."""
     root, d = norm(repo), os.path.dirname(norm(target))
     while d != root and inside(d, root):
         if os.path.exists(os.path.join(d, ".git")):
@@ -64,7 +68,7 @@ def read_json(path: Path, default):
 
 
 def is_aidw_agent(agent: str) -> bool:
-    """Claude: `aidw:<agente>`. Codex: `aidw-<agente>`. Modo projeto: o nome do agente (ou variante) do runtime."""
+    """Claude: `aidw:<agent>`. Codex: `aidw-<agent>`. Project mode: the agent's name (or variant) from the runtime."""
     if ":" in agent:
         return agent.split(":", 1)[0].startswith("aidw")
     if agent.startswith("aidw-"):
@@ -82,7 +86,7 @@ def deny(reason: str) -> dict:
 
 
 def commit_guard(data: dict) -> dict | None:
-    """Recusa `git commit` num worktree ativo de demanda que ainda tem ajuste de teste (marca AIDW-TESTE)."""
+    """Refuses `git commit` in an active demand worktree that still has a test adjustment (mark AIDW-TEST/AIDW-TESTE)."""
     cmd = str((data.get("tool_input") or {}).get("command") or "")
     if "commit" not in cmd:
         return None
@@ -100,15 +104,15 @@ def commit_guard(data: dict) -> dict | None:
         found = subprocess.run(["git", "-C", e["path"], "grep", "-l", "-I", "-F", "--untracked", TEST_MARK],
                                capture_output=True, text=True, timeout=15).stdout.split()
         if found:
-            return deny(f"AiDW: o worktree da demanda {e['demand']} ainda tem ajuste temporario de teste ({TEST_MARK}) "
-                        f"em {', '.join(found[:5])}. Reverta os ajustes (git -C <worktree> apply -R "
-                        "ambiente-teste-<id>.patch) antes do commit.")
+            return deny(f"AiDW: the worktree of demand {e['demand']} still has a temporary test adjustment ({TEST_MARK}) "
+                        f"in {', '.join(found[:5])}. Revert the adjustments (git -C <worktree> apply -R "
+                        "test-env-<id>.patch) before the commit.")
     return None
 
 
 def agent_policy(agent: str) -> tuple[dict, set]:
-    """(`tools` do runtime para o agente — `aidw:codificador-high`, `aidw-codificador` ou `codificador-high` —,
-    MCPs que o AiDW distribui entre os papéis). Servidor fora desse conjunto é do próprio CLI e não é julgado aqui."""
+    """(the runtime's `tools` for the agent — `aidw:coder-high`, `aidw-coder` or `coder-high` —, the MCPs AiDW
+    distributes among the roles). A server outside that set belongs to the CLI itself and is not judged here."""
     base = agent.split(":", 1)[1] if ":" in agent else agent[5:] if agent.startswith("aidw-") else agent
     agents = [a for a in (read_json(RUNTIME, {}).get("agents") or {}).values() if isinstance(a, dict) and a.get("name")]
     managed = {s for a in agents for s in ((a.get("tools") or {}).get("mcp") or [])}
@@ -117,17 +121,17 @@ def agent_policy(agent: str) -> tuple[dict, set]:
 
 
 def mcp_guard(agent: str, tool: str) -> dict | None:
-    """Ferramenta MCP fora do papel do agente. O Claude já aplica pelo subagente; o Codex não limita MCP por agente
-    (o hook é o que garante lá)."""
+    """MCP tool outside the agent's role. Claude already enforces it through the subagent; Codex does not limit MCP
+    per agent (this hook is what enforces it there)."""
     policy, managed = agent_policy(agent)
     parts = tool.split("__", 2)
     server = parts[1] if len(parts) == 3 else ""
     if tool in policy.get("deny_tools", []):
-        return deny(f"AiDW: {tool} é bloqueada para o agente {agent}. Proponha a ação e devolva "
-                    "`policy_requires_approval`; quem executa é o orquestrador, com o OK do usuário.")
+        return deny(f"AiDW: {tool} is blocked for agent {agent}. Propose the action and return "
+                    "`policy_requires_approval`; the orchestrator runs it, with the user's OK.")
     if policy.get("mcp") is not None and server in managed and server not in policy["mcp"]:
-        return deny(f"AiDW: o MCP {server} não é do papel do agente {agent} (permitidos: "
-                    f"{', '.join(policy['mcp']) or 'nenhum'}). Peça ao orquestrador se precisar dele.")
+        return deny(f"AiDW: the MCP {server} is not part of agent {agent}'s role (allowed: "
+                    f"{', '.join(policy['mcp']) or 'none'}). Ask the orchestrator if you need it.")
     return None
 
 
@@ -140,7 +144,7 @@ def pre_tool_use(data: dict) -> dict | None:
     if str(data.get("tool_name") or "").startswith("mcp__"):
         return mcp_guard(agent, data["tool_name"])
     ti = data.get("tool_input") or {}
-    if data.get("tool_name") == "apply_patch":  # Codex: os caminhos vêm nas linhas do patch
+    if data.get("tool_name") == "apply_patch":  # Codex: the paths come in the patch lines
         targets = [(a or b).strip() for a, b in PATCH_FILE_RE.findall(str(ti.get("command") or ""))]
     else:
         targets = [ti.get("file_path") or ti.get("notebook_path")]
@@ -151,25 +155,25 @@ def pre_tool_use(data: dict) -> dict | None:
     for target in targets:
         if not os.path.isabs(target):
             if not data.get("cwd"):
-                print("AiDW guard: caminho relativo sem cwd no payload; nada verificado", file=sys.stderr)
+                print("AiDW guard: relative path with no cwd in the payload; nothing checked", file=sys.stderr)
                 return None
             target = os.path.join(data["cwd"], target)
         resolved.append(target)
     for e in read_json(REGISTRY, {}).get("worktrees", []):
         if e.get("status") == "active" and any(inside(x, e["repo"]) and not inside(x, e["path"])
                                                and not in_nested_repo(x, e["repo"]) for x in resolved):
-            return deny(f"AiDW: {e['repo']} tem o worktree da demanda {e['demand']} em {e['path']} "
-                        f"(branch {e['branch']}). Edite o arquivo correspondente no worktree, não no working copy "
-                        "principal.")
+            return deny(f"AiDW: {e['repo']} has the worktree of demand {e['demand']} at {e['path']} "
+                        f"(branch {e['branch']}). Edit the matching file in the worktree, not in the main working "
+                        "copy.")
     return None
 
 
 def update_sessions(change) -> dict:
-    """Aplica `change(sessions)` ao state/sessions.json sob a trava entre sessões e devolve o registro gravado.
-    Usado pelo hook (/aidw:go, /aidw:exit) e pelo `aidw.py session bind`."""
+    """Applies `change(sessions)` to state/sessions.json under the cross-session lock and returns the saved record.
+    Used by the hook (/aidw:go, /aidw:exit) and by `aidw.py session bind`."""
     SESSIONS.parent.mkdir(parents=True, exist_ok=True)
     lock = SESSIONS.with_name("sessions.lock")
-    for _ in range(40):  # trava leve entre sessões (~2 s); sem ela, grava mesmo assim
+    for _ in range(40):  # light cross-session lock (~2 s); without it, saves anyway
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
@@ -180,7 +184,7 @@ def update_sessions(change) -> dict:
     try:
         sessions = read_json(SESSIONS, {})
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=14)).isoformat(timespec="seconds")
-        sessions = {k: v for k, v in sessions.items() if v.get("since", "") >= cutoff}  # sessões antigas saem
+        sessions = {k: v for k, v in sessions.items() if v.get("since", "") >= cutoff}  # old sessions are dropped
         change(sessions)
         tmp = SESSIONS.with_name(f"sessions.json.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(sessions, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -199,8 +203,8 @@ def user_prompt_submit(data: dict) -> None:
         return None
 
     def change(sessions: dict) -> None:
-        if m.group(3) in ("go", "survey"):  # a skill go entende "levantamento <id>"; a demanda vem do `session bind`
-            argument = ("levantamento " if m.group(3) == "survey" else "") + m.group(4).strip()
+        if m.group(3) in ("go", "survey"):  # the go skill understands "survey <id>"; the demand comes from `session bind`
+            argument = ("survey " if m.group(3) == "survey" else "") + m.group(4).strip()
             sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
                                  "argument": argument.strip()[:200], "cwd": data.get("cwd"),
                                  "since": datetime.datetime.now().isoformat(timespec="seconds")}
@@ -219,27 +223,27 @@ def session_start(data: dict) -> dict | None:
     skill = (CODEX_SKILLS / "aidw-go" / "SKILL.md" if codex else
              MARKETPLACE / "plugins" / entry["plugin"] / "skills" / "go" / "SKILL.md")
     leave = "$aidw-exit" if codex else f"/{entry['plugin']}:exit"
-    arg = f' (pedido literal do usuário: "{entry["argument"]}")' if entry.get("argument") else ""
+    arg = f' (the user\'s literal request: "{entry["argument"]}")' if entry.get("argument") else ""
     if entry.get("demand"):
-        arg += f", na demanda {entry['demand']} do contexto {entry.get('context') or '?'} ({entry.get('folder')})"
-    text = (f"AiDW: esta sessão está no modo orquestrador{arg} desde {entry['since']}. Antes de continuar, releia "
-            f"{skill.as_posix()} e o demand.json da demanda (python \"{ROOT.as_posix()}/aidw.py\" demand list "
-            f"--active) e retome da etapa gravada. {leave} encerra o modo.")
+        arg += f", on demand {entry['demand']} of context {entry.get('context') or '?'} ({entry.get('folder')})"
+    text = (f"AiDW: this session has been in orchestrator mode{arg} since {entry['since']}. Before going on, re-read "
+            f"{skill.as_posix()} and the demand's demand.json (python \"{ROOT.as_posix()}/aidw.py\" demand list "
+            f"--active) and resume from the recorded step. {leave} ends the mode.")
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}
 
 
 def main() -> int:
     try:
-        # o Claude Code manda UTF-8; o stdin do Windows decodificaria na página do console (cp1252)
+        # Claude Code sends UTF-8; Windows stdin would decode it with the console code page (cp1252)
         data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
         event = data.get("hook_event_name")
         handler = {"PreToolUse": pre_tool_use, "UserPromptSubmit": user_prompt_submit,
                    "SessionStart": session_start}.get(event)
         result = handler(data) if handler else None
-    except Exception:  # os hooks nunca travam a sessão
+    except Exception:  # the hooks never block the session
         return 0
     if result:
-        print(json.dumps(result))  # ASCII puro: independe da codificação do console
+        print(json.dumps(result))  # pure ASCII: independent of the console encoding
     return 0
 
 
