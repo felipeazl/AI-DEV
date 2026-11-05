@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Setup do AiDW no Linux/macOS: garante o Python 3.11+ e chama `python3 aidw.py setup`, que cuida
-# do resto (Git, Node, Claude e Codex, pastas, wizard, geração do ambiente, MCPs e doctor).
-# Argumentos são repassados, ex.: ./setup.sh --reconfigure
+# AiDW setup on Linux/macOS: makes sure Python 3.11+ is present and calls `python3 aidw.py setup`, which takes
+# care of the rest (Git, Node, Claude and Codex, folders, wizard, environment generation, MCPs and doctor).
+# Arguments are passed through, e.g.: ./setup.sh --reconfigure
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -18,7 +18,7 @@ find_python() {
 
 python="$(find_python)"
 if [ -z "$python" ]; then
-    echo "Python 3.11+ não encontrado."
+    echo "Python 3.11+ not found."
     echo "  macOS:         brew install python"
     echo "  Debian/Ubuntu: sudo apt install python3"
     echo "  Fedora:        sudo dnf install python3"

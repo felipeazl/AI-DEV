@@ -1,6 +1,6 @@
-# Setup do AiDW no Windows: garante o Python 3.11+ e chama `python aidw.py setup`, que cuida do
-# resto (Git, Node, Claude e Codex, pastas, wizard, geração do ambiente, MCPs e doctor).
-# Argumentos são repassados, ex.: .\setup.ps1 --reconfigure
+# AiDW setup on Windows: makes sure Python 3.11+ is present and calls `python aidw.py setup`, which takes care
+# of the rest (Git, Node, Claude and Codex, folders, wizard, environment generation, MCPs and doctor).
+# Arguments are passed through, e.g.: .\setup.ps1 --reconfigure
 $ErrorActionPreference = 'Stop'
 
 function Find-Python {
@@ -16,17 +16,17 @@ function Find-Python {
 
 $python = Find-Python
 if (-not $python) {
-    Write-Host 'Python 3.11+ nao encontrado.'
-    $answer = Read-Host 'Instalar agora com winget (Python.Python.3.13)? (s/n) [s]'
+    Write-Host 'Python 3.11+ not found.'
+    $answer = Read-Host 'Install it now with winget (Python.Python.3.13)? (y/n) [y]'
     if ($answer -eq '' -or $answer -match '^(s|sim|y|yes)$') {
         winget install --id Python.Python.3.13 -e --accept-package-agreements --accept-source-agreements
-        # O PATH novo so vale em terminais novos; recarrega para esta sessao.
+        # The new PATH only applies to new terminals; reload it for this session.
         $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
                     [Environment]::GetEnvironmentVariable('Path', 'User')
         $python = Find-Python
     }
     if (-not $python) {
-        Write-Host 'Instale o Python 3.11+ (winget install Python.Python.3.13), reabra o terminal e rode de novo.'
+        Write-Host 'Install Python 3.11+ (winget install Python.Python.3.13), reopen the terminal and run this again.'
         exit 1
     }
 }

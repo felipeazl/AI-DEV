@@ -1,6 +1,6 @@
-// Leitura dos artefatos de uma demanda do AiDW para os painéis: o tipo de uso, a linha do tempo, os achados da
-// revisão e a triagem, os critérios de aceite e o teste, o roteiro manual e o levantamento. Puro (sem `$`): o
-// register.tsx lê os arquivos e entrega o texto. Os formatos reais variam entre demandas: as regras são tolerantes.
+// Reading the artifacts of an AiDW demand for the panels: the kind, the timeline, the review findings
+// and the triage, the acceptance criteria and the test, the manual test script and the survey. Pure (no `$`):
+// register.tsx reads the files and hands over the text. Real formats vary between demands: the rules are lenient.
 
 import type {
   CardPoint,
@@ -21,30 +21,38 @@ import type {
   TimelineItem,
 } from '../types'
 
+import { t, tk } from './i18n'
+import { fam, re as R } from './names'
+
 export type { CardPoint, CoverageItem, Criterion, Doubt, EffortBlock, Estimate, Finding, ManualStep, Point, Progress, SplitItem, TimelineItem }
 
+/** The plan file family (`plan-<id>.md`, `plano-<id>.md`), without the test plan and the plan review. */
+export const isPlanFile = (f: string) =>
+  new RegExp(`^${fam('plan')}-.*\\.md$`).test(f) && !new RegExp(`^(?:${fam('testPlan')}|${fam('planReview')})-`).test(f)
+
 // ---------------------------------------------------------------------------------------------------------------
-// Tipo de uso e linha do tempo
+// Kind and timeline
 
 export type DemandFile = { id?: string; title?: string; step?: string; status?: string; note?: string; summary?: string;
   repos?: { repo?: string; path?: string; branch?: string; base?: string; system?: string | null; pr?: string;
     head?: string; source?: string }[]; history?: { step: string; at: string }[]
-  /** Laço de correção depois da entrega (`demand set --loop`); as Tasks de cada ticket (`--task`). */
+  /** Fix loop after delivery (`demand set --loop`); the Tasks of each ticket (`--task`). */
   loop?: string; tasks?: Record<string, string>
-  /** Etapas de fora do contexto pelas quais a demanda passa (`demand set --extra-step`). */
+  /** Steps outside the context the demand goes through (`demand set --extra-step`). */
   extra_steps?: string[] }
 
-/** Desenvolvimento, revisão de PR ou levantamento — o demand.json não grava o workflow; os arquivos dizem. */
+/** Development, PR review or survey — demand.json does not record the workflow; the files tell. */
 export function kindOf(demand: DemandFile, files: string[]): DemandKind {
-  const plan = files.some(f => /^plano-.*\.md$/.test(f) && !/^plano-testes-/.test(f))
-  if ((demand.repos ?? []).some(r => r.pr) || files.some(f => /^diff-pr\d+-/.test(f))) return plan ? 'desenvolvimento' : 'pr-review'
+  const plan = files.some(isPlanFile)
+  if ((demand.repos ?? []).some(r => r.pr) || files.some(f => /^diff-pr\d+-/.test(f))) return plan ? 'development' : 'pr-review'
   if (!plan && !implementingAfterEstimate(demand.history ?? []) &&
-    (files.some(f => /^(levantamento|pontos)-.*\.md$/.test(f)) || /\(levantamento\)\s*$/i.test(demand.title ?? '') ||
-    (demand.history ?? []).some(h => h.step === 'ESTIMATE'))) return 'levantamento'
-  return 'desenvolvimento'
+    (files.some(f => new RegExp(`^(?:${fam('survey')}|${fam('points')})-.*\\.md$`).test(f)) ||
+      R('{surveyTitle}\\s*$').test(demand.title ?? '') ||
+    (demand.history ?? []).some(h => h.step === 'ESTIMATE'))) return 'survey'
+  return 'development'
 }
 
-/** O levantamento terminou (DONE depois do último ESTIMATE) e a demanda seguiu para a implementação, ainda sem plano. */
+/** The survey ended (DONE after the last ESTIMATE) and the demand went on to implementation, still without a plan. */
 function implementingAfterEstimate(history: { step: string }[]): boolean {
   const estimate = history.map(h => h.step).lastIndexOf('ESTIMATE')
   if (estimate < 0) return false
@@ -52,44 +60,47 @@ function implementingAfterEstimate(history: { step: string }[]): boolean {
   return done > 0 && history.slice(done + 1).some(h => h.step !== 'DONE')
 }
 
-export const KIND_LABEL: Record<DemandKind, string> = {
-  desenvolvimento: 'Desenvolvimento',
-  'pr-review': 'Revisão de PR',
-  levantamento: 'Levantamento',
+/** The display name of a demand kind, in the UI language. */
+export function kindLabel(kind: DemandKind): string {
+  return tk(`kind.${kind}`, kind)
 }
 
+/** Phase and stage names are i18n keys (`phase.*`); a context's external step brings its own name. */
 type Phase = { name: string; steps: string[] }
 
 const PHASES: Record<DemandKind, Phase[]> = {
-  // fluxo v3 (2026-10-23); as etapas antigas ficam na fase equivalente, pelas demandas abertas antes dele
-  desenvolvimento: [
-    { name: 'Entendimento', steps: ['UNDERSTAND', 'EXPLORE'] },
-    { name: 'Plano', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
-    { name: 'Sua aprovação', steps: ['PLAN_APPROVAL', 'TICKETS'] },
-    { name: 'Implementação', steps: ['IMPLEMENT', 'TEST_PLAN'] },
-    { name: 'Revisão', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
-    { name: 'Sua revisão', steps: ['USER_REVIEW'] },
-    { name: 'Testes', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
-    { name: 'PR', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
-    { name: 'Concluída', steps: ['DONE'] },
+  // flow v3 (2026-10-23); older steps sit in the equivalent phase, for demands opened before it
+  development: [
+    { name: 'phase.understanding', steps: ['UNDERSTAND', 'EXPLORE'] },
+    { name: 'phase.plan', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
+    { name: 'phase.yourApproval', steps: ['PLAN_APPROVAL', 'TICKETS'] },
+    { name: 'phase.implementation', steps: ['IMPLEMENT', 'TEST_PLAN'] },
+    { name: 'phase.review', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
+    { name: 'phase.yourReview', steps: ['USER_REVIEW'] },
+    { name: 'phase.tests', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
+    { name: 'phase.pr', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
+    { name: 'phase.done', steps: ['DONE'] },
   ],
   'pr-review': [
-    { name: 'Entendimento', steps: ['UNDERSTAND'] },
-    { name: 'Preparação', steps: ['PREPARE_REVIEW'] },
-    { name: 'Revisão', steps: ['REVIEW'] },
-    { name: 'Revisão final', steps: ['FINAL_REVIEW'] },
-    { name: 'Concluída', steps: ['DONE'] },
+    { name: 'phase.understanding', steps: ['UNDERSTAND'] },
+    { name: 'phase.preparation', steps: ['PREPARE_REVIEW'] },
+    { name: 'phase.review', steps: ['REVIEW'] },
+    { name: 'phase.finalReview', steps: ['FINAL_REVIEW'] },
+    { name: 'phase.done', steps: ['DONE'] },
   ],
-  levantamento: [
-    { name: 'Entendimento', steps: ['UNDERSTAND'] },
-    { name: 'Exploração', steps: ['EXPLORE'] },
-    { name: 'Estimativa', steps: ['ESTIMATE'] },
-    { name: 'Revisão final', steps: ['FINAL_REVIEW'] },
-    { name: 'Concluída', steps: ['DONE'] },
+  survey: [
+    { name: 'phase.understanding', steps: ['UNDERSTAND'] },
+    { name: 'phase.exploration', steps: ['EXPLORE'] },
+    { name: 'phase.estimate', steps: ['ESTIMATE'] },
+    { name: 'phase.finalReview', steps: ['FINAL_REVIEW'] },
+    { name: 'phase.done', steps: ['DONE'] },
   ],
 }
 
-/** As fases do uso, com a atual pela etapa gravada (HUMAN_APPROVAL e RETURN ficam na fase anterior). */
+/** A phase/stage name in the UI language (an external step's own name passes through). */
+const nameOf = (name: string) => tk(name, name)
+
+/** The phases of the kind, the current one by the recorded step (HUMAN_APPROVAL and RETURN stay in the previous one). */
 export function timeline(kind: DemandKind, demand: DemandFile): TimelineItem[] {
   const phases = PHASES[kind]
   const history = demand.history ?? []
@@ -100,74 +111,40 @@ export function timeline(kind: DemandKind, demand: DemandFile): TimelineItem[] {
     current = last ? phaseOf(last.step) : 0
   }
   return phases.map((p, i) => ({
-    name: p.name,
-    state: i < current ? 'feito' : i === current ? (demand.step === 'DONE' ? 'feito' : 'atual') : 'pendente',
+    name: nameOf(p.name),
+    state: i < current ? 'done' : i === current ? (demand.step === 'DONE' ? 'done' : 'current') : 'pending',
     visits: history.filter(h => p.steps.includes(h.step)).length,
   }))
 }
 
-/** A demanda espera o usuário: aprovação, dúvida, teste manual ou revisão final. */
+const WAITING_STEPS = new Set(['HUMAN_APPROVAL', 'PLAN_APPROVAL', 'TRIAGE', 'USER_REVIEW', 'MANUAL_TEST', 'PR', 'FINAL_REVIEW'])
+
+/** What the demand waits from the user (approval, question, manual test, final review), or null. */
 export function waitingFor(step: string | undefined): string | null {
-  switch (step) {
-    case 'HUMAN_APPROVAL':
-      return 'sua aprovação ou resposta'
-    case 'PLAN_APPROVAL':
-      return 'a aprovação do plano'
-    case 'TRIAGE':
-      return 'a decisão dos achados'
-    case 'USER_REVIEW':
-      return 'a sua revisão de código'
-    case 'MANUAL_TEST':
-      return 'os passos manuais do teste'
-    case 'PR':
-      return 'o OK do commit e da PR'
-    case 'FINAL_REVIEW':
-      return 'a revisão final'
-    default:
-      return null
-  }
+  return step && WAITING_STEPS.has(step) ? tk(`waiting.${step}`, step) : null
 }
 
-/** Uma etapa de fora que o contexto acrescenta (`runtime.json` → `external_steps`), antes de `before`. */
+/** An outside step the context adds (`runtime.json` → `external_steps`), placed before `before`. */
 export type ExternalStep = { step: string; name: string; before: string; who?: string }
 
 type Stage = { name: string; group: ProgressStage['group']; steps: string[]; who?: string }
 
-/** As etapas da barra de progresso do Mapa da demanda: as do AiDW e, no desenvolvimento, as de fora (time e QA). */
+/** The progress bar stages of the demand map: the AiDW ones and, in development, the outside ones (team and QA). */
 const STAGES: Record<DemandKind, Stage[]> = {
-  desenvolvimento: [
-    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND', 'EXPLORE'] },
-    { name: 'Plano', group: 'aidw', steps: ['PLAN', 'SPEC', 'PLAN_FIX', 'PLAN_REVIEW'] },
-    { name: 'Sua aprovação', group: 'aidw', steps: ['PLAN_APPROVAL', 'TICKETS'] },
-    { name: 'Implementação', group: 'aidw', steps: ['IMPLEMENT', 'TEST_PLAN'] },
-    { name: 'Revisão', group: 'aidw', steps: ['REVIEW', 'TRIAGE', 'CODER_FIX', 'PREPARE_REVIEW'] },
-    { name: 'Sua revisão', group: 'aidw', steps: ['USER_REVIEW'] },
-    { name: 'Testes', group: 'aidw', steps: ['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'ORCHESTRATOR_TEST'] },
-    { name: 'PR', group: 'aidw', steps: ['PR', 'DOCS', 'FINAL_REVIEW'] },
-    { name: 'Code review', group: 'fora', steps: ['CODE_REVIEW'], who: 'o time' },
-    { name: 'Testes QA', group: 'fora', steps: ['QA_TEST'], who: 'a QA' },
-    { name: 'Concluída', group: 'fora', steps: ['DONE'] },
+  development: [
+    ...PHASES.development.slice(0, -1).map(p => ({ ...p, group: 'aidw' as const })),
+    { name: 'phase.codeReview', group: 'outside', steps: ['CODE_REVIEW'], who: 'who.team' },
+    { name: 'phase.qaTests', group: 'outside', steps: ['QA_TEST'], who: 'who.qa' },
+    { name: 'phase.done', group: 'outside', steps: ['DONE'] },
   ],
-  'pr-review': [
-    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND'] },
-    { name: 'Preparação', group: 'aidw', steps: ['PREPARE_REVIEW'] },
-    { name: 'Revisão', group: 'aidw', steps: ['REVIEW'] },
-    { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
-    { name: 'Concluída', group: 'aidw', steps: ['DONE'] },
-  ],
-  levantamento: [
-    { name: 'Entendimento', group: 'aidw', steps: ['UNDERSTAND'] },
-    { name: 'Exploração', group: 'aidw', steps: ['EXPLORE'] },
-    { name: 'Estimativa', group: 'aidw', steps: ['ESTIMATE'] },
-    { name: 'Revisão final', group: 'aidw', steps: ['FINAL_REVIEW'] },
-    { name: 'Concluída', group: 'aidw', steps: ['DONE'] },
-  ],
+  'pr-review': PHASES['pr-review'].map(p => ({ ...p, group: 'aidw' as const })),
+  survey: PHASES.survey.map(p => ({ ...p, group: 'aidw' as const })),
 }
 
 /**
- * O progresso pelo histórico do demand.json. Uma etapa do AiDW logo depois de uma de fora (CODE_REVIEW, QA_TEST) é
- * uma volta: conta para aquela etapa de fora e, enquanto a demanda não voltar a ela, a etapa fica "voltou".
- * HUMAN_APPROVAL e RETURN ficam na etapa anterior.
+ * Progress from the demand.json history. An AiDW step right after an outside one (CODE_REVIEW, QA_TEST) is a return:
+ * it counts for that outside stage and, until the demand goes back to it, the stage shows "voltou" (returned).
+ * HUMAN_APPROVAL and RETURN stay in the previous stage. Names come out in the UI language.
  */
 export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalStep[] = []): Progress {
   const stages = withExternal(STAGES[kind], kind, demand, extra)
@@ -181,8 +158,8 @@ export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalSt
   for (const s of history) {
     const st = stages[stageOf(s)]
     if (!st) continue
-    if (st.group === 'fora' && st.name !== 'Concluída') {
-      lastOutside = st.name
+    if (st.group === 'outside' && !st.steps.includes('DONE')) {
+      lastOutside = nameOf(st.name)
       returnedFrom = null
     } else if (st.group === 'aidw' && lastOutside) {
       returns[lastOutside] = (returns[lastOutside] ?? 0) + 1
@@ -195,18 +172,18 @@ export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalSt
   const done = demand.step === 'DONE'
   return {
     stages: stages.map((s, i) => ({
-      name: s.name,
+      name: nameOf(s.name),
       group: s.group,
-      ...(s.who ? { who: s.who } : {}),
+      ...(s.who ? { who: nameOf(s.who) } : {}),
       state: done || i < current
-        ? 'feito'
+        ? 'done'
         : i === current
-          ? (s.group === 'fora' ? 'com-time' : 'atual')
-          : s.name === returnedFrom
-            ? 'voltou'
-            : 'pendente',
+          ? (s.group === 'outside' ? 'with-team' : 'current')
+          : nameOf(s.name) === returnedFrom
+            ? 'returned'
+            : 'pending',
     })),
-    current: stages[current]?.name ?? '',
+    current: nameOf(stages[current]?.name ?? ''),
     index: current + 1,
     total: stages.length,
     returnedFrom,
@@ -215,39 +192,52 @@ export function progress(kind: DemandKind, demand: DemandFile, extra: ExternalSt
 }
 
 /**
- * As etapas de fora do contexto entram no desenvolvimento só para a demanda que passa por elas: marcada com
- * `demand set --extra-step` ou com a etapa no histórico. Cada uma fica logo antes da etapa `before`.
+ * The context's outside steps enter development only for the demand that goes through them: marked with
+ * `demand set --extra-step` or with the step in the history. Each one sits right before its `before` step.
  */
 function withExternal(base: Stage[], kind: DemandKind, demand: DemandFile, extra: ExternalStep[]): Stage[] {
-  if (kind !== 'desenvolvimento') return base
+  if (kind !== 'development') return base
   const used = new Set([...(demand.extra_steps ?? []), ...(demand.history ?? []).map(h => h.step), demand.step ?? ''])
   const out = [...base]
   for (const e of extra) {
     if (!used.has(e.step)) continue
     const at = out.findIndex(s => s.steps.includes(e.before))
-    out.splice(at < 0 ? out.length - 1 : at, 0, { name: e.name, group: 'fora', steps: [e.step], ...(e.who ? { who: e.who } : {}) })
+    out.splice(at < 0 ? out.length - 1 : at, 0, { name: e.name, group: 'outside', steps: [e.step], ...(e.who ? { who: e.who } : {}) })
   }
   return out
 }
 
+/** "must change" etc.: the situation of a card × code line when the survey has no column for it. */
+const situationOf = (effect: string): string => {
+  const e = effect.toLowerCase()
+  return /n[aã]o mud|no change|unchanged/.test(e)
+    ? t('situation.noChange')
+    : /nada a reaproveitar|nothing to reuse/.test(e)
+      ? t('situation.nothingToReuse')
+      : /\bdor\b|\bpain\b/.test(e)
+        ? t('situation.pain')
+        : t('situation.mustChange')
+}
+
 // ---------------------------------------------------------------------------------------------------------------
-// Revisão: achados e triagem
+// Review: findings and triage
 
 type Severity = NonNullable<Finding['severity']>
 
+// Stored severities keep their historical values (CRITICO…); the text may bring either language.
 const SEVERITY: [RegExp, Severity][] = [
-  [/CR[IÍ]TICO/i, 'CRITICO'],
-  [/IMPORTANTE/i, 'IMPORTANTE'],
-  [/SUGEST[AÃ]O|REDUZIR|OPCIONAL/i, 'SUGESTAO'],
-  [/ELOGIO/i, 'ELOGIO'],
+  [R('{sevCritical}'), 'CRITICO'],
+  [R('{sevImportant}'), 'IMPORTANTE'],
+  [R('{sevSuggestion}'), 'SUGESTAO'],
+  [R('{sevPraise}'), 'ELOGIO'],
 ]
-const STATUS = /\b(corrigido|n[aã]o corrigido|resolvido|aberto|fixed|not_fixed|open|mantido|refutado)\b/i
+const STATUS = R('\\b({findingStatus})\\b')
 const HEADING = /^###\s+([RPBSO]\d+-D?\d+)(?:\s*=\s*[RPBSO]\d+-D?\d+)?\s+[—–-]\s+(.*)$/
 
 const clean = (s: string) => s.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-/** Os achados de um review (`review-*-rN.md`, `revisao-plano-*-rN.md`, `bugs-*`, `seguranca-*`). */
+/** The findings of a review (`review-*-rN.md`, `plan-review-*-rN.md`/`revisao-plano-*`, `bugs-*`, `security-*`/`seguranca-*`). */
 export function parseFindings(text: string, round: number, source: Finding['source'], file = ''): Finding[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
   const out: Finding[] = []
@@ -260,23 +250,23 @@ export function parseFindings(text: string, round: number, source: Finding['sour
       ? 'DUVIDA'
       : (SEVERITY.find(([re]) => segments.some(s => re.test(s)))?.[1] ?? null)
     const where = segments.find(s => /`[^`]+`/.test(s))?.match(/`([^`]+)`/)?.[1] ?? ''
-    // a categoria no título (`R1-01 — IMPORTANTE — bug — \`arquivo:linha\``), do revisor do fluxo v3
+    // the category in the title (`R1-01 — IMPORTANTE — bug — \`file:line\``), from the flow v3 reviewer
     const catIdx = segments.findIndex(s => CATEGORY.test(s))
     const category = catIdx < 0 ? '' : categoryOf(segments[catIdx] ?? '')
     if (catIdx >= 0) segments.splice(catIdx, 1)
     let status = segments.map(s => STATUS.exec(s)?.[1]).find(Boolean) ?? ''
-    // o corpo, até o próximo achado ou seção
+    // the body, up to the next finding or section
     const body: string[] = []
     for (let j = i + 1; j < lines.length && !/^#{2,3}\s/.test(lines[j] ?? ''); j++) body.push(lines[j] ?? '')
     const bodyText = body.join('\n')
-    status = status || (/\*\*Status:\*\*\s*([^\n]+)/.exec(bodyText)?.[1] ?? '')
+    status = status || (R('\\*\\*{status}:\\*\\*\\s*([^\\n]+)', '').exec(bodyText)?.[1] ?? '')
     const what =
-      /\*\*O qu[eê]:\*\*\s*([^\n]+)/.exec(bodyText)?.[1] ??
-      /^-\s*Problema:\s*([^\n]+)/m.exec(bodyText)?.[1] ??
+      R('\\*\\*{what}:\\*\\*\\s*([^\\n]+)', '').exec(bodyText)?.[1] ??
+      R('^-\\s*{problem}:\\s*([^\\n]+)', 'm').exec(bodyText)?.[1] ??
       segments.filter(s => !SEVERITY.some(([re]) => re.test(s)) && !/`/.test(s) && !STATUS.test(s)).join(' — ')
-    const draft = /Rascunho do coment[aá]rio[^\n]*\n((?:>[^\n]*\n?)+)/.exec(bodyText)?.[1] ?? ''
-    const target = /Rascunho do coment[aá]rio de PR\s*\(([^)]+)\)/i.exec(bodyText)?.[1] ?? ''
-    // sem "O quê": o resto do cabeçalho, nunca a própria severidade ("IMPORTANTE — status: fixed")
+    const draft = R('{commentDraft}[^\\n]*\\n((?:>[^\\n]*\\n?)+)').exec(bodyText)?.[1] ?? ''
+    const target = R('{prCommentDraft}\\s*\\(([^)]+)\\)').exec(bodyText)?.[1] ?? ''
+    // no "What": the rest of the header, never the severity itself ("IMPORTANTE — status: fixed")
     const fromHeading = segments.filter(s => !SEVERITY.some(([re]) => re.test(s)) && !STATUS.test(s)).join(' — ')
     out.push({
       id,
@@ -285,35 +275,35 @@ export function parseFindings(text: string, round: number, source: Finding['sour
       file,
       severity,
       where,
-      // vazio quando a rodada só reapresenta o achado ("— status: fixed"): o snapshot herda o título da rodada anterior
+      // empty when the round only restates the finding ("— status: fixed"): the snapshot inherits the previous round's title
       title: cut(clean(what || fromHeading), 220),
       status: clean(status).toLowerCase(),
       triage: '',
       comment: draft.split('\n').map(l => l.replace(/^>\s?/, '')).join('\n').trim(),
       target: clean(target),
       published: false,
-      before: fenced(bodyText, /\*\*Antes:?\*\*:?/i),
-      after: fenced(bodyText, /\*\*Depois:?\*\*:?/i),
+      before: fenced(bodyText, R('\\*\\*{before}:?\\*\\*:?')),
+      after: fenced(bodyText, R('\\*\\*{after}:?\\*\\*:?')),
       options: [...bodyText.matchAll(/^\s*-?\s*\(([a-z])\)\s+(.+)$/gm)].slice(0, 4).map(o => `(${o[1]}) ${cut(clean(o[2] ?? ''), 400)}`),
       recommendation: cut(
-        clean(/\*\*Recomenda[çc][aã]o:\*\*\s*([^\n]+)/i.exec(bodyText)?.[1] ?? /\*\*Corre[çc][aã]o sugerida:\*\*\s*([^\n]+)/i.exec(bodyText)?.[1] ?? ''),
+        clean(R('\\*\\*{recommendation}:\\*\\*\\s*([^\\n]+)').exec(bodyText)?.[1] ?? R('\\*\\*{suggestedFix}:\\*\\*\\s*([^\\n]+)').exec(bodyText)?.[1] ?? ''),
         240,
       ),
-      decision: 'pendente',
+      decision: 'pending',
       category,
     })
   }
   return out
 }
 
-const CATEGORY = /^(qualidade|bugs?|seguran[cç]a)$/i
+const CATEGORY = R('^{category}$')
 
 function categoryOf(s: string): Finding['category'] {
   const v = s.toLowerCase()
-  return v.startsWith('bug') ? 'bug' : v.startsWith('segur') ? 'seguranca' : 'qualidade'
+  return v.startsWith('bug') ? 'bug' : /^(segur|secur)/.test(v) ? 'security' : 'quality'
 }
 
-/** O bloco de código cercado (```) logo depois de um rótulo (`**Antes:**`), sem as cercas. */
+/** The fenced code block (```) right after a label (`**Before:**`), without the fences. */
 function fenced(body: string, label: RegExp): string {
   const at = body.search(label)
   if (at < 0) return ''
@@ -321,16 +311,20 @@ function fenced(body: string, label: RegExp): string {
   return m ? (m[1] ?? '').replace(/\n$/, '') : ''
 }
 
-/** A decisão que a triagem registrou: mantido, descartado ou com você (pendente, inclusive "vai ao usuário"). */
+const PENDING = R('{triagePending}')
+const DISCARD = R('^\\W*{triageDiscard}')
+const KEEP = R('^\\W*{triageKeep}')
+
+/** The decision the triage recorded: kept, discarded or with you (pending, including "goes to the user"). */
 export function decisionOf(triage: string): Finding['decision'] {
-  const t = triage.toLowerCase()
-  if (!t || /usu[aá]rio|pergunta|com voc[eê]|pendente|aguarda/.test(t)) return 'pendente'
-  if (/^\W*(descart|cai\b|n[aã]o corrig|recusad|refutad|n[aã]o public|fora do escopo)/.test(t)) return 'descartado'
-  if (/^\W*(corrig|mantid|aceit|publica|sim\b|aplica)/.test(t)) return 'mantido'
-  return 'pendente'
+  const text = triage.toLowerCase()
+  if (!text || PENDING.test(text)) return 'pending'
+  if (DISCARD.test(text)) return 'discarded'
+  if (KEEP.test(text)) return 'kept'
+  return 'pending'
 }
 
-/** Decisão da triagem por id, e os ids já publicados (seção `## Publica…`). */
+/** Triage decision by id, and the ids already published (`## Published…` section). */
 export function parseTriage(text: string): { decisions: Record<string, string>; published: string[] } {
   const decisions: Record<string, string> = {}
   const lines = text.replace(/\r\n/g, '\n').split('\n')
@@ -338,7 +332,7 @@ export function parseTriage(text: string): { decisions: Record<string, string>; 
   let publishing = false
   const published = new Set<string>()
   for (const line of lines) {
-    if (/^#{1,3}\s/.test(line)) publishing = /^#{1,3}\s+Publica/i.test(line)
+    if (/^#{1,3}\s/.test(line)) publishing = R('^#{1,3}\\s+{published}').test(line)
     if (publishing) for (const id of line.match(/\b[RPBSO]\d+-D?\d+\b/g) ?? []) published.add(id)
     if (line.startsWith('|')) {
       const cells = line.split('|').slice(1, -1).map(c => clean(c))
@@ -348,9 +342,9 @@ export function parseTriage(text: string): { decisions: Record<string, string>; 
       }
       const id = /^([RPBSO]\d+-D?\d+)/.exec(cells[0] ?? '')?.[1]
       if (!id) continue
-      const col = header.findIndex(h => /triagem|decis/.test(h))
+      const col = header.findIndex(h => R('{decisionCol}').test(h))
       const decision = col >= 0 ? cells[col] : cells.slice(1).join(' · ')
-      const why = header.findIndex(h => /motivo|evid/.test(h))
+      const why = header.findIndex(h => R('{reasonCol}').test(h))
       decisions[id] = cut([decision, why >= 0 ? cells[why] : ''].filter(Boolean).join(' — '), 200)
       continue
     }
@@ -360,7 +354,7 @@ export function parseTriage(text: string): { decisions: Record<string, string>; 
   return { decisions, published: [...published] }
 }
 
-/** As linhas de uma tabela Markdown, cada uma como {coluna: célula} pelo cabeçalho (em minúsculas). */
+/** The rows of a Markdown table, each as {column: cell} by the header (lowercase). */
 function tableRows(section: string): Record<string, string>[] {
   const rows = section.split('\n').filter(l => l.trim().startsWith('|'))
   const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim())
@@ -371,54 +365,54 @@ const col = (row: Record<string, string>, re: RegExp) => Object.entries(row).fin
 
 const PR_SEVERITY: [RegExp, string][] = [
   [/cr[ií]tic/i, 'CRITICO'],
-  [/importante/i, 'IMPORTANTE'],
-  [/sugest/i, 'SUGESTAO'],
-  [/d[uú]vida|pergunta/i, 'DUVIDA'],
-  [/pend[eê]ncia/i, 'PENDENCIA'],
+  [/important/i, 'IMPORTANTE'],
+  [/sugest|suggest/i, 'SUGESTAO'],
+  [/d[uú]vida|pergunta|question/i, 'DUVIDA'],
+  [/pend[eê]ncia|pending/i, 'PENDENCIA'],
 ]
 
-/** A triagem de uma revisão de PR no formato da referência *triagem-pr*; null sem a tabela de comentários. */
+/** The triage of a PR review in the *pr-triage* reference format; null without the comments table. */
 export function parsePrTriage(text: string, file = '', round = 0): PrTriage | null {
-  const t = text.replace(/\r\n/g, '\n')
-  const rows = tableRows(parseSection(t, /Coment[aá]rios/i)).filter(r => /^C\d+$/.test(clean(col(r, /^c$/))))
+  const src = text.replace(/\r\n/g, '\n')
+  const rows = tableRows(parseSection(src, R('{comments}'))).filter(r => /^C\d+$/.test(clean(col(r, /^c$/))))
   if (!rows.length) return null
-  const published = parseSection(t, /^##\s+Publicad/i)
+  const published = parseSection(src, R('^##\\s+{published}'))
   const comments: PrComment[] = rows.map(r => {
     const id = clean(col(r, /^c$/))
-    const situation = clean(col(r, /situa/))
-    // o rascunho: `### C1 — título` seguido do bloco `> …`
-    const at = t.search(new RegExp(`^###\\s+${id}\\b`, 'm'))
-    const lines = at < 0 ? [] : t.slice(at).split('\n')
+    const situation = clean(col(r, R('{situationCol}')))
+    // the draft: `### C1 — title` followed by the `> …` block
+    const at = src.search(new RegExp(`^###\\s+${id}\\b`, 'm'))
+    const lines = at < 0 ? [] : src.slice(at).split('\n')
     const heading = lines[0] ?? ''
     const body = lines.slice(1)
     const end = body.findIndex(l => /^#{1,3}\s/.test(l))
     const quote = (end < 0 ? body : body.slice(0, end)).filter(l => l.startsWith('>')).map(l => l.replace(/^>\s?/, ''))
     const sev = col(r, /^sev/)
-    const declined = /n[aã]o publica/i.test(situation)
+    const declined = R('{declined}').test(situation)
     return {
       id,
       pr: clean(col(r, /^pr$/)),
       severity: PR_SEVERITY.find(([re]) => re.test(sev))?.[1] ?? clean(sev).toUpperCase(),
-      where: clean(col(r, /arquivo/)).replace(/`/g, ''),
-      origins: clean(col(r, /origem/)).split(/\s*(?:,|\+| e )\s*/).filter(Boolean),
-      recommendation: clean(col(r, /recomenda/)),
+      where: clean(col(r, R('{fileCol}'))).replace(/`/g, ''),
+      origins: clean(col(r, R('{originCol}'))).split(/\s*(?:,|\+| e | and )\s*/).filter(Boolean),
+      recommendation: clean(col(r, R('{recommendationCol}'))),
       situation,
-      published: (!declined && /publicad/i.test(situation)) || new RegExp(`(^|\\W)${id}:`, 'm').test(published),
+      published: (!declined && R('{publishedWord}').test(situation)) || new RegExp(`(^|\\W)${id}:`, 'm').test(published),
       declined,
       title: clean(heading.replace(new RegExp(`^###\\s+${id}\\s*[—–-]?\\s*`), '')),
       draft: quote.join('\n').trim(),
     }
   })
-  return { file, round, comments, outside: parseSection(t, /Fora das PRs/i) }
+  return { file, round, comments, outside: parseSection(src, R('{outsidePrs}')) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Critérios de aceite, plano de testes e resultados
+// Acceptance criteria, test plan and results
 
-/** Os critérios de aceite de `## Critérios de aceite…` (plano ou resumo do card). */
+/** The acceptance criteria of `## Acceptance criteria…` (plan or card summary). */
 export function parseCriteria(text: string): Criterion[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const start = lines.findIndex(l => /^#{2,3}\s+Crit[eé]rios de aceite/i.test(l))
+  const start = lines.findIndex(l => R('^#{2,3}\\s+{acceptanceCriteria}').test(l))
   if (start < 0) return []
   const level = (/^(#+)/.exec(lines[start] ?? '')?.[1] ?? '##').length
   const out: Criterion[] = []
@@ -442,14 +436,14 @@ export function parseCriteria(text: string): Criterion[] {
 }
 
 /**
- * Itens numerados de um prefixo (`CA`, `RN`, `CN`) em qualquer seção do plano: tópicos `- RN1: texto` ou linhas de
- * tabela `| RN1 | texto |`. O primeiro de cada id vale.
+ * Numbered items of a prefix (`CA`, `RN`, `CN`) in any section of the plan: bullets `- RN1: text` or table
+ * rows `| RN1 | text |`. The first of each id wins.
  */
 export function parseItems(text: string, prefix: 'CA' | 'RN' | 'CN'): { id: string; text: string }[] {
   const out = new Map<string, string>()
   const item = new RegExp(`^\\s*(?:[-*]\\s+(?:\\[[ xX]\\]\\s+)?|\\d+[.)]\\s+)?\\**(${prefix}\\d+[a-z]?)\\**\\s*[:.)—–-]\\s*(.+)$`, 'i')
   const row = new RegExp(`^\\|\\s*\\**(${prefix}\\d+[a-z]?)\\**\\s*\\|\\s*([^|]+)\\|`, 'i')
-  // a matriz do plano de testes: `| CA1 | CN1 — nome | …`
+  // the test plan matrix: `| CA1 | CN1 — name | …`
   const cell = new RegExp(`^\\|.*?\\|\\s*\\**(${prefix}\\d+[a-z]?)\\**\\s*[—–-]\\s*([^|]+)\\|`, 'i')
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
     const m = item.exec(line) ?? row.exec(line) ?? cell.exec(line)
@@ -460,7 +454,7 @@ export function parseItems(text: string, prefix: 'CA' | 'RN' | 'CN'): { id: stri
   return [...out].map(([id, t]) => ({ id, text: t }))
 }
 
-/** O status de cada id no `cobertura-<id>.md` (`| CA1 | coberto | evidência |`). */
+/** The status of each id in the coverage file (`| CA1 | covered | evidence |`). */
 export function parseCoverage(text: string): Record<string, CoverageItem['status']> {
   const out: Record<string, CoverageItem['status']> = {}
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
@@ -468,24 +462,24 @@ export function parseCoverage(text: string): Record<string, CoverageItem['status
     const id = /^((?:ca|rn|cn)\d+[a-z]?)$/.exec(cells[0] ?? '')?.[1]
     if (!id) continue
     const st = cells[1] ?? ''
-    out[id.toUpperCase()] = /cobert/.test(st) ? 'coberto' : /implement/.test(st) ? 'implementado' : 'falta'
+    out[id.toUpperCase()] = R('{covered}').test(st) ? 'covered' : R('{implemented}').test(st) ? 'implemented' : 'missing'
   }
   return out
 }
 
 const HOW = /\b(auto-api|auto-browser|auto-suite|manual|automatizado(?: \(build\))?|removido)(?![\w-])/i
 
-/** Como cada critério é provado, pela matriz do plano de testes (coluna `Tipo` ou `Como`). */
+/** How each criterion is proved, by the test plan matrix (`Type` or `How` column). */
 export function parseTestMatrix(text: string): Record<string, string[]> {
   const out: Record<string, string[]> = {}
   let inMatrix = false
   let howCol = -1
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
-    if (/^#{2,3}\s/.test(line)) inMatrix = /matriz/i.test(line)
+    if (/^#{2,3}\s/.test(line)) inMatrix = R('{matrix}').test(line)
     if (!inMatrix || !line.startsWith('|')) continue
     const cells = line.split('|').slice(1, -1).map(c => clean(c))
-    if (/^(CA|Crit)/i.test(cells[0] ?? '') && cells.some(c => /^(tipo|como)$/i.test(c))) {
-      howCol = cells.findIndex(c => /^(tipo|como)$/i.test(c))
+    if (/^(CA|Crit)/i.test(cells[0] ?? '') && cells.some(c => R('^{howCol}$').test(c))) {
+      howCol = cells.findIndex(c => R('^{howCol}$').test(c))
       continue
     }
     for (const id of (cells[0] ?? '').match(/\bCA?\d+[a-z]?\b/gi) ?? []) {
@@ -499,20 +493,20 @@ export function parseTestMatrix(text: string): Record<string, string[]> {
   return out
 }
 
-/** Vereditos por critério num relatório de teste (qa-*, teste-orquestrador-*, resultado-*): o último vale. */
+/** Verdicts per criterion in a test report (qa-*, orchestrator-test-*, e2e-result-*): the last one wins. */
 export function parseVerdicts(text: string): Record<string, { result: string; evidence: string }> {
   const out: Record<string, { result: string; evidence: string }> = {}
   const verdict = (s: string) =>
-    /✅|\bmet\b|\bpassou\b|\bok\b/i.test(s) && !/not_met|não passou/i.test(s)
-      ? 'atendido'
-      : /❌|not_met|falhou|não passou/i.test(s)
-        ? 'falhou'
-        : /pending_manual|⏳|pendente/i.test(s)
-          ? 'pendente'
+    /✅|\bmet\b|\bpassou\b|\bpassed\b|\bok\b/i.test(s) && !/not_met|não passou|not passed/i.test(s)
+      ? 'met'
+      : /❌|not_met|falhou|não passou|\bfailed\b|not passed/i.test(s)
+        ? 'failed'
+        : /pending_manual|⏳|pendente|\bpending\b/i.test(s)
+          ? 'pending'
           : /needs_orchestrator/i.test(s)
-            ? 'orquestrador'
-            : /doubt|dúvida/i.test(s)
-              ? 'dúvida'
+            ? 'orchestrator'
+            : /doubt|dúvida|question/i.test(s)
+              ? 'doubt'
               : ''
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
     const ids = line.match(/\bCA?\d+[a-z]?\b/gi)
@@ -526,9 +520,9 @@ export function parseVerdicts(text: string): Record<string, { result: string; ev
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Roteiro de teste manual
+// Manual test script
 
-export function parseRoteiro(text: string): ManualStep[] {
+export function parseTestScript(text: string): ManualStep[] {
   const out: ManualStep[] = []
   let cols: string[] = []
   let section = ''
@@ -542,23 +536,23 @@ export function parseRoteiro(text: string): ManualStep[] {
     if (!line.startsWith('|')) continue
     const cells = line.split('|').slice(1, -1).map(c => c.trim())
     const lower = cells.map(c => clean(c).toLowerCase())
-    if (lower.some(c => c === 'passo' || c === 'o que fazer') && lower.some(c => /esperado|^quem$/.test(c))) {
+    if (lower.some(c => R('^{stepCol}$').test(c)) && lower.some(c => R('{expectedCol}|^{whoCol}$').test(c))) {
       cols = lower
       continue
     }
     if (!cols.length || /^-+$/.test((cells[0] ?? '').replace(/[:\s]/g, ''))) continue
     const at = (re: RegExp) => cells[cols.findIndex(c => re.test(c))] ?? ''
-    const result = at(/^resultado/)
+    const result = at(R('^{resultCol}'))
     out.push({
       id: clean(cells[0] ?? ''),
-      step: cut(clean(at(/^(passo|o que fazer)$/)), 200),
-      expected: cut(clean(at(/esperado/)), 200),
+      step: cut(clean(at(R('^{stepCol}$'))), 200),
+      expected: cut(clean(at(R('{expectedCol}'))), 200),
       result: result.includes('✅') ? '✅' : result.includes('❌') ? '❌' : '',
       note: cut(clean(result.replace(/[✅❌]/g, '')), 120),
       section,
-      removed: cells.some(c => /\bremovid[oa]\b/i.test(c)),
-      criteria: [...at(/^crit[ée]rio/).matchAll(/\b(CA|RN|CN)\s*0*(\d+)\b/g)].map(m => `${m[1]}${m[2]}`),
-      how: clean(at(/^como$/)).toLowerCase(),
+      removed: cells.some(c => R('\\b{removed}\\b').test(c)),
+      criteria: [...at(R('^{criterionCol}')).matchAll(/\b(CA|RN|CN)\s*0*(\d+)\b/g)].map(m => `${m[1]}${m[2]}`),
+      how: clean(at(/^(como|how)$/i)).toLowerCase(),
     })
   }
   return out
@@ -568,23 +562,23 @@ export function parseRoteiro(text: string): ManualStep[] {
 // Levantamento
 
 
-/** Pontos do card: a tabela do levantamento (`| P01 | ponto | ✅ confirmado | evidência |`) ou o pontos-<id>.md. */
-export function parsePoints(levantamento: string, pontos: string): Point[] {
+/** Card points: the survey table (`| P01 | point | ✅ confirmed | evidence |`) or the points file. */
+export function parsePoints(survey: string, pontos: string): Point[] {
   const out: Point[] = []
-  for (const line of levantamento.replace(/\r\n/g, '\n').split('\n')) {
+  for (const line of survey.replace(/\r\n/g, '\n').split('\n')) {
     if (!/^\|\s*P\d+/.test(line)) continue
     const cells = line.split('|').slice(1, -1).map(c => clean(c))
     out.push({ id: cells[0] ?? '', text: cut(cells[1] ?? '', 200), verdict: cells[2] ?? '', evidence: cut(cells[3] ?? '', 120) })
   }
   if (out.length) return out
   for (const line of pontos.replace(/\r\n/g, '\n').split('\n')) {
-    const m = /^\s*[-*]?\s*(P\d+)\s*[—–-]\s*(.+?)(?:\s+[—–-]\s+origem:.*)?$/.exec(line)
+    const m = /^\s*[-*]?\s*(P\d+)\s*[—–-]\s*(.+?)(?:\s+[—–-]\s+(?:origem|origin):.*)?$/.exec(line)
     if (m) out.push({ id: m[1] ?? '', text: cut(clean(m[2] ?? ''), 200), verdict: '', evidence: '' })
   }
   return out
 }
 
-/** `**Story points sugeridos:**` seguido de tópicos `- **13** se…` / `- **8** se…` → `8–13`. */
+/** `**Suggested story points:**` followed by bullets `- **13** if…` / `- **8** if…` → `8–13`. */
 function pointsFromList(text: string): string {
   const list = /Story points[^\n]*:\**\s*\n((?:\s*-[^\n]*\n?)+)/i.exec(text)?.[1] ?? ''
   const values = [...list.matchAll(/^\s*-\s*\*\*(\d+)\*\*/gm)].map(m => Number(m[1])).sort((a, b) => a - b)
@@ -595,35 +589,35 @@ function pointsFromList(text: string): string {
 }
 
 export function parseEstimate(text: string): Estimate {
-  const line = /\*\*Estimativa:\*\*\s*([^\n]+)/.exec(text)?.[1] ?? ''
+  const line = R('\\*\\*{estimate}:\\*\\*\\s*([^\\n]+)', '').exec(text)?.[1] ?? ''
   const pick = (re: RegExp, src = text) => clean(re.exec(src)?.[1] ?? '')
   const total = /\|\s*\**Total dev\**\s*\|\s*\**([^|*\n]+)/i.exec(text)?.[1] ?? ''
   const qa = /\|\s*QA[^|]*\|\s*\**([^|*\n]+)/i.exec(text)?.[1] ?? ''
-  const card = /card (?:é|e|fica em)\s*\**(\d+)\s*SP(\s*ou mais)?/i.exec(text)
+  const card = R('{cardIs}\\s*\\**(\\d+)\\s*SP(\\s*{orMore})?').exec(text)
   const split = pick(/Total\s*\**\s*≈?\s*(\d+\s*SP)/i)
   return {
-    sp: pick(/(\d+(?:\s*[-–]\s*\d+)?|>\s*13)\s*SP\b/i, line) || pick(/Recomenda[çc][aã]o:\s*(\d+(?:\s*[-–]\s*\d+)?)\s*SP/i) ||
+    sp: pick(/(\d+(?:\s*[-–]\s*\d+)?|>\s*13)\s*SP\b/i, line) || pick(R('{recommendation}:\\s*(\\d+(?:\\s*[-–]\\s*\\d+)?)\\s*SP')) ||
       pointsFromList(text) || pick(/\bStory points:\**\s*([^\n—]+)/i) || pick(/(\d+(?:\s*[-–]\s*\d+)?)\s*SP\b/),
     hours: pick(/·\s*([\d,.]+\s*[-–]\s*[\d,.]+\s*h)\b/, line) || pick(/\*\*Total[^|]*\*\*\s*\|\s*\**([^|*\n]+)/i),
-    complexity: pick(/complexidade\s*:?\s*\**([A-Za-zÀ-ú ]+?)\**\s*(?:[·—,\n]|$)/i, line) ||
-      pick(/\*\*Complexidade:\*\*\s*([^—\n]+)/i),
-    confidence: pick(/confian[çc]a\s*:?\s*\**([A-Za-zÀ-ú]+)/i, line) || pick(/\*\*Confian[çc]a:\*\*\s*([^—\n]+)/i),
+    complexity: pick(R('{complexity}\\s*:?\\s*\\**([A-Za-zÀ-ú ]+?)\\**\\s*(?:[·—,\\n]|$)'), line) ||
+      pick(R('\\*\\*{complexity}:\\*\\*\\s*([^—\\n]+)')),
+    confidence: pick(R('{confidence}\\s*:?\\s*\\**([A-Za-zÀ-ú]+)'), line) || pick(R('\\*\\*{confidence}:\\*\\*\\s*([^—\\n]+)')),
     spCard: card ? `${card[1]}${card[2] ? '+' : ''} SP` : '',
     spSplit: split ? `≈ ${split}` : '',
     devDays: clean(total.replace(/≈\s*/, '')),
     qaDays: clean(qa.replace(/≈\s*/, '')),
-    level: pick(/N[íi]vel AiDW:\**\s*\**([a-zçã]+)/i),
-    passes: cut(pick(/Passadas extras:\**\s*([^\n]+)/i), 160),
+    level: pick(R('{aidwLevel}:\\**\\s*\\**([a-zçã]+)')),
+    passes: cut(pick(R('{extraPasses}:\\**\\s*([^\\n]+)')), 160),
     risks: parseRisks(text),
   }
 }
 
-/** `- **Riscos:**` com o texto na linha e/ou os subtópicos recuados; no modelo antigo, a seção `## Riscos`. */
+/** `- **Risks:**` with the text on the line and/or the indented sub-bullets; in the old model, the `## Risks` section. */
 function parseRisks(text: string): string {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const head = /^\s*[-*]\s*\*\*Riscos:?\*\*:?\s*/i
+  const head = R('^\\s*[-*]\\s*\\*\\*{risks}:?\\*\\*:?\\s*')
   const i = lines.findIndex(l => head.test(l))
-  if (i < 0) return parseSection(text, /^##\s+(?:\d+\.\s*)?Riscos/i)
+  if (i < 0) return parseSection(text, R('^##\\s+(?:\\d+\\.\\s*)?{risks}'))
   const sub: string[] = []
   for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j] ?? ''); j++) sub.push(lines[j] ?? '')
   const indent = Math.min(...sub.map(l => /^\s*/.exec(l)?.[0].length ?? 0))
@@ -637,7 +631,7 @@ function range(s: string): [number, number] | null {
   return [nums[0] ?? 0, nums.at(-1) ?? 0]
 }
 
-/** O corpo de uma seção `## <título>` até a próxima de mesmo nível ou acima, sem linhas vazias nas pontas. */
+/** The body of a `## <title>` section up to the next one of the same level or above, without blank lines at the ends. */
 export function parseSection(text: string, title: RegExp): string {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
   const start = lines.findIndex(l => /^##\s/.test(l) && title.test(l))
@@ -646,15 +640,15 @@ export function parseSection(text: string, title: RegExp): string {
   return lines.slice(start + 1, end < 0 ? undefined : end).join('\n').trim()
 }
 
-/** O que o card pede: o parágrafo do `**Card:**` do levantamento. */
+/** What the card asks: the `**Card:**` paragraph of the survey. */
 export function parseCardAsk(text: string): string {
   const m = /\*\*Card:\*\*\s*([\s\S]*?)(?:\n\s*\n|\n\|)/.exec(text.replace(/\r\n/g, '\n'))
   return cut(clean(m?.[1] ?? ''), 600)
 }
 
 /**
- * As linhas "Hoje no código | Para a demanda | Situação" do levantamento. Sem a coluna de situação (modelo
- * antigo), ela sai do texto: "não muda", "nada a reaproveitar", "a dor", senão "precisa mudar".
+ * The "Today in code | For the demand | Situation" rows of the survey. Without the situation column (old
+ * model), it comes from the text: "no change", "nothing to reuse", "the pain", otherwise "must change".
  */
 export function parseCardPoints(text: string): CardPoint[] {
   const out: CardPoint[] = []
@@ -666,23 +660,21 @@ export function parseCardPoints(text: string): CardPoint[] {
     }
     const cells = line.split('|').slice(1, -1).map(c => c.trim())
     const lower = cells.map(c => clean(c).toLowerCase())
-    if (lower.some(c => /^hoje no c[oó]digo/.test(c))) {
+    if (lower.some(c => R('^{todayInCode}').test(c))) {
       cols = lower
       continue
     }
     if (!cols.length || /^-+$/.test((cells[0] ?? '').replace(/[:\s]/g, ''))) continue
     const effect = clean(cells[1] ?? '')
-    const col = cols.findIndex(c => /situa/.test(c))
+    const col = cols.findIndex(c => R('{situationCol}').test(c))
     const given = col >= 0 ? clean(cells[col] ?? '').toLowerCase() : ''
-    const e = effect.toLowerCase()
-    const situation = given ||
-      (/n[aã]o mud/.test(e) ? 'não muda' : /nada a reaproveitar/.test(e) ? 'nada a reaproveitar' : /\bdor\b/.test(e) ? 'é a dor' : 'precisa mudar')
+    const situation = given || situationOf(effect)
     out.push({ today: cut(clean(cells[0] ?? ''), 260), effect: cut(effect, 200), situation })
   }
   return out
 }
 
-/** Os blocos de esforço (`| Bloco | Dev (dias) |`), sem o total e sem o QA. */
+/** The effort blocks (`| Block | Dev (days) |`), without the total and without QA. */
 export function parseEffort(text: string): EffortBlock[] {
   const out: EffortBlock[] = []
   let inTable = false
@@ -692,7 +684,7 @@ export function parseEffort(text: string): EffortBlock[] {
       continue
     }
     const cells = line.split('|').slice(1, -1).map(c => clean(c))
-    if (/^bloco$/i.test(cells[0] ?? '') && /dias|\(h\)|horas/i.test(cells[1] ?? '')) {
+    if (R('^{block}$').test(cells[0] ?? '') && R('{days}').test(cells[1] ?? '')) {
       inTable = true
       continue
     }
@@ -703,17 +695,17 @@ export function parseEffort(text: string): EffortBlock[] {
   return out
 }
 
-/** A recomendação de quebra (`| # | Item | SP |`). */
+/** The split recommendation (`| # | Item | SP |`). */
 export function parseSplit(text: string): SplitItem[] {
   const out: SplitItem[] = []
   let inTable = false
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
-    const t = line.trim()
-    if (!t.startsWith('|')) {
-      if (t) inTable = false
+    const row = line.trim()
+    if (!row.startsWith('|')) {
+      if (row) inTable = false
       continue
     }
-    const cells = t.split('|').slice(1, -1).map(c => clean(c))
+    const cells = row.split('|').slice(1, -1).map(c => clean(c))
     if (cells[0] === '#' && /^sp$/i.test(cells.at(-1) ?? '')) {
       inTable = true
       continue
@@ -725,19 +717,20 @@ export function parseSplit(text: string): SplitItem[] {
 }
 
 /**
- * As dúvidas da seção `## Dúvidas…`: `- **D1. pergunta** contexto` (as linhas recuadas seguintes também são
- * contexto), em grupos `**Tema**`, com `*Para:*` e `*Muda a estimativa:*` quando o levantamento traz; ou o modelo
- * antigo numerado (`1. pergunta *Por que importa:* … *Para:* …`).
+ * The questions of the `## Open questions…` section: `- **D1. question** context` (the following indented lines are also
+ * context), in `**Theme**` groups, with `*For:*` and `*Changes the estimate:*` when the survey has them; or the old
+ * numbered model (`1. question *Why it matters:* … *For:* …`).
  */
 export function parseDoubts(text: string): Doubt[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const start = lines.findIndex(l => /^#{2,3}\s+(\d+\.\s*)?D[uú]vidas/i.test(l))
+  const start = lines.findIndex(l => R('^#{2,3}\\s+(\\d+\\.\\s*)?{openQuestions}').test(l))
   if (start < 0) return []
   const out: Doubt[] = []
   let group = ''
   const tail = (s: string, re: RegExp) => clean(re.exec(s)?.[1] ?? '')
-  const TO = /\*Para:\*\s*([^*\n]+?)(?:\s*\*|$)/i
-  const AFFECTS = /\*Muda a estimativa:\*\s*([^*\n]+?)(?:\s*\*|$)/i
+  const TO = R('\\*{for}:\\*\\s*([^*\\n]+?)(?:\\s*\\*|$)')
+  const AFFECTS = R('\\*{changesEstimate}:\\*\\s*([^*\\n]+?)(?:\\s*\\*|$)')
+  const WHY = R('\\*{whyItMatters}:\\*')
   for (let i = start + 1; i < lines.length && !/^#{1,2}\s/.test(lines[i] ?? ''); i++) {
     const line = lines[i] ?? ''
     const g = /^\s*\*\*([^*]+)\*\*\s*$/.exec(line)
@@ -746,7 +739,7 @@ export function parseDoubts(text: string): Doubt[] {
       continue
     }
     if (/^\s*[-*]\s+\*\*D\d+\./.test(line)) {
-      // A pergunta em negrito pode quebrar de linha: junta as linhas recuadas antes de procurar o `**` que a fecha.
+      // The bold question may wrap: join the indented lines before looking for the `**` that closes it.
       let item = line.trim()
       while (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1] ?? '') && !/^\s*[-*]\s+\*\*D\d+/.test(lines[i + 1] ?? '')) {
         i += 1
@@ -755,11 +748,11 @@ export function parseDoubts(text: string): Doubt[] {
       const d = /^[-*]\s+\*\*D(\d+)\.\s*(.*?)\*\*\s*(.*)$/.exec(item)
       if (!d) continue
       const rest = d[3] ?? ''
-      const why = clean(rest.replace(/\*Para:\*.*$/i, '').replace(/\*Muda a estimativa:\*.*$/i, ''))
+      const why = clean(rest.replace(R('\\*{for}:\\*.*$'), '').replace(R('\\*{changesEstimate}:\\*.*$'), ''))
       out.push({
         n: Number(d[1]),
         id: `D${d[1]}`,
-        // Respondida (`**D3.** resposta`): o negrito só tem o número, e a resposta é o texto da linha.
+        // Answered (`**D3.** answer`): the bold only has the number, and the answer is the text of the line.
         question: cut(clean(d[2] ?? '') || why, 240),
         why: d[2] ? cut(why, 320) : '',
         to: tail(rest, TO),
@@ -774,9 +767,9 @@ export function parseDoubts(text: string): Doubt[] {
     out.push({
       n: Number(m[1]),
       id: `D${m[1]}`,
-      question: cut(clean(rest.replace(/\*Por que importa:\*.*$/i, '').replace(/\*Para:\*.*$/i, '')), 240),
-      why: cut(clean(/\*Por que importa:\*\s*([^*]+)/i.exec(rest)?.[1] ?? ''), 200),
-      to: clean(/\*Para:\*\s*([^.*\n]+)/i.exec(rest)?.[1] ?? /\(([^)]*(?:PO|Tech Lead|time|QA)[^)]*)\)\s*$/i.exec(rest)?.[1] ?? ''),
+      question: cut(clean(rest.replace(new RegExp(`${WHY.source}.*$`, 'i'), '').replace(R('\\*{for}:\\*.*$'), '')), 240),
+      why: cut(clean(new RegExp(`${WHY.source}\\s*([^*]+)`, 'i').exec(rest)?.[1] ?? ''), 200),
+      to: clean(R('\\*{for}:\\*\\s*([^.*\\n]+)').exec(rest)?.[1] ?? /\(([^)]*(?:PO|Tech Lead|time|team|QA)[^)]*)\)\s*$/i.exec(rest)?.[1] ?? ''),
       group,
       affects: tail(rest, AFFECTS),
     })
@@ -787,17 +780,18 @@ export function parseDoubts(text: string): Doubt[] {
 // ---------------------------------------------------------------------------------------------------------------
 // Plano e arquivos
 
-/** `Nível:` e `Passadas extras:` do plano. */
+/** `Level:` and `Extra passes:` of the plan. */
 export function parsePlanMeta(text: string): { level: string | null; passes: string; version: string } {
   const h1 = /^#\s+(.+)$/m.exec(text)?.[1] ?? ''
   return {
-    level: /N[íi]vel:\**\s*\**\s*(trivial|simples|padrao|complexa|critica)/i.exec(text)?.[1]?.toLowerCase() ?? null,
-    passes: cut(clean(/Passadas extras:\**\s*([^\n]+)/i.exec(text)?.[1] ?? ''), 160),
+    level: R('{level}:\\**\\s*\\**\\s*(trivial|simples|padrao|complexa|critica)').exec(text)?.[1]?.toLowerCase() ?? null,
+    passes: cut(clean(R('{extraPasses}:\\**\\s*([^\\n]+)').exec(text)?.[1] ?? ''), 160),
+
     version: /\bv(\d+(?:\.\d+)?)\b/.exec(h1)?.[1] ?? '',
   }
 }
 
-/** O arquivo mais recente de uma família (`review-*-rN.md` → maior N). */
+/** The latest file of a family (`review-*-rN.md` → highest N). */
 export function latest(files: string[], re: RegExp): { file: string; n: number } | null {
   let best: { file: string; n: number } | null = null
   for (const f of files) {

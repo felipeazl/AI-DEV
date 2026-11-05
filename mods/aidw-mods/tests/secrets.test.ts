@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { redact, redactBlocks } from '../hooks/secrets'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 describe('filtro de segredos', () => {
   test('connection string mantém a chave e esconde o valor', async () => {
-    // a senha vai em pedaços para o scanner de segredos do GitHub não tomar o exemplo por segredo real
+    // the password goes in pieces so GitHub's secret scanner does not take the sample for a real secret
     const r = redact('Server=sql01;Database=App;User Id=app;Pass' + 'word=S3nh@Forte!;Encrypt=true')
     expect(r.text).toContain('Password=«segredo ocultado: Password, 11 caracteres»')
     expect(r.text).toContain('Server=sql01;Database=App;User Id=app;')
@@ -20,7 +24,7 @@ describe('filtro de segredos', () => {
   })
 
   test('JSON, variável de ambiente, Bearer e JWT', async () => {
-    const jwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'].join('.') // em pedaços: é um JWT de teste, não um segredo
+    const jwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'].join('.') // in pieces: it is a test JWT, not a secret
     const text = [
       '"stringConexao": "Data Source=x;Password=abcdef"',
       'PERSONAL_ACCESS_TOKEN=abcdefghijklmnopqrstuvwxyz123456',

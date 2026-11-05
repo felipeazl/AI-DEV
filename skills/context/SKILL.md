@@ -1,22 +1,26 @@
 ---
 name: context
-description: Administra os contextos de trabalho do AiDW (contexts/<nome>, cada um um repositório Git privado) — `list` mostra os contextos e qual está ativo; `use <nome>` valida, ativa e regenera o ambiente e o plugin aidw; `create` monta um contexto novo a partir da análise dos repositórios e de no mínimo 10 perguntas ao usuário. Use quando o usuário pedir para listar, trocar, ativar ou criar um contexto, ou chamar /context.
+description: Manages the AiDW work contexts (contexts/<name>, each one a private Git repository) — `list` shows the contexts and which one is active; `use <name>` validates, activates and regenerates the environment and the aidw plugin; `create` builds a new context from an analysis of the repositories and at least 10 questions to the user. Use when the user asks to list, switch, activate or create a context, or calls /context.
 aidw: admin
 ---
 
 # context
 
-`aidw.py` fica em `{{root}}` (raiz do AiDW). Pedido do usuário (pode estar vazio): $ARGUMENTS
+`aidw.py` lives in `{{root}}` (the AiDW root). The user's request (may be empty): $ARGUMENTS
 
-## Qual subcomando
+**Language:** talk to the user in the AiDW UI language (`[ui] language`, shown by `python "{{root}}/aidw.py" show`);
+write a context's content in that context's language (`language` in its `context.toml`; when absent, the UI language).
 
-Pela primeira palavra do pedido (sem diferenciar maiúsculas):
+## Which subcommand
 
-| Pedido | Subcomando | Procedimento (leia o arquivo inteiro e siga) |
+By the first word of the request (case-insensitive; the same words in the user's language also count, e.g. `listar`,
+`usar`, `criar`):
+
+| Request | Subcommand | Procedure (read the whole file and follow it) |
 |---|---|---|
-| vazio, `list`, `listar`, "ver os contextos" | `list` | `references/list.md` |
-| `use <nome>`, `usar <nome>`, "trocar para", "ativar" | `use` | `references/use.md` |
-| `create`, `criar`, "montar um contexto" | `create` | `references/create.md` |
+| empty, `list`, "show the contexts" | `list` | `references/list.md` |
+| `use <name>`, "switch to", "activate" | `use` | `references/use.md` |
+| `create`, "build a context" | `create` | `references/create.md` |
 
-Os arquivos ficam na pasta desta skill (ao lado deste `SKILL.md`). Sem subcomando claro, faça o `list` e termine
-dizendo que `use <nome>` troca o contexto ativo e `create` monta um novo.
+The files are in this skill's folder (next to this `SKILL.md`). With no clear subcommand, run `list` and finish by
+saying that `use <name>` switches the active context and `create` builds a new one.

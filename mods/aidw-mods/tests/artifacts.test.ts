@@ -8,39 +8,43 @@ import {
   parseFindings,
   parsePlanMeta,
   parsePoints,
-  parseRoteiro,
+  parseTestScript,
   parseTestMatrix,
   parseTriage,
   parseVerdicts,
   timeline,
 } from '../hooks/artifacts'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 describe('tipo de uso e linha do tempo', () => {
   test('o tipo vem dos arquivos e dos repositórios', async () => {
     expect(kindOf({ repos: [{ pr: '7586' }] }, ['diff-pr7586-Front.patch'])).toBe('pr-review')
-    expect(kindOf({ title: 'Algo (levantamento)' }, ['resumo-1.md'])).toBe('levantamento')
-    expect(kindOf({}, ['levantamento-us-1.md'])).toBe('levantamento')
-    expect(kindOf({}, ['plano-131190.md', 'plano-testes-131190.md'])).toBe('desenvolvimento')
-    expect(kindOf({ repos: [{ pr: '7' }] }, ['plano-1.md'])).toBe('desenvolvimento')
+    expect(kindOf({ title: 'Algo (levantamento)' }, ['resumo-1.md'])).toBe('survey')
+    expect(kindOf({}, ['levantamento-us-1.md'])).toBe('survey')
+    expect(kindOf({}, ['plano-131190.md', 'plano-testes-131190.md'])).toBe('development')
+    expect(kindOf({ repos: [{ pr: '7' }] }, ['plano-1.md'])).toBe('development')
   })
 
   test('levantamento concluído e implementação iniciada vira desenvolvimento antes do plano', async () => {
     const files = ['levantamento-m-1.md', 'pontos-m-1.md']
     const h = (...steps: string[]) => ({ history: steps.map(step => ({ step, at: '' })) })
-    expect(kindOf(h('UNDERSTAND', 'ESTIMATE'), files)).toBe('levantamento')
-    expect(kindOf(h('ESTIMATE', 'DONE'), files)).toBe('levantamento')
-    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE'), files)).toBe('desenvolvimento')
-    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE', 'ESTIMATE'), files)).toBe('levantamento')
+    expect(kindOf(h('UNDERSTAND', 'ESTIMATE'), files)).toBe('survey')
+    expect(kindOf(h('ESTIMATE', 'DONE'), files)).toBe('survey')
+    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE'), files)).toBe('development')
+    expect(kindOf(h('ESTIMATE', 'DONE', 'EXPLORE', 'ESTIMATE'), files)).toBe('survey')
   })
 
   test('fase atual pela etapa; HUMAN_APPROVAL fica na fase anterior', async () => {
-    const t = timeline('desenvolvimento', {
+    const t = timeline('development', {
       step: 'HUMAN_APPROVAL',
       history: [{ step: 'REVIEW', at: '' }, { step: 'CODER_FIX', at: '' }, { step: 'REVIEW', at: '' }, { step: 'HUMAN_APPROVAL', at: '' }],
     })
-    expect(t.find(x => x.state === 'atual')?.name).toBe('Revisão')
+    expect(t.find(x => x.state === 'current')?.name).toBe('Revisão')
     expect(t.find(x => x.name === 'Revisão')?.visits).toBe(3)
-    expect(timeline('pr-review', { step: 'DONE' }).every(x => x.state === 'feito')).toBe(true)
+    expect(timeline('pr-review', { step: 'DONE' }).every(x => x.state === 'done')).toBe(true)
   })
 })
 
@@ -68,7 +72,7 @@ describe('achados e triagem', () => {
   ].join('\n')
 
   test('variações reais de cabeçalho', async () => {
-    const f = parseFindings(review, 1, 'revisão')
+    const f = parseFindings(review, 1, 'review')
     expect(f.map(x => [x.id, x.severity])).toEqual([
       ['R1-01', 'IMPORTANTE'],
       ['R1-02', 'SUGESTAO'],
@@ -123,11 +127,11 @@ describe('critérios, testes e roteiro', () => {
     ].join('\n'))
     expect(how).toEqual({ CA1: ['manual', 'auto-browser'], CA9: ['automatizado (build)'] })
     const v = parseVerdicts('| CA1 | ✅ atendido | print |\n- CA2 ❌ falhou no Safari\n| CA3 | pending_manual | — |')
-    expect([v.CA1?.result, v.CA2?.result, v.CA3?.result]).toEqual(['atendido', 'falhou', 'pendente'])
+    expect([v.CA1?.result, v.CA2?.result, v.CA3?.result]).toEqual(['met', 'failed', 'pending'])
   })
 
   test('roteiro de teste manual', async () => {
-    const steps = parseRoteiro([
+    const steps = parseTestScript([
       '| # | CA do card | Passo | Esperado | Resultado |',
       '|---|---|---|---|---|',
       '| T1 | Rota | Aba nova → `localhost:5173/fast` | Login visível | ✅ abriu |',
@@ -138,7 +142,7 @@ describe('critérios, testes e roteiro', () => {
   })
 })
 
-describe('levantamento', () => {
+describe('survey', () => {
   test('modelo da referência', async () => {
     const text = [
       '**Estimativa:** 8 SP · 11–16 h · complexidade Alta · confiança baixa',
@@ -195,10 +199,10 @@ describe('revisão do fluxo v3: uma passada com categoria', () => {
       '### R1-03 — SUGESTAO — `src/c.ts:1`',
       '**O quê:** nome',
     ].join('\n')
-    const f = parseFindings(review, 1, 'revisão', 'review-us-1-r1.md')
+    const f = parseFindings(review, 1, 'review', 'review-us-1-r1.md')
     expect(f.map(x => `${x.id}:${x.severity}:${x.category}:${x.where}`)).toEqual([
       'R1-01:IMPORTANTE:bug:src/a.ts:10',
-      'R1-02:CRITICO:seguranca:src/b.ts:3',
+      'R1-02:CRITICO:security:src/b.ts:3',
       'R1-03:SUGESTAO::src/c.ts:1',
     ])
     expect(f[0]?.recommendation).toContain('manter')

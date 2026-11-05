@@ -7,30 +7,30 @@
   "state_dir": "<ROOT>/contexts/exemplo/demandas",
   "agents": {
     "orchestrator": {
-      "name": "orquestrador",
-      "display": "Orquestrador",
+      "name": "orchestrator",
+      "display": "Orchestrator",
       "enabled": true,
       "model": "opus",
       "model_id": "opus",
       "effort": "high",
       "skills": [
         "to-spec",
-        "verificar-premissa",
-        "preparar-worktree",
+        "verify-premise",
+        "prepare-worktree",
         "skill-exemplo"
       ],
       "preload": []
     },
     "planner": {
-      "name": "planejador",
-      "display": "Planejador",
+      "name": "planner",
+      "display": "Planner",
       "enabled": true,
       "model": "sonnet",
       "model_id": "sonnet",
       "effort": "high",
       "skills": [
         "to-spec",
-        "verificar-premissa"
+        "verify-premise"
       ],
       "preload": [
         "to-spec"
@@ -44,8 +44,8 @@
       }
     },
     "explorer": {
-      "name": "explorador",
-      "display": "Explorador",
+      "name": "explorer",
+      "display": "Explorer",
       "enabled": true,
       "model": "haiku",
       "model_id": "haiku",
@@ -63,14 +63,14 @@
       }
     },
     "coder": {
-      "name": "codificador",
-      "display": "Codificador",
+      "name": "coder",
+      "display": "Coder",
       "enabled": true,
       "model": "sonnet",
       "model_id": "sonnet",
       "effort": "high",
       "skills": [
-        "preparar-worktree",
+        "prepare-worktree",
         "skill-exemplo"
       ],
       "preload": [],
@@ -88,15 +88,15 @@
       }
     },
     "reviewer": {
-      "name": "revisor",
-      "display": "Revisor",
+      "name": "reviewer",
+      "display": "Reviewer",
       "enabled": true,
       "model": "sonnet",
       "model_id": "sonnet",
       "effort": "high",
       "skills": [
         "code-review",
-        "verificar-premissa"
+        "verify-premise"
       ],
       "preload": [
         "code-review"
@@ -134,8 +134,8 @@
       }
     },
     "documenter": {
-      "name": "documentador",
-      "display": "Documentador",
+      "name": "documenter",
+      "display": "Documenter",
       "enabled": true,
       "model": "haiku",
       "model_id": "haiku",
@@ -280,30 +280,30 @@
     }
   },
   "variants": {
-    "planejador": [
-      "planejador",
-      "planejador-medium"
+    "planner": [
+      "planner",
+      "planner-medium"
     ],
-    "explorador": [
-      "explorador",
-      "explorador-sonnet-medium",
-      "explorador-sonnet-high"
+    "explorer": [
+      "explorer",
+      "explorer-sonnet-medium",
+      "explorer-sonnet-high"
     ],
-    "codificador": [
-      "codificador",
-      "codificador-medium"
+    "coder": [
+      "coder",
+      "coder-medium"
     ],
-    "revisor": [
-      "revisor",
-      "revisor-medium",
-      "revisor-low"
+    "reviewer": [
+      "reviewer",
+      "reviewer-medium",
+      "reviewer-low"
     ],
     "qa": [
       "qa",
       "qa-high"
     ],
-    "documentador": [
-      "documentador"
+    "documenter": [
+      "documenter"
     ]
   },
   "panel": true,

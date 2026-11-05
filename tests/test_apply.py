@@ -1,14 +1,13 @@
-"""Testes de referência do `aidw.py apply` (F0 do plano v3).
+"""Reference tests of `aidw.py apply` (F0 of plan v3).
 
-Cada cenário copia as fontes do AiDW para uma pasta temporária, grava um aidw.config.toml,
-roda `apply` e compara os arquivos gerados com tests/golden/<cenário>/. A referência só muda
-de propósito:
+Each scenario copies the AiDW sources into a temporary folder, writes an aidw.config.toml, runs `apply` and compares
+the generated files with tests/golden/<scenario>/. The reference only changes on purpose:
 
-    python -m unittest discover -s tests -v          # roda
-    python tests/test_apply.py --update              # regrava as referências (revise o diff no git)
+    python -m unittest discover -s tests -v          # runs
+    python tests/test_apply.py --update              # rewrites the references (review the diff in git)
 
-As referências são geradas no Windows (caminhos, junctions e `cmd /c` do npx dependem do SO);
-em outro SO os testes de referência são pulados.
+The references are generated on Windows (paths, junctions and npx's `cmd /c` depend on the OS); on another OS the
+reference tests are skipped.
 """
 from __future__ import annotations
 
@@ -28,18 +27,18 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
-# ignore_cleanup_errors: o doctor roda `claude mcp list`, que pode deixar servidores MCP segurando a
-# pasta temporária no Windows; a pasta é descartável.
+# ignore_cleanup_errors: doctor runs `claude mcp list`, which may leave MCP servers holding the temporary folder on
+# Windows; the folder is disposable.
 REPO = Path(__file__).resolve().parent.parent
 TESTS = REPO / "tests"
 GOLDEN = TESTS / "golden"
 FIXTURE_CONTEXT = TESTS / "fixtures" / "contexts" / "exemplo"
 SOURCES = ["aidw.py", "aidw_guard.py", "config", "agents", "skills", "orchestrator", "workflows", "mods"]
-# Tudo o que o apply gera, relativo à raiz.
+# Everything apply generates, relative to the root.
 GENERATED = ["CLAUDE.md", "AGENTS.md", ".mcp.json", ".aidw", ".claude", ".codex", ".agents"]
 UPDATE = os.environ.get("AIDW_UPDATE_GOLDEN") == "1"
 
-# nome: (provedor, delegação, contexto)
+# name: (provider, delegation, context)
 SCENARIOS = {
     "claude-native-contexto": ("claude", "native", "exemplo"),
     "claude-headless-sem-contexto": ("claude", "headless", ""),
@@ -69,22 +68,22 @@ def make_sandbox(tmp: Path, provider: str, mode: str, context: str, copy_context
     cfg = aidw.default_config(provider)
     cfg["delegation"]["mode"] = mode
     cfg["context"]["active"] = context
-    cfg["worktree"]["root"] = (tmp / "wt").as_posix()  # nunca a raiz real da máquina
+    cfg["worktree"]["root"] = (tmp / "wt").as_posix()  # never the machine's real root
     (root / "aidw.config.toml").write_text(aidw.render_config(cfg), encoding="utf-8", newline="\n")
     return root
 
 
 def run_aidw(root: Path, *args: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
     env = {**os.environ, "CODEX_HOME": str(root.parent / "codex-home"), "PYTHONIOENCODING": "utf-8",
-           "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home"),  # nunca o ~/.claude real
-           "AIDW_CODEX_SKILLS_DIR": str(root.parent / "agents-skills"), **(env_extra or {})}  # nem o ~/.agents
+           "CLAUDE_CONFIG_DIR": str(root.parent / "claude-home"),  # never the real ~/.claude
+           "AIDW_CODEX_SKILLS_DIR": str(root.parent / "agents-skills"), **(env_extra or {})}  # nor ~/.agents
     return subprocess.run([sys.executable, str(root / "aidw.py"), *args], cwd=root, env=env,
                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
 
 
 def normalize(text: str, root: Path) -> str:
-    """Troca o caminho da pasta temporária por <ROOT> (e a pasta acima dela, onde fica a raiz dos worktrees do
-    teste, por <TMP>) em todas as grafias que o apply usa."""
+    """Replaces the temporary folder's path with <ROOT> (and the folder above it, where the test's worktree root
+    lives, with <TMP>) in every spelling apply uses."""
     for path, mark in ((root.resolve(), "<ROOT>"), (root.resolve().parent, "<TMP>")):
         win = str(path)
         for form in (json.dumps(win)[1:-1], win, win.replace("\\", "/"), json.dumps(win.lower())[1:-1],
@@ -98,7 +97,7 @@ def is_link(p: Path) -> bool:
 
 
 def snapshot(root: Path) -> dict[str, str]:
-    """{caminho relativo: conteúdo normalizado}. Links viram `-> <alvo relativo>`."""
+    """{relative path: normalized content}. Links become `-> <relative target>`."""
     files: dict[str, str] = {}
 
     def add(p: Path) -> None:
@@ -139,18 +138,18 @@ def write_golden(name: str, files: dict[str, str]) -> None:
 def diff_report(expected: dict[str, str], actual: dict[str, str], limit: int = 60) -> str:
     out = []
     for key in sorted(set(expected) - set(actual)):
-        out.append(f"- faltou: {key}")
+        out.append(f"- missing: {key}")
     for key in sorted(set(actual) - set(expected)):
-        out.append(f"+ novo:   {key}")
+        out.append(f"+ new:     {key}")
     for key in sorted(set(expected) & set(actual)):
         if expected[key] != actual[key]:
-            out.append(f"~ mudou:  {key}")
+            out.append(f"~ changed: {key}")
             out += list(difflib.unified_diff(expected[key].splitlines(), actual[key].splitlines(),
-                                             "referência", "gerado", lineterm="", n=1))[:limit]
+                                             "reference", "generated", lineterm="", n=1))[:limit]
     return "\n".join(out)
 
 
-@unittest.skipUnless(os.name == "nt", "referências geradas no Windows")
+@unittest.skipUnless(os.name == "nt", "references generated on Windows")
 class ApplyGoldenTest(unittest.TestCase):
     maxDiff = None
 
@@ -161,44 +160,44 @@ class ApplyGoldenTest(unittest.TestCase):
 
             dry = run_aidw(root, "apply", "--dry-run")
             self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
-            self.assertEqual(snapshot(root), {}, "dry-run não pode gravar nada")
+            self.assertEqual(snapshot(root), {}, "dry-run must not write anything")
 
             first = run_aidw(root, "apply")
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
             actual = snapshot(root)
             state = "contexts/exemplo/demandas" if context else "state"
-            self.assertTrue((root / state).is_dir(), f"apply deveria criar {state}/")
+            self.assertTrue((root / state).is_dir(), f"apply should create {state}/")
 
             second = run_aidw(root, "apply")
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-            self.assertEqual(snapshot(root), actual, "apply não é idempotente")
-            for word in ("criado", "atualizado", "removido", "linkado"):
-                self.assertNotIn(f"[ok]    {word}", second.stdout, "o 2º apply não deveria alterar nada")
+            self.assertEqual(snapshot(root), actual, "apply is not idempotent")
+            for word in ("created", "updated", "removed", "linked"):
+                self.assertNotIn(f"[ok]    {word}", second.stdout, "the 2nd apply should change nothing")
 
         if UPDATE:
             write_golden(name, actual)
             return
         expected = read_golden(name)
-        self.assertTrue(expected, f"sem referência para {name}: rode `python tests/test_apply.py --update`")
+        self.assertTrue(expected, f"no reference for {name}: run `python tests/test_apply.py --update`")
         if expected != actual:
-            self.fail(f"saída do apply mudou em {name}:\n{diff_report(expected, actual)}\n\n"
-                      "Se a mudança é intencional: python tests/test_apply.py --update")
+            self.fail(f"apply output changed in {name}:\n{diff_report(expected, actual)}\n\n"
+                      "If the change is intentional: python tests/test_apply.py --update")
 
-    def test_claude_native_contexto(self) -> None:
+    def test_claude_native_context(self) -> None:
         self.check_scenario("claude-native-contexto")
 
-    def test_claude_headless_sem_contexto(self) -> None:
+    def test_claude_headless_no_context(self) -> None:
         self.check_scenario("claude-headless-sem-contexto")
 
-    def test_codex_native_contexto(self) -> None:
+    def test_codex_native_context(self) -> None:
         self.check_scenario("codex-native-contexto")
 
 
 class OrchestratorReferenceTest(unittest.TestCase):
-    """Referências e policies `orchestrator_when` ficam fora do prompt do orquestrador, só listadas;
-    os agentes continuam com a policy inteira; o frontmatter nunca vaza."""
+    """References and `orchestrator_when` policies stay out of the orchestrator prompt, only listed; the agents keep
+    the whole policy; the frontmatter never leaks."""
 
-    def test_referencias_sob_demanda(self) -> None:
+    def test_references_on_demand(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             aidw = load_aidw(root)
@@ -211,33 +210,34 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertNotIn("TEXTO-POLICY-SOB-DEMANDA", orch)
             self.assertNotIn("TEXTO-REFERENCIA-ORQUESTRADOR", orch)
             self.assertIn("preparar a revisão no contexto de exemplo", orch)
-            self.assertIn("orquestrador", refs["etapa"]["content"], "placeholder {{agent:}} renderizado")
+            self.assertIn("orchestrator", refs["etapa"]["content"], "{{agent:}} placeholder rendered")
             for g in b["agents"].values():
                 self.assertIn("TEXTO-POLICY-SOB-DEMANDA", g["prompt"])
             for text in (orch, *[g["prompt"] for g in b["agents"].values()], *[r["content"] for r in refs.values()]):
                 self.assertNotIn("orchestrator_when", text)
-    def test_nome_repetido_e_erro(self) -> None:
+
+    def test_repeated_name_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             (root / "orchestrator" / "reference" / "etapa.md").write_text(
-                "---\nwhen: x\n---\n\nGenérica.\n", encoding="utf-8")
+                "---\nwhen: x\n---\n\nGeneric.\n", encoding="utf-8")
             aidw = load_aidw(root)
             rep = aidw.Report(quiet=True)
             self.assertIsNone(aidw.build(aidw.load_config(), aidw.load_catalog(), rep))
-            self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
+            self.assertTrue(any("reference name 'etapa'" in e for e in rep.errors), rep.errors)
 
-    def test_agentes_e_variantes(self) -> None:
-        """Fluxo v3 (decisão, 2026-10-23): sem níveis; cada agente no seu padrão e só as exceções do routing.toml
-        (descer na re-revisão, subir quando o resultado não fez sentido, o explorador do levantamento); nada acima de
-        high; os agentes api, bugs e segurança saíram; no Codex, o equivalente de cada modelo pelo tier."""
-        esperado = {  # papel: {variante: modelo/effort}
-            "planner": {"planejador": "sonnet/high", "planejador-medium": "sonnet/medium"},
-            "explorer": {"explorador": "haiku/", "explorador-sonnet-medium": "sonnet/medium",
-                         "explorador-sonnet-high": "sonnet/high"},
-            "coder": {"codificador": "sonnet/high", "codificador-medium": "sonnet/medium"},
-            "reviewer": {"revisor": "sonnet/high", "revisor-medium": "sonnet/medium", "revisor-low": "sonnet/low"},
+    def test_agents_and_variants(self) -> None:
+        """Flow v3 (decision, 2026-10-23): no levels; each agent on its default and only the routing.toml
+        exceptions (go down on a re-review, go up when the result made no sense, the survey's explorer); nothing above
+        high; the api, bugs and security agents are gone; on Codex, each model's equivalent by tier."""
+        expected = {  # role: {variant: model/effort}
+            "planner": {"planner": "sonnet/high", "planner-medium": "sonnet/medium"},
+            "explorer": {"explorer": "haiku/", "explorer-sonnet-medium": "sonnet/medium",
+                         "explorer-sonnet-high": "sonnet/high"},
+            "coder": {"coder": "sonnet/high", "coder-medium": "sonnet/medium"},
+            "reviewer": {"reviewer": "sonnet/high", "reviewer-medium": "sonnet/medium", "reviewer-low": "sonnet/low"},
             "qa": {"qa": "sonnet/medium", "qa-high": "sonnet/high"},
-            "documenter": {"documentador": "haiku/"},
+            "documenter": {"documenter": "haiku/"},
         }
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
@@ -245,27 +245,27 @@ class OrchestratorReferenceTest(unittest.TestCase):
             rep = aidw.Report(quiet=True)
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
-            self.assertEqual(set(b["resolved"]) - {"orchestrator"}, set(esperado), "api, bugs e segurança saíram")
-            for role, variants in esperado.items():
+            self.assertEqual(set(b["resolved"]) - {"orchestrator"}, set(expected), "api, bugs and security are gone")
+            for role, variants in expected.items():
                 got = {n: f"{v['model']['key']}/{v['effort']}" for n, v in b["resolved"][role]["variants"].items()}
                 self.assertEqual(got, variants, role)
                 for n, v in b["resolved"][role]["variants"].items():
                     if n != b["resolved"][role]["name"]:
-                        self.assertTrue(v["when"], f"{n}: a exceção diz quando vale")
+                        self.assertTrue(v["when"], f"{n}: the exception says when it applies")
             efforts = {v["effort"] for a in b["resolved"].values() for v in a.get("variants", {}).values()}
-            self.assertFalse(efforts & {"xhigh", "max"}, "nada acima de high")
+            self.assertFalse(efforts & {"xhigh", "max"}, "nothing above high")
             orq = b["orchestrator_md"]
             self.assertIn("## Agents and effort", orq)
-            self.assertIn("`revisor-medium` — re-revisão só das correções", orq)
+            self.assertIn("`reviewer-medium` — re-review of only the fixes", orq)
             self.assertNotIn("Effort per task", orq)
-            self.assertNotIn("Nível:", orq)
+            self.assertNotIn("Level:", orq)
             cat = aidw.load_catalog()
             tiers = {t: aidw.tier_model(cat, "codex", t) for t in ("top", "mid", "fast")}
-            self.assertEqual(len(set(tiers.values())), 3, f"três degraus no Codex: {tiers}")
+            self.assertEqual(len(set(tiers.values())), 3, f"three tiers on Codex: {tiers}")
 
-    def test_config_com_agentes_que_sairam(self) -> None:
-        """Uma config de antes do fluxo v3 com [agents.api-db] e [agents.bug-hunter]: aviso, não erro, e eles não são
-        gerados."""
+    def test_config_with_removed_agents(self) -> None:
+        """A config from before flow v3 with [agents.api-db] and [agents.bug-hunter]: a warning, not an error, and
+        they are not generated."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             cfg_file = root / "aidw.config.toml"
@@ -278,33 +278,33 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertNotIn("api-db", b["resolved"])
             self.assertTrue(any("[agents.api-db]" in w for w in rep.warnings), rep.warnings)
 
-    def test_settings_so_perde_o_que_o_aidw_gravou(self) -> None:
-        """O modelo do orquestrador é o do chat: o apply tira `model`/`effortLevel` só quando são o valor que ele
-        mesmo gravou antes; a escolha do usuário e as outras chaves ficam."""
+    def test_settings_lose_only_what_aidw_wrote(self) -> None:
+        """The orchestrator's model is the chat's: apply removes `model`/`effortLevel` only when they are the value it
+        wrote itself before; the user's choice and the other keys stay."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             aidw = load_aidw(root)
             managed = {"allow": ["Read"], "ask": [], "deny": [], "additionalDirectories": [],
                        "enabledMcpjsonServers": [], "env": {}}
             previous = {"model": "opus", "effortLevel": "high"}
-            for model, fica in (("opus", False), ("sonnet", True)):
+            for model, stays in (("opus", False), ("sonnet", True)):
                 aidw.CLAUDE_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
                 aidw.CLAUDE_SETTINGS.write_text(json.dumps({"model": model, "effortLevel": "high",
-                                                            "env": {"MINHA": "1"}}), encoding="utf-8")
+                                                            "env": {"MINE": "1"}}), encoding="utf-8")
                 aidw.sync_claude_settings(managed, previous, False, aidw.Report(quiet=True))
                 data = json.loads(aidw.CLAUDE_SETTINGS.read_text(encoding="utf-8"))
-                self.assertEqual("model" in data, fica, model)
+                self.assertEqual("model" in data, stays, model)
                 self.assertNotIn("effortLevel", data)
-                self.assertEqual(data["env"], {"MINHA": "1"})
+                self.assertEqual(data["env"], {"MINE": "1"})
                 self.assertEqual(data["permissions"]["allow"], ["Read"])
-            data["model"] = "opus"  # depois disso o AiDW não grava mais nada: um `opus` escolhido fica
+            data["model"] = "opus"  # after that AiDW writes nothing else: a chosen `opus` stays
             aidw.CLAUDE_SETTINGS.write_text(json.dumps(data), encoding="utf-8")
             aidw.sync_claude_settings(managed, {**managed}, False, aidw.Report(quiet=True))
             self.assertEqual(json.loads(aidw.CLAUDE_SETTINGS.read_text(encoding="utf-8"))["model"], "opus")
 
-    def test_config_antiga_ganha_os_agentes_novos(self) -> None:
-        """Uma config com [agents.*] de antes do planejador e do explorador: os dois entram com o padrão e o
-        orquestrador delega a exploração ao explorador."""
+    def test_old_config_gets_the_new_agents(self) -> None:
+        """A config with [agents.*] from before the planner and the explorer: both come with the default and the
+        orchestrator delegates the exploration to the explorer."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             cfg_file = root / "aidw.config.toml"
@@ -319,17 +319,137 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertEqual(b["resolved"]["explorer"]["model"]["key"], "haiku")
             self.assertEqual(b["resolved"]["planner"]["model"]["key"], "sonnet")
             self.assertEqual(b["resolved"]["planner"]["effort"], "high")
-            self.assertIn("the `explorador` agent", b["orchestrator_md"])
-            self.assertIn("`codificador-medium`", b["orchestrator_md"], "a exceção da correção pequena")
+            self.assertIn("the `explorer` agent", b["orchestrator_md"])
+            self.assertIn("`coder-medium`", b["orchestrator_md"], "the small-fix exception")
             cat = aidw.load_catalog()
             self.assertEqual(aidw.equivalent_model(cat, "opus", "codex"), aidw.tier_model(cat, "codex", "top"))
             self.assertEqual(aidw.equivalent_model(cat, "haiku", "codex"), aidw.tier_model(cat, "codex", "fast"))
             self.assertEqual(aidw.equivalent_model(cat, "sonnet", "claude"), "sonnet")
 
+    def test_old_names_still_read(self) -> None:
+        """PR 2 (English identifiers): a config and a context written with the old Portuguese names keep working —
+        old core skill names in [agents.*], old workflow names in [workflows.by_type] and a context workflow file
+        with an old name replacing the new core one."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            cfg_file = root / "aidw.config.toml"
+            text = cfg_file.read_text(encoding="utf-8")
+            self.assertIn('skills = ["to-spec", "verify-premise"]', text)
+            cfg_file.write_text(text.replace('skills = ["to-spec", "verify-premise"]',
+                                             'skills = ["to-spec", "verificar-premissa"]', 1), encoding="utf-8")
+            ctx_dir = root / "contexts" / "exemplo"
+            toml = ctx_dir / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8") + '\n[workflows]\nby_type = { "Bug" = "desenvolvimento", '
+                            '"Estimate" = "levantamento" }\n', encoding="utf-8")
+            (ctx_dir / "workflows").mkdir()
+            (ctx_dir / "workflows" / "levantamento.yaml").write_text(
+                "name: levantamento\ndescription: Old-name survey of the context.\nsteps:\n"
+                "  - id: explore\n    agent: explorer\n", encoding="utf-8")
+            aidw = load_aidw(root)
+            cfg = aidw.load_config()
+            self.assertIn("verify-premise", cfg["agents"]["planner"]["skills"])
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(cfg, aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            orq = b["orchestrator_md"]
+            self.assertIn("- Bug → `development`", orq)
+            self.assertIn("- Estimate → `survey`", orq)
+            self.assertIn("Old-name survey of the context.", orq, "the context's old-name file replaces the core one")
+            self.assertEqual(aidw.modern_name("workflow", "desenvolvimento"), "development")
+            self.assertEqual(aidw.legacy_names("file", "metrics.md"), ("metrics.md", "metricas.md"))
+            self.assertEqual(aidw.artifact_kind("roteiro-testes-us-1.md"), "test-script-")
+            self.assertEqual(aidw.artifact_kind("plano-testes-us-1.md"), "test-plan-")
+            self.assertEqual(aidw.artifact_kind("plan-us-1.md"), "plan-")
+            self.assertTrue(aidw.is_generated("<!-- Gerado por aidw.py apply -->"), "the old mark is still cleaned up")
+
+
+class LanguageTest(unittest.TestCase):
+    """[ui] language (default English) is the language the orchestrator talks in; a context's `language` (inheriting
+    it) is the language of the demand artifacts and the agents' reports. File names are always English."""
+
+    def build(self, root: Path) -> tuple[object, dict]:
+        aidw = load_aidw(root)
+        rep = aidw.Report(quiet=True)
+        b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+        self.assertEqual(rep.errors, [])
+        return aidw, b
+
+    def test_default_and_propagation(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            cfg_file = root / "aidw.config.toml"
+            self.assertIn('[ui]', cfg_file.read_text(encoding="utf-8"))
+            self.assertIn('language = "en"', cfg_file.read_text(encoding="utf-8"))
+            # a config from before the setting (no [ui]) defaults to English
+            cfg_file.write_text(re.sub(r"\[ui\]\n(?:#[^\n]*\n)*language = \"en\"\n", "",
+                                       cfg_file.read_text(encoding="utf-8")), encoding="utf-8")
+            self.assertNotIn("[ui]", cfg_file.read_text(encoding="utf-8"))
+            aidw, b = self.build(root)
+            self.assertEqual(aidw.load_config()["ui"]["language"], "en")
+            self.assertIn("talk to the user in English (`en`). Write demand artifacts' content", b["orchestrator_md"])
+            self.assertIn("in English (`en`); file names stay in English", b["orchestrator_md"])
+            for g in b["agents"].values():
+                self.assertIn("- Language: write your reports in English (`en`)", g["prompt"])
+
+            cfg_file.write_text(cfg_file.read_text(encoding="utf-8") + '\n[ui]\nlanguage = "pt-BR"\n', encoding="utf-8")
+            aidw, b = self.build(root)
+            self.assertIn("talk to the user in Portuguese (Brazil) (`pt-BR`)", b["orchestrator_md"])
+            self.assertIn("task files) in Portuguese (Brazil) (`pt-BR`)", b["orchestrator_md"],
+                          "the context without `language` inherits the UI language")
+            plug = aidw.build_plugin(aidw.load_config(), aidw.load_catalog(), aidw.Report(quiet=True))
+            for skill in ("exit", "diff"):
+                self.assertIn("Portuguese (Brazil)", plug["files"][f"plugins/aidw/skills/{skill}/SKILL.md"].decode("utf-8"))
+            go = plug["files"]["plugins/aidw/skills/go/SKILL.md"].decode("utf-8")
+            self.assertIn("talk to the user in Portuguese (Brazil)", go)
+            show = run_aidw(root, "show")
+            self.assertIn("Language: UI Portuguese (Brazil) (`pt-BR`); demand artifacts Portuguese (Brazil) (`pt-BR`) "
+                          "(inherited from the UI)", show.stdout)
+
+    def test_context_language(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            toml = root / "contexts" / "exemplo" / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8").replace(
+                'description = "', 'language = "es"\ndescription = "', 1), encoding="utf-8")
+            aidw, b = self.build(root)
+            self.assertIn("talk to the user in English (`en`)", b["orchestrator_md"])
+            self.assertIn("task files) in Spanish (`es`)", b["orchestrator_md"])
+            self.assertIn("write your reports in Spanish (`es`)", b["agents"]["coder"]["prompt"])
+            (Path(tmp) / "codex").mkdir()
+            codex = make_sandbox(Path(tmp).resolve() / "codex", "codex", "native", "exemplo")
+            toml = codex / "contexts" / "exemplo" / "context.toml"
+            toml.write_text(toml.read_text(encoding="utf-8").replace(
+                'description = "', 'language = "es"\ndescription = "', 1), encoding="utf-8")
+            self.assertEqual(run_aidw(codex, "apply").returncode, 0)
+            role = next((codex / ".codex" / "agents").glob("*.toml")).read_text(encoding="utf-8")
+            self.assertIn("write your reports in Spanish", role, "Codex agent definitions too")
+
+            # context create: the AiDW language by default, or --language; an invalid tag is refused
+            cfg_file = root / "aidw.config.toml"
+            cfg_file.write_text(cfg_file.read_text(encoding="utf-8").replace('language = "en"', 'language = "pt-BR"'),
+                                encoding="utf-8")
+            wt = WorktreeTest()
+            code, made = wt.aidw_json(root, "context", "create", "herda", "--json")
+            self.assertEqual(code, 0, made)
+            self.assertIn('language = "pt-BR"', (root / "contexts" / "herda" / "context.toml").read_text(encoding="utf-8"))
+            code, made = wt.aidw_json(root, "context", "create", "outro", "--language", "fr", "--json")
+            self.assertEqual(code, 0, made)
+            self.assertIn('language = "fr"', (root / "contexts" / "outro" / "context.toml").read_text(encoding="utf-8"))
+            code, bad = wt.aidw_json(root, "context", "create", "ruim", "--language", "not a tag", "--json")
+            self.assertEqual(code, 1, bad)
+
+    def test_configure_defaults_language(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "")
+            proc = run_aidw(root, "configure", "--defaults", "--language", "pt-BR")
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn('language = "pt-BR"', (root / "aidw.config.toml").read_text(encoding="utf-8"))
+            self.assertEqual(run_aidw(root, "configure", "--defaults", "--language", "x y").returncode, 1)
+
 
 class InstallTest(unittest.TestCase):
-    """install/uninstall no Claude (sem o CLI): plugin gerado, merge das settings do usuário, idempotência,
-    conflito com arquivo alterado à mão e remoção só do que o AiDW acrescentou."""
+    """install/uninstall in Claude (without the CLI): generated plugin, merge of the user's settings, idempotence,
+    conflict with a hand-edited file and removal of only what AiDW added."""
 
     USER_SETTINGS = {"theme": "dark", "permissions": {"allow": ["Bash(git *)", "Bash(ls *)"]},
                      "env": {"MCP_TIMEOUT": "123"}}
@@ -351,25 +471,25 @@ class InstallTest(unittest.TestCase):
             files = self.marketplace(root)
             base = "plugins/aidw"
             self.assertIn(".claude-plugin/marketplace.json", files)
-            self.assertIn(f"{base}/agents/codificador.md", files)
+            self.assertIn(f"{base}/agents/coder.md", files)
             self.assertIn(f"{base}/skills/skill-exemplo/SKILL.md", files)
             orq = files[f"{base}/skills/go/SKILL.md"].decode("utf-8")
             self.assertIn("disable-model-invocation: true", orq)
-            self.assertIn("`aidw:codificador", orq, "tabela de effort com o nome do plugin")
-            self.assertIn(f'python "{root.as_posix()}/aidw.py" record', orq, "aidw.py por caminho absoluto")
+            self.assertIn("`aidw:coder", orq, "effort table with the plugin name")
+            self.assertIn(f'python "{root.as_posix()}/aidw.py" record', orq, "aidw.py by absolute path")
             self.assertIn(f"{(root / '.aidw' / 'marketplace' / base / 'reference').as_posix()}/etapa.md", orq)
-            self.assertIn("[AiDW]", files[f"{base}/agents/codificador.md"].decode("utf-8"))
+            self.assertIn("[AiDW]", files[f"{base}/agents/coder.md"].decode("utf-8"))
             exemplo = files[f"{base}/skills/skill-exemplo/SKILL.md"].decode("utf-8")
             self.assertIn("[AiDW]", exemplo)
-            self.assertIn("\nuser-invocable: false\n---", exemplo, "skill de fluxo fora do menu /")
+            self.assertIn("\nuser-invocable: false\n---", exemplo, "flow skill out of the / menu")
             done = files[f"{base}/skills/done/SKILL.md"].decode("utf-8")
-            self.assertIn("disable-model-invocation: true", done, "/aidw:done só quando o usuário chamar")
+            self.assertIn("disable-model-invocation: true", done, "/aidw:done only when the user calls it")
             self.assertIn(f'python "{root.as_posix()}/aidw.py" context check', done)
-            self.assertIn("aidw.py\" session unbind", done, "o done tira a sessão do modo sem depender do hook")
+            self.assertIn("aidw.py\" session unbind", done, "done takes the session out of the mode without the hook")
             self.assertIn("session unbind", files[f"{base}/skills/exit/SKILL.md"].decode("utf-8"))
-            self.assertNotIn("user-invocable", done, "aidw: admin é comando do usuário")
+            self.assertNotIn("user-invocable", done, "aidw: admin is a user command")
             self.assertNotIn("user-invocable", orq)
-            self.assertIn("session bind", orq, "a go liga o modo sem depender do hook")
+            self.assertIn("session bind", orq, "go turns the mode on without the hook")
             self.assertNotIn("aidw: admin", done)
             data = json.loads(settings.read_text(encoding="utf-8"))
             self.assertEqual(data["theme"], "dark")
@@ -377,28 +497,27 @@ class InstallTest(unittest.TestCase):
             self.assertIn("Bash(git commit *)", data["permissions"]["ask"])
             for sub in ("record *", "demand *", "worktree *", "project *", "context *"):
                 self.assertIn(f'PowerShell(python "{root.as_posix()}/aidw.py" {sub})', data["permissions"]["allow"])
-            self.assertEqual(data["env"]["MCP_TIMEOUT"], "123", "valor do usuário vence")
+            self.assertEqual(data["env"]["MCP_TIMEOUT"], "123", "the user's value wins")
 
             before = (self.marketplace(root), settings.read_text(encoding="utf-8"))
             again = run_aidw(root, "install", "--skip-cli")
             self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
             self.assertEqual((self.marketplace(root), settings.read_text(encoding="utf-8")), before,
-                             "install não é idempotente")
+                             "install is not idempotent")
 
-            edited = root / ".aidw" / "marketplace" / base / "agents" / "codificador.md"
-            edited.write_text("editado à mão\n", encoding="utf-8")
+            edited = root / ".aidw" / "marketplace" / base / "agents" / "coder.md"
+            edited.write_text("edited by hand\n", encoding="utf-8")
             conflict = run_aidw(root, "install", "--skip-cli")
             self.assertEqual(conflict.returncode, 1)
-            self.assertIn("alterado fora do AiDW", conflict.stdout)
+            self.assertIn("changed outside AiDW", conflict.stdout)
             self.assertEqual(run_aidw(root, "install", "--skip-cli", "--force").returncode, 0)
 
             gone = run_aidw(root, "uninstall", "--skip-cli")
             self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), self.USER_SETTINGS,
-                             "uninstall deve devolver as settings do usuário como estavam")
+                             "uninstall must give the user's settings back as they were")
             self.assertFalse((root / ".aidw" / "marketplace").exists())
             self.assertFalse((root / ".aidw" / "install-manifest.json").exists())
-
 
     def sandbox_with_settings(self, tmp: str, mode: str = "native") -> tuple[Path, Path]:
         root = make_sandbox(Path(tmp).resolve(), "claude", mode, "exemplo")
@@ -407,8 +526,8 @@ class InstallTest(unittest.TestCase):
         settings.write_text(json.dumps(self.USER_SETTINGS, indent=2) + "\n", encoding="utf-8")
         return root, settings
 
-    def test_falha_do_cli_nao_perde_o_dono_das_regras(self) -> None:
-        """R1-01: o CLI falha depois das settings gravadas; o manifest já registra o que é do AiDW."""
+    def test_cli_failure_keeps_the_rules_owner(self) -> None:
+        """R1-01: the CLI fails after the settings are written; the manifest already records what is AiDW's."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root, settings = self.sandbox_with_settings(tmp)
             no_claude = {"PATH": os.pathsep.join([os.path.dirname(sys.executable),
@@ -423,43 +542,43 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), self.USER_SETTINGS)
 
-    def test_headless_recusado(self) -> None:
+    def test_headless_refused(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root, _ = self.sandbox_with_settings(tmp, mode="headless")
             proc = run_aidw(root, "install", "--skip-cli")
             self.assertEqual(proc.returncode, 1)
-            self.assertIn("subagentes nativos", proc.stdout)
+            self.assertIn("native subagents", proc.stdout)
 
-    def test_uninstall_sem_manifest_avisa(self) -> None:
+    def test_uninstall_without_manifest_warns(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root, _ = self.sandbox_with_settings(tmp)
             self.assertEqual(run_aidw(root, "install", "--skip-cli").returncode, 0)
             (root / ".aidw" / "install-manifest.json").unlink()
             proc = run_aidw(root, "uninstall", "--skip-cli")
             self.assertEqual(proc.returncode, 1)
-            self.assertIn("manifest ausente", proc.stdout)
+            self.assertIn("manifest missing", proc.stdout)
 
 
 def git(repo: Path, *args: str) -> str:
-    proc = subprocess.run(["git", "-C", str(repo), "-c", "user.name=teste", "-c", "user.email=teste@example.invalid",
+    proc = subprocess.run(["git", "-C", str(repo), "-c", "user.name=test", "-c", "user.email=test@example.invalid",
                            *args], capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     return proc.stdout.strip()
 
 
 class WorktreeTest(unittest.TestCase):
-    """worktree create/list/inspect/remove/cleanup, project detect, hook WorktreeCreate e o guard."""
+    """worktree create/list/inspect/remove/cleanup, project detect, the WorktreeCreate hook and the guard."""
 
     def make_repo(self, tmp: Path) -> Path:
-        repo = tmp / "repos" / "Aplicação"  # acento no caminho: o hook tem de ler o stdin em UTF-8
+        repo = tmp / "repos" / "Aplicação"  # accent in the path: the hook has to read stdin as UTF-8
         repo.mkdir(parents=True)
         git(repo, "init", "-q", "-b", "main")
         (repo / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
         (repo / "app.txt").write_text("v1\n", encoding="utf-8")
         git(repo, "add", ".")
-        git(repo, "commit", "-q", "-m", "inicial")
+        git(repo, "commit", "-q", "-m", "initial")
         (repo / "node_modules" / "lib").mkdir(parents=True)
-        (repo / "node_modules" / "lib" / "index.js").write_text("// dependência\n", encoding="utf-8")
+        (repo / "node_modules" / "lib" / "index.js").write_text("// dependency\n", encoding="utf-8")
         return repo
 
     def aidw_json(self, root: Path, *args: str, stdin: str | None = None) -> tuple[int, dict | str]:
@@ -473,7 +592,7 @@ class WorktreeTest(unittest.TestCase):
             return proc.returncode, proc.stdout + proc.stderr
 
     def guard(self, root: Path, payload: dict) -> str:
-        # como o Claude Code: JSON em UTF-8 sem escapar os acentos
+        # like Claude Code: UTF-8 JSON without escaping the accents
         proc = subprocess.run([sys.executable, str(root / "aidw_guard.py")],
                               input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                               capture_output=True, timeout=30)
@@ -481,26 +600,26 @@ class WorktreeTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout
 
-    def test_ciclo_do_worktree(self) -> None:
+    def test_worktree_cycle(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
             repo = self.make_repo(tmp)
 
             code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-1",
-                                      "--slug", "Teste de slug", "--json")
+                                      "--slug", "Slug test", "--json")
             self.assertEqual(code, 0, wt)
             path = Path(wt["path"])
             self.assertEqual(path, tmp / "wt" / "us-1" / "Aplicação")
-            self.assertEqual(wt["branch"], "feature/1-teste-de-slug")
+            self.assertEqual(wt["branch"], "feature/1-slug-test")
             self.assertEqual(wt["base"], "main")
             self.assertEqual(wt["links"], ["node_modules"])
             self.assertTrue((path / "node_modules" / "lib" / "index.js").is_file())
             demand = json.loads((root / "contexts" / "exemplo" / "demandas" / "us-1" / "demand.json").read_text(encoding="utf-8"))
-            self.assertEqual(demand["repos"][0]["branch"], "feature/1-teste-de-slug")
+            self.assertEqual(demand["repos"][0]["branch"], "feature/1-slug-test")
 
             code, again = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-1", "--json")
-            self.assertEqual((code, again["created"], again["path"]), (0, False, wt["path"]), "create não é idempotente")
+            self.assertEqual((code, again["created"], again["path"]), (0, False, wt["path"]), "create is not idempotent")
 
             code, det = self.aidw_json(root, "project", "detect", "--path", str(path), "--json")
             self.assertEqual((det["demand"], det["is_worktree"], det["name"]), ("us-1", True, "Aplicação"))
@@ -509,79 +628,84 @@ class WorktreeTest(unittest.TestCase):
                                         stdin=json.dumps({"name": "us-1", "cwd": str(tmp)}))
             self.assertEqual((code, hook.strip() if isinstance(hook, str) else hook), (0, str(path)))
 
-            coder = {"hook_event_name": "PreToolUse", "agent_type": "aidw:codificador-low", "tool_name": "Write",
+            coder = {"hook_event_name": "PreToolUse", "agent_type": "aidw:coder-low", "tool_name": "Write",
                      "cwd": str(repo)}
             self.assertIn('"deny"', self.guard(root, {**coder, "tool_input": {"file_path": str(repo / "app.txt")}}))
             self.assertEqual(self.guard(root, {**coder, "tool_input": {"file_path": str(path / "app.txt")}}), "")
+            old_name = {**coder, "agent_type": "aidw:codificador-low"}
+            self.assertIn('"deny"', self.guard(root, {**old_name, "tool_input": {"file_path": str(repo / "app.txt")}}),
+                          "an agent with the old default name is still an AiDW agent")
             nested = repo / "contexts" / "ctx"
             (nested / ".git").mkdir(parents=True)
             self.assertEqual(self.guard(root, {**coder, "tool_input": {"file_path": str(nested / "demandas" / "x.md")}}), "",
-                             "outro repositório git aninhado no repo não é o working copy dele")
+                             "another git repository nested in the repo is not its working copy")
             self.assertIn('"deny"', self.guard(root, {**coder, "tool_input": {"file_path": str(repo / "contexts" / "x.md")}}))
-            codex = {"hook_event_name": "PreToolUse", "agent_type": "aidw-codificador", "tool_name": "apply_patch",
+            codex = {"hook_event_name": "PreToolUse", "agent_type": "aidw-coder", "tool_name": "apply_patch",
                      "cwd": str(repo)}
             patch = lambda f: "*** Begin Patch\n*** Update File: " + f + "\n@@\n-v1\n+v2\n*** End Patch"  # noqa: E731
             self.assertIn('"deny"', self.guard(root, {**codex, "tool_input": {"command": patch("app.txt")}}),
-                          "caminho relativo do patch, resolvido pelo cwd (working copy principal)")
+                          "the patch's relative path, resolved by the cwd (main working copy)")
             self.assertEqual(self.guard(root, {**codex, "tool_input": {"command": patch(str(path / "app.txt"))}}), "")
             self.assertEqual(self.guard(root, {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
                                                "tool_input": {"file_path": str(repo / "app.txt")}}), "",
-                             "a conversa principal não tem regra")
+                             "the main conversation has no rule")
             self.assertEqual(self.guard(root, {"hook_event_name": "PreToolUse", "agent_type": "Explore", "tool_name": "Write",
                                                "tool_input": {"file_path": str(repo / "app.txt")}}), "")
 
             commit = {"hook_event_name": "PreToolUse", "tool_name": "PowerShell", "cwd": str(tmp),
                       "tool_input": {"command": f'git -C "{path}" add -A && git -C "{path}" commit -m x'}}
-            (path / "Mock.cs").write_text("// AIDW-TESTE A1\n", encoding="utf-8")
-            self.assertIn("AIDW-TESTE", self.guard(root, commit), "commit com ajuste de teste no worktree")
+            (path / "Mock.cs").write_text("// AIDW-TEST A1\n", encoding="utf-8")
+            self.assertIn("AIDW-TEST", self.guard(root, commit), "commit with a test adjustment in the worktree")
             self.assertEqual(self.guard(root, {**commit, "tool_input": {"command": f'git -C "{path}" status'}}), "")
+            (path / "Mock.cs").write_text("// AIDW-TESTE A1\n", encoding="utf-8")
+            self.assertIn("AIDW-TEST", self.guard(root, commit), "the old mark is still caught")
             (path / "Mock.cs").unlink()
-            self.assertEqual(self.guard(root, commit), "", "sem a marca, o commit segue para o prompt de permissão")
+            self.assertEqual(self.guard(root, commit), "", "without the mark, the commit goes to the permission prompt")
 
             (path / "app.txt").write_text("v2\n", encoding="utf-8")
             code, err = self.aidw_json(root, "worktree", "remove", "us-1", "--json")
             self.assertEqual(code, 1)
-            self.assertIn("não commitadas", err["error"])
-            git(path, "commit", "-q", "-am", "mudança")
+            self.assertIn("uncommitted", err["error"])
+            git(path, "commit", "-q", "-am", "change")
             code, err = self.aidw_json(root, "worktree", "remove", "us-1", "--json")
             self.assertEqual(code, 1)
-            self.assertIn("não publicados", err["error"])
-            git(path, "reset", "-q", "--keep", "main")  # descarta o commit de teste (worktree descartável)
+            self.assertIn("unpublished", err["error"])
+            git(path, "reset", "-q", "--keep", "main")  # drops the test commit (disposable worktree)
             code, done = self.aidw_json(root, "worktree", "remove", "us-1", "--json")
             self.assertEqual(code, 0, done)
             self.assertFalse(path.exists())
-            self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "a junction não pode apagar a origem")
-            self.assertIn("feature/1-teste-de-slug", git(repo, "branch"), "a branch é mantida")
+            self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "the junction must not delete the source")
+            self.assertIn("feature/1-slug-test", git(repo, "branch"), "the branch is kept")
 
             code, wt2 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-2", "--json")
             self.assertEqual(code, 0, wt2)
-            os.rmdir(Path(wt2["path"]) / "node_modules")  # remove só a junction
+            os.rmdir(Path(wt2["path"]) / "node_modules")  # removes only the junction
             shutil.rmtree(wt2["path"])
             code, clean = self.aidw_json(root, "worktree", "cleanup", "--json")
             self.assertEqual(clean["removed_from_registry"], [wt2["path"]])
             code, listed = self.aidw_json(root, "worktree", "list", "--json")
             self.assertEqual(listed["worktrees"], [])
 
-    def test_worktree_de_pr(self) -> None:
-        """`worktree create --pr`: worktree destacado na PR mesclada no destino (refs/pull/<n>/merge), diff na pasta
-        da demanda, atualização quando o autor muda a PR (só o que mudou) e remoção sem branch."""
+    def test_pr_worktree(self) -> None:
+        """`worktree create --pr`: worktree detached at the PR merged into the target (refs/pull/<n>/merge), diff in
+        the demand folder, update when the author changes the PR (only what changed) and removal without a branch."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
-            origin = tmp / "origem"
+            origin = tmp / "origin"
             origin.mkdir()
             git(origin, "init", "-q", "-b", "main")
             (origin / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
             (origin / "app.txt").write_text("v1\n", encoding="utf-8")
             git(origin, "add", ".")
-            git(origin, "commit", "-q", "-m", "inicial")
+            git(origin, "commit", "-q", "-m", "initial")
 
-            def publish_pr(content: str) -> None:  # o servidor gera o merge da PR com o destino
-                git(origin, "checkout", "-q", "-B", "feature/autor")
+            def publish_pr(content: str) -> None:  # the server builds the PR's merge with the target
+                git(origin, "checkout", "-q", "-B", "feature/author")
                 (origin / "app.txt").write_text(content, encoding="utf-8")
-                git(origin, "commit", "-q", "-am", f"autor: {content.strip()}")
+                git(origin, "commit", "-q", "-am", f"author: {content.strip()}")
                 git(origin, "checkout", "-q", "--detach", "main")
-                git(origin, "merge", "-q", "--no-ff", "-m", "merge da PR", "feature/autor")
+                git(origin, "merge", "-q", "--no-ff", "-m", "PR merge", "feature/author")
                 git(origin, "update-ref", "refs/pull/1/merge", "HEAD")
                 git(origin, "checkout", "-q", "main")
 
@@ -590,7 +714,7 @@ class WorktreeTest(unittest.TestCase):
             repo.parent.mkdir(parents=True)
             subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True, capture_output=True)
             (repo / "node_modules" / "lib").mkdir(parents=True)
-            (repo / "node_modules" / "lib" / "index.js").write_text("// dependência\n", encoding="utf-8")
+            (repo / "node_modules" / "lib" / "index.js").write_text("// dependency\n", encoding="utf-8")
             folder = root / "contexts" / "exemplo" / "demandas" / "us-7"
 
             code, err = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
@@ -603,10 +727,10 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(code, 0, wt)
             path = Path(wt["path"])
             self.assertEqual((wt["branch"], wt["pr"]), ("pr/1", "1"))
-            self.assertEqual(git(path, "rev-parse", "--abbrev-ref", "HEAD").strip(), "HEAD", "destacado, sem branch")
+            self.assertEqual(git(path, "rev-parse", "--abbrev-ref", "HEAD").strip(), "HEAD", "detached, no branch")
             self.assertEqual((path / "app.txt").read_text(encoding="utf-8"), "v2\n")
             self.assertTrue((path / "node_modules" / "lib" / "index.js").is_file())
-            self.assertNotIn("feature/", git(repo, "branch"), "não cria branch local")
+            self.assertNotIn("feature/", git(repo, "branch"), "no local branch is created")
             diff = (folder / "diff-pr1-Aplicação.patch").read_text(encoding="utf-8")
             self.assertIn("+v2", diff)
             self.assertEqual(json.loads((folder / "demand.json").read_text(encoding="utf-8"))["repos"][0]["pr"], "1")
@@ -615,7 +739,7 @@ class WorktreeTest(unittest.TestCase):
                                         "--pr", "1", "--json")
             self.assertEqual((code, same["updated"]), (0, False))
             code, other = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
-            self.assertEqual(code, 1, "a demanda já tem a PR nesse repositório")
+            self.assertEqual(code, 1, "the demand already has the PR in that repository")
 
             publish_pr("v3\n")
             code, upd = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7",
@@ -630,12 +754,12 @@ class WorktreeTest(unittest.TestCase):
             code, done = self.aidw_json(root, "worktree", "remove", "us-7", "--json")
             self.assertEqual(code, 0, done)
             self.assertFalse(path.exists())
-            self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "a junction não pode apagar a origem")
-            self.assertEqual(git(repo, "for-each-ref", "refs/aidw").strip(), "", "a ref da PR sai junto")
+            self.assertTrue((repo / "node_modules" / "lib" / "index.js").is_file(), "the junction must not delete the source")
+            self.assertEqual(git(repo, "for-each-ref", "refs/aidw").strip(), "", "the PR ref goes too")
 
-    def test_guard_mcp_por_agente(self) -> None:
-        """O Codex não limita MCP por agente: o guard recusa o servidor fora do papel e a ferramenta bloqueada pelo
-        contexto; MCP do próprio CLI e a conversa principal passam."""
+    def test_guard_mcp_per_agent(self) -> None:
+        """Codex does not limit MCP per agent: the guard refuses a server outside the role and a tool blocked by the
+        context; the CLI's own MCP and the main conversation pass."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "codex", "native", "exemplo")
@@ -646,17 +770,17 @@ class WorktreeTest(unittest.TestCase):
                 return self.guard(root, {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": {},
                                          **({"agent_type": agent} if agent else {})})
 
-            self.assertIn('"deny"', call("aidw-codificador", "mcp__servidor-exemplo__escrever"), "bloqueada pelo contexto")
-            self.assertIn('"deny"', call("aidw:codificador-high", "mcp__servidor-exemplo__escrever"), "variante do Claude")
-            self.assertEqual(call("aidw-codificador", "mcp__servidor-exemplo__ler"), "")
-            self.assertIn('"deny"', call("aidw-explorador", "mcp__playwright__browser_click"), "não é do papel")
+            self.assertIn('"deny"', call("aidw-coder", "mcp__servidor-exemplo__escrever"), "blocked by the context")
+            self.assertIn('"deny"', call("aidw:coder-high", "mcp__servidor-exemplo__escrever"), "a Claude variant")
+            self.assertEqual(call("aidw-coder", "mcp__servidor-exemplo__ler"), "")
+            self.assertIn('"deny"', call("aidw-explorer", "mcp__playwright__browser_click"), "not the role's")
             self.assertEqual(call("aidw-qa", "mcp__playwright__browser_click"), "")
-            self.assertEqual(call("aidw-explorador", "mcp__node_repl__js"), "", "MCP do próprio Codex")
-            self.assertEqual(call(None, "mcp__servidor-exemplo__escrever"), "", "a conversa principal")
+            self.assertEqual(call("aidw-explorer", "mcp__node_repl__js"), "", "Codex's own MCP")
+            self.assertEqual(call(None, "mcp__servidor-exemplo__escrever"), "", "the main conversation")
 
-    def test_worktree_link_de_pastas_vizinhas(self) -> None:
-        """`worktree_link` do sistema: o caminho relativo que o código usa (HintPath `..\\..\\X`) vira junction ao
-        lado do worktree; fora da raiz dos worktrees é recusado; o remove não apaga a junction compartilhada."""
+    def test_worktree_link_of_neighbor_folders(self) -> None:
+        """The system's `worktree_link`: the relative path the code uses (HintPath `..\\..\\X`) becomes a junction
+        next to the worktree; outside the worktree root it is refused; remove does not delete the shared junction."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
@@ -670,66 +794,66 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(code, 0, wt)
             self.assertEqual(wt["system"], "app")
             self.assertEqual(wt["outside_links"], ["../Vizinho"])
-            vizinho = tmp / "wt" / "us-5" / "Vizinho"
-            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "o HintPath ..\\Vizinho resolve a partir do worktree")
-            self.assertTrue(any("não existe" in w for w in wt["warnings"]), wt["warnings"])
-            self.assertTrue(any("ignorado" in w for w in wt["warnings"]), wt["warnings"])
-            self.assertFalse((tmp / "escapa").exists(), "nunca cria junction fora da raiz dos worktrees")
+            neighbor = tmp / "wt" / "us-5" / "Vizinho"
+            self.assertTrue((neighbor / "bin" / "lib.dll").is_file(), "the HintPath ..\\Vizinho resolves from the worktree")
+            self.assertTrue(any("does not exist" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertTrue(any("ignored" in w for w in wt["warnings"]), wt["warnings"])
+            self.assertFalse((tmp / "escapa").exists(), "never creates a junction outside the worktree root")
             code, wt2 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-6", "--json")
-            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "cada demanda tem a sua, na pasta dela")
+            self.assertEqual(wt2["outside_links"], ["../Vizinho"], "each demand has its own, in its folder")
             self.assertTrue((tmp / "wt" / "us-6" / "Vizinho" / "bin" / "lib.dll").is_file())
             (tmp / "outra").mkdir()
             (tmp / "wt" / "us-7").mkdir()
             load_aidw(root).make_link(tmp / "wt" / "us-7" / "Vizinho", tmp / "outra")
             code, wt3 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-7", "--json")
-            self.assertEqual(wt3["outside_links"], [], "junction para outro lugar não é reaproveitada")
-            self.assertTrue(any("outro lugar" in w for w in wt3["warnings"]), wt3["warnings"])
+            self.assertEqual(wt3["outside_links"], [], "a junction to somewhere else is not reused")
+            self.assertTrue(any("somewhere else" in w for w in wt3["warnings"]), wt3["warnings"])
 
-            homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: Novo/App x Legado/App)
-            homonimo.mkdir(parents=True)
-            git(homonimo, "init", "-q", "-b", "main")
-            (homonimo / "b.txt").write_text("b\n", encoding="utf-8")
-            git(homonimo, "add", ".")
-            git(homonimo, "commit", "-q", "-m", "inicial")
-            code, wt4 = self.aidw_json(root, "worktree", "create", "--repo", str(homonimo), "--demand", "us-5", "--json")
+            namesake = tmp / "outros" / "Aplicação"  # same name, another repository (e.g. New/App x Legacy/App)
+            namesake.mkdir(parents=True)
+            git(namesake, "init", "-q", "-b", "main")
+            (namesake / "b.txt").write_text("b\n", encoding="utf-8")
+            git(namesake, "add", ".")
+            git(namesake, "commit", "-q", "-m", "initial")
+            code, wt4 = self.aidw_json(root, "worktree", "create", "--repo", str(namesake), "--demand", "us-5", "--json")
             self.assertEqual(code, 0, wt4)
-            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "us-5" / "Aplicação.outros", "não invade a pasta do homônimo")
+            self.assertEqual(Path(wt4["path"]), tmp / "wt" / "us-5" / "Aplicação.outros", "does not take the namesake's folder")
             code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(repo), "--json")
             self.assertEqual(code, 0, done)
-            self.assertTrue((vizinho / "bin" / "lib.dll").is_file(), "a demanda ainda tem worktree: a junction fica")
-            code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(homonimo), "--json")
+            self.assertTrue((neighbor / "bin" / "lib.dll").is_file(), "the demand still has a worktree: the junction stays")
+            code, done = self.aidw_json(root, "worktree", "remove", "us-5", "--repo", str(namesake), "--json")
             self.assertEqual(code, 0, done)
-            self.assertFalse((tmp / "wt" / "us-5").exists(), "sem worktrees, a pasta da demanda sai com as junctions")
-            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file(), "nunca apaga através da junction")
+            self.assertFalse((tmp / "wt" / "us-5").exists(), "without worktrees, the demand folder goes with the junctions")
+            self.assertTrue((tmp / "repos" / "Vizinho" / "bin" / "lib.dll").is_file(), "never deletes through the junction")
 
-            # a demanda também mexe no vizinho: a junction dele vira o worktree da demanda
+            # the demand also changes the neighbor: its junction becomes the demand's worktree
             aidw = load_aidw(root)
             viz = tmp / "repos" / "Vizinho"
             git(viz, "init", "-q", "-b", "main")
             git(viz, "add", ".")
-            git(viz, "commit", "-q", "-m", "inicial")
+            git(viz, "commit", "-q", "-m", "initial")
             code, w8 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-8", "--json")
             self.assertEqual(code, 0, w8)
             junction = tmp / "wt" / "us-8" / "Vizinho"
             self.assertTrue(aidw.is_link(junction))
             code, err = self.aidw_json(root, "worktree", "create", "--repo", str(viz), "--demand", "us-8",
-                                       "--base", "nao-existe", "--json")
+                                       "--base", "does-not-exist", "--json")
             self.assertEqual(code, 1, err)
-            self.assertTrue(aidw.is_link(junction), "um erro no create não tira a junction de que o build depende")
+            self.assertTrue(aidw.is_link(junction), "an error in create does not remove the junction the build needs")
             code, w8v = self.aidw_json(root, "worktree", "create", "--repo", str(viz), "--demand", "us-8", "--json")
             self.assertEqual((code, Path(w8v["path"])), (0, junction), w8v)
             self.assertFalse(aidw.is_link(junction))
-            self.assertTrue(any("era junction" in w for w in w8v["warnings"]), w8v["warnings"])
+            self.assertTrue(any("was a junction" in w for w in w8v["warnings"]), w8v["warnings"])
             self.assertTrue((viz / "bin" / "lib.dll").is_file())
-            (tmp / "wt" / "us-8" / "notas.txt").write_text("x\n", encoding="utf-8")
+            (tmp / "wt" / "us-8" / "notes.txt").write_text("x\n", encoding="utf-8")
             for r in (repo, viz):
                 code, rm = self.aidw_json(root, "worktree", "remove", "us-8", "--repo", str(r), "--json")
                 self.assertEqual(code, 0, rm)
-            self.assertTrue((tmp / "wt" / "us-8" / "notas.txt").is_file(), "com outro arquivo, a pasta da demanda fica")
+            self.assertTrue((tmp / "wt" / "us-8" / "notes.txt").is_file(), "with another file, the demand folder stays")
 
-    def test_worktree_no_formato_antigo(self) -> None:
-        """Worktrees criados antes da pasta por demanda (`<raiz>/<repo>/<demanda>`, sem `layout` no registro)
-        continuam valendo: list, hook `<demanda>/<pasta>`, open e remove."""
+    def test_worktree_in_the_old_layout(self) -> None:
+        """Worktrees created before the per-demand folder (`<root>/<repo>/<demand>`, no `layout` in the registry)
+        still work: list, the `<demand>/<folder>` hook, open and remove."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
@@ -747,21 +871,21 @@ class WorktreeTest(unittest.TestCase):
                                         stdin=json.dumps({"name": f"us-40/{repo.name}", "cwd": str(tmp)}))
             self.assertEqual((code, Path(hook.strip())), (0, old))
             code, out = self.aidw_json(root, "open", "--demand", "us-40", "--print")
-            self.assertIn(f"Abrindo claude em {old}", out)
+            self.assertIn(f"Opening claude in {old}", out)
             code, rm = self.aidw_json(root, "worktree", "remove", "us-40", "--json")
             self.assertEqual(code, 0, rm)
             self.assertFalse(old.exists())
 
-    def test_status_e_open(self) -> None:
-        """F7: `status` junta demanda ativa e worktree e aponta o que pede atenção; `open --demand` abre no worktree
-        chamando o orquestrador (só se o AiDW está instalado naquele provedor)."""
+    def test_status_and_open(self) -> None:
+        """F7: `status` joins active demand and worktree and points out what needs attention; `open --demand` opens
+        in the worktree calling the orchestrator (only if AiDW is installed in that provider)."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
             repo = self.make_repo(tmp)
             code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-1", "--json")
             self.assertEqual(code, 0, wt)
-            self.aidw_json(root, "demand", "set", "us-1", "--step", "IMPLEMENT", "--title", "Teste")
+            self.aidw_json(root, "demand", "set", "us-1", "--step", "IMPLEMENT", "--title", "Test")
             code, st = self.aidw_json(root, "status", "--json")
             self.assertEqual(code, 0, st)
             self.assertEqual([(d["id"], d["step"]) for d in st["demands"]], [("us-1", "IMPLEMENT")])
@@ -772,9 +896,9 @@ class WorktreeTest(unittest.TestCase):
 
             code, out = self.aidw_json(root, "open", "--demand", "1", "--print")
             self.assertEqual(code, 0, out)
-            self.assertIn(f"Abrindo claude em {Path(wt['path'])}", out)
-            self.assertIn("não está instalado", out)
-            self.assertNotRegex(out.strip().splitlines()[-1], r"(:|aidw-)go\b", "sem o plugin, o comando não existe")
+            self.assertIn(f"Opening claude in {Path(wt['path'])}", out)
+            self.assertIn("not installed", out)
+            self.assertNotRegex(out.strip().splitlines()[-1], r"(:|aidw-)go\b", "without the plugin, the command does not exist")
             manifest = root / ".aidw" / "install-manifest.json"
             manifest.parent.mkdir(parents=True, exist_ok=True)
             manifest.write_text(json.dumps({"plugins": ["aidw@aidw-local"], "context": "exemplo", "codex": {"files": {}}}),
@@ -784,37 +908,37 @@ class WorktreeTest(unittest.TestCase):
             self.assertIn("--add-dir", out)
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--provider", "codex", "--print")
             self.assertIn("--enable multi_agent_v2", out)
-            self.assertNotIn("--profile", out, "no Codex o AiDW não instala perfil")
+            self.assertNotIn("--profile", out, "on Codex AiDW installs no profile")
             self.assertIn('"$aidw-go us-1"', out)
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--no-orchestrate", "--print")
             self.assertNotRegex(out, r"(:|aidw-)go\b")
             code, out = self.aidw_json(root, "open", "--demand", "us-9", "--print")
             self.assertEqual(code, 1)
 
-            # back e front na mesma demanda: abre no primeiro worktree criado e o outro entra por --add-dir
+            # back and front in the same demand: opens in the demand folder; --repo opens in one, the other by --add-dir
             front = tmp / "repos" / "Front"
             front.mkdir(parents=True)
             git(front, "init", "-q", "-b", "main")
             (front / "a.txt").write_text("a\n", encoding="utf-8")
             git(front, "add", ".")
-            git(front, "commit", "-q", "-m", "inicial")
+            git(front, "commit", "-q", "-m", "initial")
             code, wtf = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "us-1", "--json")
             self.assertEqual(code, 0, wtf)
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--print")
             self.assertEqual(code, 0, out)
-            self.assertIn(f"Abrindo claude em {Path(wt['path']).parent}", out, "abre na pasta da demanda")
-            self.assertNotIn(f"--add-dir {Path(wtf['path'])}", out, "os worktrees já estão dentro dela")
+            self.assertIn(f"Opening claude in {Path(wt['path']).parent}", out, "opens in the demand folder")
+            self.assertNotIn(f"--add-dir {Path(wtf['path'])}", out, "the worktrees are already inside it")
             code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Front", "--print")
-            self.assertIn(f"Abrindo claude em {Path(wtf['path'])}", out)
+            self.assertIn(f"Opening claude in {Path(wtf['path'])}", out)
             self.assertIn(f"--add-dir {Path(wt['path'])}", out)
-            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "Nenhum", "--print")
+            code, out = self.aidw_json(root, "open", "--demand", "us-1", "--repo", "None", "--print")
             self.assertEqual(code, 1, out)
             code, wtb = self.aidw_json(root, "worktree", "create", "--repo", str(front), "--demand", "bug-1",
-                                       "--slug", "outro", "--json")
+                                       "--slug", "other", "--json")
             self.assertEqual(code, 0, wtb)
             code, out = self.aidw_json(root, "open", "--demand", "1", "--print")
-            self.assertEqual(code, 1, "1 casa us-1 e bug-1: não escolhe")
-            self.assertIn("mais de uma demanda", out)
+            self.assertEqual(code, 1, "1 matches us-1 and bug-1: it does not choose")
+            self.assertIn("more than one demand", out)
             for demand in ("us-1", "bug-1"):
                 code, rm = self.aidw_json(root, "worktree", "remove", demand, "--repo", str(front), "--json")
                 self.assertEqual(code, 0, rm)
@@ -825,24 +949,24 @@ class WorktreeTest(unittest.TestCase):
             code, st = self.aidw_json(root, "status", "--json")
             self.assertEqual(st["demands"], [])
             self.assertEqual(len(st["attention"]), 1, st["attention"])
-            self.assertIn("não commitadas", st["attention"][0])
+            self.assertIn("uncommitted", st["attention"][0])
             git(Path(wt["path"]), "checkout", "--", "app.txt")
             code, st = self.aidw_json(root, "status", "--json")
             self.assertIn("worktree remove us-1", st["attention"][0])
             code, text = self.aidw_json(root, "status")
             self.assertEqual(code, 0, text)
-            self.assertIn("Demandas ativas (0)", text)
+            self.assertIn("Active demands (0)", text)
             (root / "contexts" / "exemplo" / "demandas" / "us-1" / "demand.json").unlink()
             code, st = self.aidw_json(root, "status", "--json")
-            self.assertIn("sem demand.json", st["attention"][0], "worktree sem demand.json não pode sumir do status")
+            self.assertIn("without demand.json", st["attention"][0], "a worktree without demand.json must not vanish")
             manifest.write_text(json.dumps({"plugins": ["aidw@aidw-local"], "context": "exemplo", "cli_done": False}),
                                 encoding="utf-8")
             code, text = self.aidw_json(root, "status")
-            self.assertIn("a última instalação parou", text, "instalação incompleta não é 'em dia'")
+            self.assertIn("the last install stopped", text, "an incomplete install is not 'up to date'")
 
-    def test_cenarios_de_criacao_e_deteccao(self) -> None:
-        """Critérios de saída da F4: subpasta, fora do git, branch existente, branch usada por outro worktree,
-        falha do git no remove (fail-safe) e hook filtrando pelo repositório."""
+    def test_creation_and_detection_scenarios(self) -> None:
+        """F4 exit criteria: subfolder, outside git, existing branch, branch used by another worktree, git failure on
+        remove (fail-safe) and the hook filtering by repository."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
@@ -853,100 +977,100 @@ class WorktreeTest(unittest.TestCase):
             code, det = self.aidw_json(root, "project", "detect", "--path", str(tmp), "--json")
             self.assertFalse(det["git"])
 
-            git(repo, "branch", "feature/7-existente")
+            git(repo, "branch", "feature/7-existing")
             code, wt = self.aidw_json(root, "worktree", "create", "--repo", str(repo / "src"), "--demand", "us-7",
-                                      "--slug", "existente", "--json")
-            self.assertEqual((code, wt["branch"]), (0, "feature/7-existente"), wt)
+                                      "--slug", "existing", "--json")
+            self.assertEqual((code, wt["branch"]), (0, "feature/7-existing"), wt)
             git(repo, "branch", "feature/8")
             git(repo, "worktree", "add", str(tmp / "manual"), "feature/8")
             code, err = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-8", "--json")
             self.assertEqual(code, 1)
-            self.assertIn("git worktree add falhou", err["error"])
+            self.assertIn("git worktree add failed", err["error"])
 
             other = tmp / "repos" / "Outro"
             other.mkdir(parents=True)
             git(other, "init", "-q", "-b", "main")
             (other / "a.txt").write_text("a\n", encoding="utf-8")
             git(other, "add", ".")
-            git(other, "commit", "-q", "-m", "inicial")
+            git(other, "commit", "-q", "-m", "initial")
             code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(other)}))
             self.assertEqual(code, 0, hook)
-            self.assertEqual(Path(hook.strip()), tmp / "wt" / "us-7" / "Outro", "o hook não pode levar a outro repositório")
+            self.assertEqual(Path(hook.strip()), tmp / "wt" / "us-7" / "Outro", "the hook must not lead to another repository")
 
-            # chat aberto na raiz do AiDW (também um repositório): entra no worktree que a demanda já tem
+            # chat opened at the AiDW root (also a repository): enters the worktree the demand already has
             git(root, "init", "-q", "-b", "main")
             code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-7", "cwd": str(root)}))
             self.assertEqual((code, Path(hook.strip())), (0, Path(wt["path"])),
-                             "us-7 tem worktree em dois repositórios: a raiz entra no primeiro criado")
-            # skill diff: `<demanda>/<pasta>` leva ao worktree daquele repositório, de qualquer pasta
+                             "us-7 has worktrees in two repositories: the root enters the first one created")
+            # diff skill: `<demand>/<folder>` leads to that repository's worktree, from any folder
             code, hook = self.aidw_json(root, "worktree", "hook-create",
                                         stdin=json.dumps({"name": "us-7/outro", "cwd": str(repo)}))
             self.assertEqual((code, Path(hook.strip())), (0, tmp / "wt" / "us-7" / "Outro"))
             code, det = self.aidw_json(root, "project", "detect", "--path", str(tmp / "wt" / "us-7"), "--json")
             self.assertEqual((det["demand"], [w["folder"] for w in det["worktrees"]]), ("us-7", ["Aplicação", "Outro"]),
-                             "a pasta da demanda (não é git) é reconhecida")
+                             "the demand folder (not git) is recognized")
             code, err = self.aidw_json(root, "worktree", "hook-create",
-                                       stdin=json.dumps({"name": "us-7/Nenhum", "cwd": str(repo)}))
+                                       stdin=json.dumps({"name": "us-7/None", "cwd": str(repo)}))
             self.assertEqual(code, 1, err)
             code, wt9 = self.aidw_json(root, "worktree", "create", "--repo", str(repo), "--demand", "us-9", "--json")
             self.assertEqual(code, 0, wt9)
             code, hook = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-9", "cwd": str(root)}))
-            self.assertEqual((code, Path(hook.strip())), (0, Path(wt9["path"])), "sem worktree do próprio AiDW")
+            self.assertEqual((code, Path(hook.strip())), (0, Path(wt9["path"])), "no worktree of AiDW itself")
             self.assertFalse((tmp / "wt" / "us-9" / root.name).exists())
             self.aidw_json(root, "demand", "set", "us-10", "--status", "active", "--json")
             code, err = self.aidw_json(root, "worktree", "hook-create", stdin=json.dumps({"name": "us-10", "cwd": str(root)}))
-            self.assertEqual(code, 1, "demanda sem worktree: a raiz do AiDW não vira worktree dela")
+            self.assertEqual(code, 1, "demand without a worktree: the AiDW root does not become its worktree")
             self.assertIn("worktree create --repo", err)
             self.assertFalse((tmp / "wt" / "us-10").exists())
 
             path = Path(wt["path"])
-            (path / "novo.txt").write_text("x\n", encoding="utf-8")
+            (path / "new.txt").write_text("x\n", encoding="utf-8")
             git(path, "add", ".")
-            git(path, "commit", "-q", "-m", "não publicado")
-            git(repo, "branch", "-m", "main", "principal")  # a base some: o git falha ao contar os commits
+            git(path, "commit", "-q", "-m", "unpublished")
+            git(repo, "branch", "-m", "main", "principal")  # the base is gone: git fails to count the commits
             code, err = self.aidw_json(root, "worktree", "remove", "us-7", "--repo", str(repo), "--json")
             self.assertEqual(code, 1, err)
-            self.assertIn("não foi possível conferir", err["error"])
-            self.assertTrue(path.is_dir(), "falha do git nunca remove o worktree")
+            self.assertIn("could not check", err["error"])
+            self.assertTrue(path.is_dir(), "a git failure never removes the worktree")
 
 
 class SessionModeTest(unittest.TestCase):
-    """F5: demand set/show/list e os hooks de sessão (UserPromptSubmit registra o modo; SessionStart lembra)."""
+    """F5: demand set/show/list and the session hooks (UserPromptSubmit records the mode; SessionStart reminds it)."""
 
-    def test_demanda_e_modo_orquestrador(self) -> None:
+    def test_demand_and_orchestrator_mode(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
             wt = WorktreeTest()
             code, d = wt.aidw_json(root, "demand", "set", "us-5", "--status", "active", "--step", "UNDERSTAND",
-                                   "--title", "Teste", "--json")
+                                   "--title", "Test", "--json")
             self.assertEqual((code, d["step"], d["status"]), (0, "UNDERSTAND", "active"), d)
             code, d = wt.aidw_json(root, "demand", "set", "us-5", "--step", "IMPLEMENT", "--json")
             self.assertEqual([h["step"] for h in d["history"]], ["UNDERSTAND", "IMPLEMENT"])
-            code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--step", "QUALQUER", "--json")
+            code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--step", "ANYTHING", "--json")
             self.assertEqual(code, 1)
             wt.aidw_json(root, "demand", "set", "us-6", "--status", "done", "--json")
             code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
             self.assertEqual([x["id"] for x in lst["demands"]], ["us-5"])
             code, show = wt.aidw_json(root, "demand", "show", "us-5")
-            self.assertEqual(show["title"], "Teste")
-            self.assertNotIn("mode", lst["demands"][0], "o modo da sessão saiu no fluxo v3")
-            proc = run_aidw(root, "demand", "set", "us-5", "--note", "esperando")
+            self.assertEqual(show["title"], "Test")
+            self.assertNotIn("mode", lst["demands"][0], "the session mode left in flow v3")
+            proc = run_aidw(root, "demand", "set", "us-5", "--note", "waiting")
             self.assertEqual((proc.returncode, proc.stdout.strip()), (0, "us-5: IMPLEMENT (active)"),
-                             "sem --json, uma linha: o demand.json inteiro só pesaria no chat do orquestrador")
-            proc = run_aidw(root, "demand", "set", "us-5", "--step", "QUALQUER")
+                             "without --json, one line: the whole demand.json would only weigh on the orchestrator chat")
+            proc = run_aidw(root, "demand", "set", "us-5", "--step", "ANYTHING")
             self.assertEqual(proc.returncode, 1)
-            self.assertTrue(proc.stdout.startswith("erro: etapa desconhecida"), proc.stdout)
-            # painel V2: resumo, etapas de fora do AiDW e PR por repositório
-            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "Linha 1\nLinha 2", "--step",
+            self.assertTrue(proc.stdout.startswith("error: unknown step"), proc.stdout)
+            # panel V2: summary, steps outside AiDW and PR per repository
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "Line 1\nLine 2", "--step",
                                    "CODE_REVIEW", "--json")
-            self.assertEqual((code, d["summary"], d["step"]), (0, "Linha 1\nLinha 2", "CODE_REVIEW"), d)
+            self.assertEqual((code, d["summary"], d["step"]), (0, "Line 1\nLine 2", "CODE_REVIEW"), d)
             code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--summary", "1\n2\n3\n4\n5", "--json")
-            self.assertEqual(code, 1, "resumo passa de 4 linhas")
+            self.assertEqual(code, 1, "summary over 4 lines")
             code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "Front=7789", "--json")
-            self.assertEqual(code, 1, "repositório que a demanda não tem")
+            self.assertEqual(code, 1, "a repository the demand does not have")
             code, bad = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "Front", "--json")
-            self.assertEqual(code, 1, "--pr sem número")
+            self.assertEqual(code, 1, "--pr without a number")
             code, d = wt.aidw_json(root, "demand", "set", "us-5", "--step", "QA_TEST", "--json")
             self.assertEqual(d["history"][-1]["step"], "QA_TEST")
             demand_file = Path(d["folder"]) / "demand.json"
@@ -960,16 +1084,16 @@ class SessionModeTest(unittest.TestCase):
                                                   input=json.dumps(payload), capture_output=True, text=True,
                                                   encoding="utf-8", timeout=30).stdout
             base = {"session_id": "s1", "cwd": str(tmp)}
-            self.assertEqual(hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "oi, tudo bem?"}), "")
-            self.assertFalse((root / "state" / "sessions.json").exists(), "mensagem comum não grava nada")
+            self.assertEqual(hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "hi, how are you?"}), "")
+            self.assertFalse((root / "state" / "sessions.json").exists(), "a plain message writes nothing")
             self.assertEqual(hook({**base, "hook_event_name": "SessionStart", "source": "compact"}), "")
-            hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:go us-5 continuar"})
+            hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:go us-5 continue"})
             out = json.loads(hook({**base, "hook_event_name": "SessionStart", "source": "compact"}))
             ctx = out["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("modo orquestrador", ctx)
+            self.assertIn("orchestrator mode", ctx)
             self.assertIn("aidw/skills/go/SKILL.md", ctx)
-            self.assertIn("us-5 continuar", ctx)
-            self.assertLess(len(ctx.encode()), 2000, "o hook só injeta ~2 KB")
+            self.assertIn("us-5 continue", ctx)
+            self.assertLess(len(ctx.encode()), 2000, "the hook only injects ~2 KB")
             self.assertEqual(hook({"session_id": "s2", "hook_event_name": "SessionStart", "source": "compact"}), "")
             hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:exit"})
             cx = {"session_id": "c1", "cwd": str(tmp)}
@@ -981,60 +1105,59 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual(hook({**base, "hook_event_name": "SessionStart", "source": "resume"}), "")
             hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-done"})
             self.assertEqual(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}), "",
-                             "o done fecha a tarefa e encerra o modo orquestrador, como o exit")
+                             "done closes the task and ends orchestrator mode, like exit")
             lv = {"session_id": "l1", "cwd": str(tmp)}
             hook({**lv, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:survey us-8"})
             out = json.loads(hook({**lv, "hook_event_name": "SessionStart", "source": "compact"}))
-            ctx_lev = out["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("aidw/skills/go/SKILL.md", ctx_lev, "a go entende o pedido de levantamento")
-            self.assertIn('"levantamento us-8"', ctx_lev)
+            ctx_survey = out["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("aidw/skills/go/SKILL.md", ctx_survey, "go understands the survey request")
+            self.assertIn('"survey us-8"', ctx_survey)
             code, d = wt.aidw_json(root, "demand", "set", "us-8", "--step", "ESTIMATE", "--json")
             self.assertEqual((code, d["step"]), (0, "ESTIMATE"), d)
 
-            # session bind: liga o modo sem o hook (o terminal não manda o /aidw:go ao hook) e a demanda vem do
-            # registro, com contexto e pasta, para qualquer id (demanda livre sem número)
+            # session bind: turns the mode on without the hook (the terminal does not send /aidw:go to the hook) and
+            # the demand comes from the registry, with context and folder, for any id (a free demand without a number)
             sessions = lambda: json.loads((root / "state" / "sessions.json").read_text(encoding="utf-8"))  # noqa: E731
             with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t1"}):
                 code, d = wt.aidw_json(root, "session", "bind", "--json")
                 self.assertEqual((code, d.get("demand")), (0, None), d)
-                code, d = wt.aidw_json(root, "session", "bind", "--demand", "feat-nao-existe", "--json")
-                self.assertEqual(code, 1, "demanda sem demand.json não liga")
-                code, d = wt.aidw_json(root, "demand", "set", "feat-painel-v5", "--status", "active", "--json")
+                code, d = wt.aidw_json(root, "session", "bind", "--demand", "feat-does-not-exist", "--json")
+                self.assertEqual(code, 1, "a demand without demand.json does not bind")
+                code, d = wt.aidw_json(root, "demand", "set", "feat-panel-v5", "--status", "active", "--json")
                 self.assertEqual(code, 0, d)
                 entry = sessions()["t1"]
-                self.assertEqual((entry["demand"], entry["context"]), ("feat-painel-v5", d["context"]))
-                self.assertTrue(entry["folder"].endswith("/feat-painel-v5"), entry)
+                self.assertEqual((entry["demand"], entry["context"]), ("feat-panel-v5", d["context"]))
+                self.assertTrue(entry["folder"].endswith("/feat-panel-v5"), entry)
                 code, d = wt.aidw_json(root, "session", "bind", "--demand", "us-8", "--json")
                 self.assertEqual((code, sessions()["t1"]["demand"]), (0, "us-8"), d)
             out = json.loads(hook({"session_id": "t1", "hook_event_name": "SessionStart", "source": "compact"}))
-            self.assertIn("na demanda us-8", out["hookSpecificOutput"]["additionalContext"])
+            self.assertIn("on demand us-8", out["hookSpecificOutput"]["additionalContext"])
             with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t2"}):
                 wt.aidw_json(root, "demand", "set", "us-8", "--step", "DONE", "--json")
-            self.assertNotIn("t2", sessions(), "demand set fora do modo orquestrador não liga a sessão")
+            self.assertNotIn("t2", sessions(), "demand set outside orchestrator mode does not bind the session")
             code, d = wt.aidw_json(root, "session", "unbind", "--session", "t1", "--json")
             self.assertNotIn("t1", sessions())
 
-
-    def test_contexto_e_arquivo_corrompido(self) -> None:
+    def test_context_and_corrupt_file(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
             folder = root / "contexts" / "exemplo" / "demandas"
             (folder / "us-8").mkdir(parents=True)
-            (folder / "us-8" / "demand.json").write_text(json.dumps({"id": "us-8", "context": "outro"}), encoding="utf-8")
+            (folder / "us-8" / "demand.json").write_text(json.dumps({"id": "us-8", "context": "other"}), encoding="utf-8")
             code, lst = wt.aidw_json(root, "demand", "list", "--json")
-            self.assertEqual(lst["demands"], [], "demanda de outro contexto não aparece")
+            self.assertEqual(lst["demands"], [], "a demand of another context does not show")
             code, err = wt.aidw_json(root, "demand", "set", "us-8", "--step", "IMPLEMENT", "--json")
             self.assertEqual(code, 1)
-            self.assertIn("contexto", err["error"])
+            self.assertIn("context", err["error"])
             (folder / "us-9").mkdir()
-            (folder / "us-9" / "demand.json").write_text("{quebrado", encoding="utf-8")
+            (folder / "us-9" / "demand.json").write_text("{broken", encoding="utf-8")
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--step", "IMPLEMENT", "--json")
             self.assertEqual(code, 0, d)
-            self.assertIn("ilegível", d["warning"])
-            self.assertTrue(list((folder / "us-9").glob("demand.json.*.bak")), "o arquivo ilegível é guardado")
+            self.assertIn("unreadable", d["warning"])
+            self.assertTrue(list((folder / "us-9").glob("demand.json.*.bak")), "the unreadable file is kept")
 
-    def test_plugin_leva_hooks_e_protocolo(self) -> None:
+    def test_plugin_carries_hooks_and_protocol(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             aidw = load_aidw(root)
@@ -1045,64 +1168,68 @@ class SessionModeTest(unittest.TestCase):
                                           "WorktreeRemove"})
             self.assertEqual(hooks["SessionStart"][0]["matcher"], "compact|resume")
             self.assertIn("aidw_guard.py", hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
-            # mods do Claude Code: plugin próprio no marketplace, sem os testes, com a raiz do AiDW desta máquina
+            # Claude Code mods: their own plugin in the marketplace, without the tests, with this machine's AiDW root
             self.assertEqual(plug["mods"]["plugin"], "aidw-mods")
             self.assertIn("plugins/aidw-mods/hooks/register.tsx", files)
-            self.assertFalse([k for k in files if k.startswith("plugins/aidw-mods/tests/")], "os testes não vão")
+            self.assertFalse([k for k in files if k.startswith("plugins/aidw-mods/tests/")], "the tests do not go")
             mods_meta = json.loads(files["plugins/aidw-mods/.claude-plugin/plugin.json"])
             self.assertEqual(mods_meta["userConfig"]["aidwRoot"]["default"], root.as_posix())
             self.assertEqual(mods_meta["version"], plug["mods"]["version"])
             market = json.loads(files[".claude-plugin/marketplace.json"])
             self.assertEqual([p["name"] for p in market["plugins"]], ["aidw-mods", "aidw"])
             orq = files["plugins/aidw/skills/go/SKILL.md"].decode("utf-8")
-            for step in ("project detect --json", "demand list --active --json", "não recomece",
-                         "demand set <id> --step <AÇÃO>", "EnterWorktree"):
+            for step in ("project detect --json", "demand list --active --json", "do not start over",
+                         "demand set <id> --step <ACTION>", "EnterWorktree"):
                 self.assertIn(step, orq)
-            for gone in ("--mode", "AskUserQuestion", "## Modo interativo"):
-                self.assertNotIn(gone, orq, "sem a escolha de modo da sessão")
-            self.assertLess(orq.index("Ao ser chamado"), orq.index("# ROLE"), "o protocolo vem antes do resto")
+            for gone in ("--mode", "AskUserQuestion", "## Interactive mode"):
+                self.assertNotIn(gone, orq, "no session mode choice")
+            self.assertLess(orq.index("When called"), orq.index("# ROLE"), "the protocol comes before the rest")
             leave = files["plugins/aidw/skills/exit/SKILL.md"].decode("utf-8")
             diff = files["plugins/aidw/skills/diff/SKILL.md"].decode("utf-8")
-            for step in ("ExitWorktree", 'action: "keep"', 'name: "<demanda>/<folder>"', "worktree list --json",
-                         "**seguinte**", "`sair`: a pasta da demanda"):
+            for step in ("ExitWorktree", 'action: "keep"', 'name: "<demand>/<folder>"', "worktree list --json",
+                         "**after**", "`exit`: the demand folder"):
                 self.assertIn(step, diff)
-            self.assertIn("/aidw:diff sair", orq)
-            self.assertIn("workflow `levantamento`", orq)
-            lev = files["plugins/aidw/skills/survey/SKILL.md"].decode("utf-8")
-            self.assertIn("name: survey", lev)
-            self.assertIn("disable-model-invocation: true", lev)
-            self.assertIn("**Levantamento:**", lev)
-            # o orquestrador enxuto do levantamento: só o explorador, o procedimento já dentro, sem o desenvolvimento
-            self.assertLess(lev.index("**Levantamento:**"), lev.index("# ROLE"))
-            for part in ("# STEPS", "`UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `FINAL_REVIEW`", "## 4. Estimar",
-                         "/aidw:go <id>", "`aidw:explorador`"):
-                self.assertIn(part, lev)
-            for gone in ("# WORKFLOW", "## Workflows", "**Panel**", "`aidw:codificador`", "EnterWorktree",
-                         "*levantamento* `"):
-                self.assertNotIn(gone, lev)
-            self.assertLess(len(lev), len(orq), "menor que a skill orquestrar, mesmo com o procedimento dentro")
-            self.assertIn("plugins/aidw/reference/levantamento.md", files)
+            self.assertIn("/aidw:diff exit", orq)
+            self.assertIn("workflow `survey`", orq)
+            survey = files["plugins/aidw/skills/survey/SKILL.md"].decode("utf-8")
+            self.assertIn("name: survey", survey)
+            self.assertIn("disable-model-invocation: true", survey)
+            self.assertIn("**Survey:**", survey)
+            # the survey's lean orchestrator: only the explorer, the procedure inside, without development
+            self.assertLess(survey.index("**Survey:**"), survey.index("# ROLE"))
+            for part in ("# STEPS", "`UNDERSTAND` → `EXPLORE` → `ESTIMATE` → `FINAL_REVIEW`", "## 4. Estimate",
+                         "/aidw:go <id>", "`aidw:explorer`"):
+                self.assertIn(part, survey)
+            for gone in ("# WORKFLOW", "## Workflows", "**Panel**", "`aidw:coder`", "EnterWorktree",
+                         "*survey* `"):
+                self.assertNotIn(gone, survey)
+            self.assertLess(len(survey), len(orq), "smaller than the go skill, even with the procedure inside")
+            self.assertIn("plugins/aidw/reference/survey.md", files)
+            for ref in ("short-path", "testing", "pr-triage", "pr-review"):
+                self.assertIn(f"plugins/aidw/reference/{ref}.md", files)
+            for old in ("caminho-curto", "testes", "triagem-pr", "levantamento"):
+                self.assertNotIn(f"plugins/aidw/reference/{old}.md", files, "old reference names are not generated")
             self.assertIn("--status paused", leave)
             self.assertIn("name: exit", leave)
             self.assertIn("disable-model-invocation: true", leave)
-            for old in ("lev", "sair", "conhecimento", "contexto-usar"):
-                self.assertNotIn(f"plugins/aidw/skills/{old}/SKILL.md", files, "nomes antigos não são gerados")
+            for old in ("lev", "sair", "conhecimento", "contexto-usar", "preparar-worktree", "verificar-premissa"):
+                self.assertNotIn(f"plugins/aidw/skills/{old}/SKILL.md", files, "old names are not generated")
 
 
 class ContextTest(unittest.TestCase):
     """aidw.py context list / check / create / use (skill context: list, use, create)."""
 
-    def test_contexto_sobrescreve_routing_e_workflows(self) -> None:
-        """contexts/<nome>/routing.toml vai por cima do núcleo; workflows/ do contexto substituem os de mesmo nome; o
-        mapa tipo de card → workflow aparece no orquestrador e um workflow inexistente no mapa é erro."""
+    def test_context_overrides_routing_and_workflows(self) -> None:
+        """contexts/<name>/routing.toml goes on top of the core; the context's workflows/ replace the same-named
+        ones; the card type → workflow map shows in the orchestrator and a missing workflow in the map is an error."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             ctx_dir = root / "contexts" / "exemplo"
             (ctx_dir / "routing.toml").write_text('[rules]\nreview_approved = "TEST"\n\n[[effort.variants.reviewer]]\neffort = "low"\n'
-                                                  'when = "só a do contexto"\n', encoding="utf-8")
+                                                  'when = "only the context\'s"\n', encoding="utf-8")
             (ctx_dir / "workflows").mkdir()
             (ctx_dir / "workflows" / "bugfix.yaml").write_text(
-                "name: bugfix\ndescription: Bug do contexto.\nsteps:\n  - id: implement\n    agent: coder\n",
+                "name: bugfix\ndescription: The context's bug.\nsteps:\n  - id: implement\n    agent: coder\n",
                 encoding="utf-8")
             toml = ctx_dir / "context.toml"
             toml.write_text(toml.read_text(encoding="utf-8") + '\n[workflows]\nby_type = { "Bug" = "bugfix" }\n',
@@ -1111,31 +1238,31 @@ class ContextTest(unittest.TestCase):
             rep = aidw.Report(quiet=True)
             b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
             self.assertEqual(rep.errors, [])
-            self.assertEqual(b["routing"]["rules"]["review_approved"], "TEST", "o valor do contexto substitui")
-            self.assertEqual(b["routing"]["rules"]["plan_ready"], "PLAN_APPROVAL", "o resto vem do núcleo")
-            self.assertEqual(list(b["resolved"]["reviewer"]["variants"]), ["revisor", "revisor-low"],
-                             "a lista do contexto substitui a do núcleo")
-            self.assertIn("codificador-medium", b["resolved"]["coder"]["variants"], "o resto vem do núcleo")
+            self.assertEqual(b["routing"]["rules"]["review_approved"], "TEST", "the context's value replaces")
+            self.assertEqual(b["routing"]["rules"]["plan_ready"], "PLAN_APPROVAL", "the rest comes from the core")
+            self.assertEqual(list(b["resolved"]["reviewer"]["variants"]), ["reviewer", "reviewer-low"],
+                             "the context's list replaces the core's")
+            self.assertIn("coder-medium", b["resolved"]["coder"]["variants"], "the rest comes from the core")
             orq = b["orchestrator_md"]
             self.assertIn("## Workflows", orq)
-            self.assertIn("Bug do contexto.", orq)
+            self.assertIn("The context's bug.", orq)
             self.assertIn("contexts/exemplo/workflows/bugfix.yaml", orq)
             self.assertIn("- Bug → `bugfix`", orq)
-            self.assertIn("workflows/desenvolvimento.yaml", orq)
+            self.assertIn("workflows/development.yaml", orq)
 
-            toml.write_text(toml.read_text(encoding="utf-8").replace('"bugfix" }', '"nao-existe" }'), encoding="utf-8")
+            toml.write_text(toml.read_text(encoding="utf-8").replace('"bugfix" }', '"does-not-exist" }'), encoding="utf-8")
             rep = aidw.Report(quiet=True)
             aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
-            self.assertTrue(any("nao-existe" in e for e in rep.errors), rep.errors)
+            self.assertTrue(any("does-not-exist" in e for e in rep.errors), rep.errors)
 
-    def test_demanda_guarda_tasks_dos_tickets(self) -> None:
+    def test_demand_keeps_the_tickets_tasks(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--task", "front=5001", "--json")
             self.assertEqual((code, d["tasks"]), (0, {"front": "5001"}), d)
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--task", "api=#5002", "--json")
-            self.assertEqual(d["tasks"], {"front": "5001", "api": "5002"}, "soma às que já estavam")
+            self.assertEqual(d["tasks"], {"front": "5001", "api": "5002"}, "adds to the ones already there")
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--task", "api", "--json")
             self.assertEqual(code, 1, err)
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "bug-1234", "--json")
@@ -1145,16 +1272,16 @@ class ContextTest(unittest.TestCase):
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--loop", "Bug 1", "--json")
             self.assertEqual(code, 1, err)
 
-    def test_etapa_de_fora_do_contexto(self) -> None:
+    def test_context_outside_step(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--step", "UX_VALIDATION", "--json")
-            self.assertEqual(code, 1, "sem o contexto declarar, a etapa não existe")
+            self.assertEqual(code, 1, "unless the context declares it, the step does not exist")
             toml = root / "contexts" / "exemplo" / "context.toml"
             toml.write_text(toml.read_text(encoding="utf-8") + (
-                '\n[[workflows.external_steps]]\nstep = "UX_VALIDATION"\nname = "Validação UX"\nbefore = "CODE_REVIEW"\n'
-                'who = "o UX"\nwhen = "o card tem UX Owner"\n'), encoding="utf-8")
+                '\n[[workflows.external_steps]]\nstep = "UX_VALIDATION"\nname = "UX validation"\nbefore = "CODE_REVIEW"\n'
+                'who = "UX"\nwhen = "the card has a UX Owner"\n'), encoding="utf-8")
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "UX_VALIDATION", "--json")
             self.assertEqual((code, d["extra_steps"]), (0, ["UX_VALIDATION"]), d)
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--step", "UX_VALIDATION", "--json")
@@ -1162,7 +1289,7 @@ class ContextTest(unittest.TestCase):
             code, d = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "-UX_VALIDATION", "--json")
             self.assertNotIn("extra_steps", d)
             code, err = wt.aidw_json(root, "demand", "set", "us-9", "--extra-step", "QA_TEST", "--json")
-            self.assertEqual(code, 1, "só etapa declarada pelo contexto")
+            self.assertEqual(code, 1, "only a step the context declares")
 
             aidw = load_aidw(root)
             rep = aidw.Report(quiet=True)
@@ -1170,15 +1297,15 @@ class ContextTest(unittest.TestCase):
                 {"step": "REVIEW", "name": "a", "before": "CODE_REVIEW", "when": "b"},
                 {"step": "UX", "name": "a", "before": "DONE", "when": "b"},
                 {"step": "ux-val", "name": "a", "before": "CODE_REVIEW", "when": "b"},
-                {"step": "SEM_NOME", "before": "QA_TEST", "when": "b"}]}}, rep)
+                {"step": "NO_NAME", "before": "QA_TEST", "when": "b"}]}}, rep)
             self.assertEqual(len(rep.errors), 4, rep.errors)
 
-            # a escala de voto de PR saiu: um contexto que ainda declara [[mods.votes]] recebe um aviso, não um erro
+            # the PR vote scale is gone: a context that still declares [[mods.votes]] gets a warning, not an error
             rep = aidw.Report(quiet=True)
-            aidw.check_votes({"name": "x", "mods": {"votes": [{"value": "10", "label": "Aprovar"}]}}, rep)
+            aidw.check_votes({"name": "x", "mods": {"votes": [{"value": "10", "label": "Approve"}]}}, rep)
             self.assertEqual((len(rep.errors), len(rep.warnings)), (0, 1))
 
-    def test_pasta_da_demanda_exclui_o_claude_md_da_raiz(self) -> None:
+    def test_demand_folder_excludes_the_root_claude_md(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
@@ -1186,13 +1313,13 @@ class ContextTest(unittest.TestCase):
             settings = Path(d["folder"]) / ".claude" / "settings.json"
             pattern = "**/" + root.as_posix().split(":", 1)[-1].lstrip("/") + "/CLAUDE.md"
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {"claudeMdExcludes": [pattern]},
-                             "chat aberto na pasta da demanda não carrega o CLAUDE.md da raiz junto com a skill")
-            settings.write_text(json.dumps({"claudeMdExcludes": ["**/outro/CLAUDE.md"], "model": "x"}), encoding="utf-8")
+                             "a chat opened in the demand folder does not load the root's CLAUDE.md with the skill")
+            settings.write_text(json.dumps({"claudeMdExcludes": ["**/other/CLAUDE.md"], "model": "x"}), encoding="utf-8")
             wt.aidw_json(root, "demand", "set", "us-9", "--step", "EXPLORE", "--json")
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
-                             {"claudeMdExcludes": ["**/outro/CLAUDE.md", pattern], "model": "x"}, "o que já havia fica")
+                             {"claudeMdExcludes": ["**/other/CLAUDE.md", pattern], "model": "x"}, "what was there stays")
 
-    def test_metricas_do_orquestrador_somam_por_sessao_e_modelo(self) -> None:
+    def test_orchestrator_metrics_sum_per_session_and_model(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
@@ -1203,17 +1330,24 @@ class ContextTest(unittest.TestCase):
             code, r = wt.aidw_json(root, *turn, "--model", "claude-opus-5-5")
             self.assertEqual((code, r["turns"]), (0, 1), r)
             self.assertAlmostEqual(r["cost_usd"], (10 * 4 + 300000 * 8 + 800 * 20) / 1e6,
-                                   msg="cache escrito a 2× a entrada")
+                                   msg="cache written at 2× the input")
             code, r = wt.aidw_json(root, *turn, "--model", "claude-opus-5-5")
-            self.assertEqual(r["turns"], 2, "a mesma sessão e modelo somam na mesma linha")
+            self.assertEqual(r["turns"], 2, "the same session and model add up in the same row")
             code, r = wt.aidw_json(root, *turn, "--model", "claude-sonnet-5-5")
-            self.assertEqual(r["turns"], 1, "outro modelo é outra linha")
-            text = (demand / "metricas-orquestrador.md").read_text(encoding="utf-8")
+            self.assertEqual(r["turns"], 1, "another model is another row")
+            text = (demand / "orchestrator-metrics.md").read_text(encoding="utf-8")
             rows = [line for line in text.splitlines() if line.startswith("| 79aafeb8 |")]
             self.assertEqual(len(rows), 2, text)
             self.assertIn("| claude-opus-5-5 | 2 | 60s | 20 | 600,000 | 0 | 1,600 |", rows[0])
 
-    def test_record_nao_repete_a_delegacao_que_o_mod_gravou(self) -> None:
+            old = Path(tmp) / "us-8"  # a demand from before the rename keeps its old-named file
+            old.mkdir()
+            (old / "metricas-orquestrador.md").write_text(text, encoding="utf-8")
+            code, r = wt.aidw_json(root, *turn[:2], str(old), *turn[3:], "--model", "claude-opus-5-5")
+            self.assertEqual((code, r["turns"]), (0, 3), r)
+            self.assertFalse((old / "orchestrator-metrics.md").exists())
+
+    def test_record_does_not_repeat_what_the_mod_recorded(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
@@ -1222,34 +1356,35 @@ class ContextTest(unittest.TestCase):
             code, r = wt.aidw_json(root, *base, "--label", "lev", "--tokens", "1000", "--tool-uses", "5",
                                    "--duration-ms", "60000")
             self.assertEqual((code, r["tokens_in"]), (0, 1000), r)
-            f = demand / "metricas.md"
-            f.write_text(f.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")  # editado à mão, sem a quebra
+            f = demand / "metrics.md"
+            f.write_text(f.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")  # edited by hand, no line break
             code, r = wt.aidw_json(root, *base, "--label", "lev")
             self.assertEqual((code, r["tokens_in"], r["turns"], r["duration_s"]), (0, 1000, 5, 60), r)
-            self.assertIn("1.000 tokens", r["resumo"])
-            self.assertTrue(any("já registrou" in w for w in r["warnings"]), r)
-            wt.aidw_json(root, *base, "--label", "outra", "--tokens", "50")
+            self.assertIn("1,000 tokens", r["resumo"])
+            self.assertTrue(any("already recorded" in w for w in r["warnings"]), r)
+            wt.aidw_json(root, *base, "--label", "other", "--tokens", "50")
             rows = [x for x in f.read_text(encoding="utf-8").splitlines() if x.startswith("| 2")]
-            self.assertEqual([x.split(" | ")[5] for x in rows], ["lev", "outra"], "sem linha repetida nem colada")
+            self.assertEqual([x.split(" | ")[5] for x in rows], ["lev", "other"], "no repeated or glued row")
 
-    def test_ciclo_de_contextos(self) -> None:
+    def test_context_cycle(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
             code, lst = wt.aidw_json(root, "context", "list", "--json")
             self.assertEqual((lst["active"], [c["name"] for c in lst["contexts"]]), ("exemplo", ["exemplo"]))
 
-            code, made = wt.aidw_json(root, "context", "create", "novo", "--description", "Empresa — Squad", "--json")
+            code, made = wt.aidw_json(root, "context", "create", "novo", "--description", "Company — Squad", "--json")
             self.assertEqual(code, 0, made)
             novo = root / "contexts" / "novo"
-            self.assertTrue((novo / ".git").exists(), "contexto novo tem repositório git próprio")
+            self.assertTrue((novo / ".git").exists(), "a new context has its own git repository")
             self.assertIn("[worktree]", (novo / "context.toml").read_text(encoding="utf-8"))
+            self.assertIn('language = "en"', (novo / "context.toml").read_text(encoding="utf-8"))
             code, dup = wt.aidw_json(root, "context", "create", "novo", "--json")
             self.assertEqual(code, 1)
             code, chk = wt.aidw_json(root, "context", "check", "novo", "--json")
             self.assertEqual(code, 0, chk)
 
-            code, err = wt.aidw_json(root, "context", "use", "nao-existe", "--skip-cli", "--json")
+            code, err = wt.aidw_json(root, "context", "use", "does-not-exist", "--skip-cli", "--json")
             self.assertEqual(code, 1)
             before = (root / "aidw.config.toml").read_text(encoding="utf-8")
             code, used = wt.aidw_json(root, "context", "use", "novo", "--skip-cli", "--json")
@@ -1257,14 +1392,14 @@ class ContextTest(unittest.TestCase):
             after = (root / "aidw.config.toml").read_text(encoding="utf-8")
             self.assertIn('active = "novo"', after)
             self.assertEqual(before.replace('active = "exemplo"', 'active = "novo"'), after,
-                             "só a linha active muda; comentários e o resto ficam")
+                             "only the active line changes; comments and the rest stay")
             code, lst = wt.aidw_json(root, "context", "list", "--json")
             self.assertEqual(lst["active"], "novo")
             wt.aidw_json(root, "demand", "set", "us-3", "--status", "active", "--json")
             code, none = wt.aidw_json(root, "context", "use", "", "--skip-cli", "--json")
             self.assertEqual(code, 0, none)
             self.assertIn('active = ""', (root / "aidw.config.toml").read_text(encoding="utf-8"))
-            self.assertTrue(any("us-3" in w for w in none["warnings"]), "avisa da demanda ativa que fica pausada")
+            self.assertTrue(any("us-3" in w for w in none["warnings"]), "warns about the active demand that is paused")
             code, back = wt.aidw_json(root, "context", "use", "novo", "--skip-cli", "--json")
             self.assertEqual(code, 0, back)
 
@@ -1277,20 +1412,53 @@ class ContextTest(unittest.TestCase):
 
 
 class KnowledgeTest(unittest.TestCase):
-    """`aidw.py kb`: a base de conhecimento do contexto (notas ligadas por [[links]])."""
+    """`aidw.py kb`: the context's knowledge base (notes linked by [[links]])."""
 
-    def test_show_brief_e_collect(self) -> None:
-        """Fluxo v3: `kb show --brief` sem a lista de quem cita a nota, e `kb collect <id>` juntando o que a demanda
-        aprendeu (seções *Base de conhecimento*, aprendizados, notas do resumo e decisões do plano) para o /aidw:done."""
+    def test_show_brief_and_collect(self) -> None:
+        """Flow v3: `kb show --brief` without the list of who cites the note, and `kb collect <id>` gathering what the
+        demand learned (*Knowledge base* sections, learnings, the summary's notes and the plan's decisions) for
+        /aidw:done."""
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             full = run_aidw(root, "kb", "show", "sistema-a")
             brief = run_aidw(root, "kb", "show", "sistema-a", "--brief")
             self.assertEqual(brief.returncode, 0, brief.stderr)
-            self.assertIn("## Citada por", full.stdout)
-            self.assertNotIn("## Citada por", brief.stdout)
-            self.assertIn("citada por 2 nota(s)", brief.stdout)
+            self.assertIn("## Cited by", full.stdout)
+            self.assertNotIn("## Cited by", brief.stdout)
+            self.assertIn("cited by 2 note(s)", brief.stdout)
 
+            demand = root / "contexts" / "exemplo" / "demandas" / "us-9"
+            demand.mkdir(parents=True)
+            (demand / "exploration-route.md").write_text(
+                "# Exploration\n\n## Q1 where\n- fact\n\n## Knowledge base\n- new → [[sistema-a]]: route X — `a.cs:1`\n",
+                encoding="utf-8")
+            (demand / "plan-us-9.md").write_text(
+                "# Plan v1\n\n## Decisions made\n| 1 | Topic | Decision | user, 2026-10-23 |\n\n## Goal\nx\n",
+                encoding="utf-8")
+            (demand / "plan-us-9-v1.md").write_text("## Decisions made\nstale\n", encoding="utf-8")
+            (demand / "review-us-9-r1.md").write_text("### R1-01 — SUGGESTION — `a.cs:2`\n", encoding="utf-8")
+            (demand / "learnings-us-9.md").write_text("- Tech Lead decision → [[sistema-a]]\n", encoding="utf-8")
+            (demand / "summary-us-9.md").write_text("# Summary\n\n## Knowledge\n- `sistemas/sistema-a.md` — core\n",
+                                                    encoding="utf-8")
+            (demand / "metrics.md").write_text("## Knowledge base\n- never collected\n", encoding="utf-8")
+            out = run_aidw(root, "kb", "collect", "us-9")
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            text = (demand / "collect-us-9.md").read_text(encoding="utf-8")
+            self.assertIn("## exploration-route.md", text)
+            self.assertIn("route X", text)
+            self.assertNotIn("## Q1", text, "only the report's Knowledge base section")
+            self.assertIn("user, 2026-10-23", text)
+            self.assertNotIn("stale", text, "the plan's old version does not go in")
+            self.assertNotIn("review-us-9-r1.md", text, "a report without the section does not go in")
+            self.assertIn("Tech Lead decision", text)
+            self.assertIn("(notes cited by the summary)", text)
+            self.assertNotIn("never collected", text, "the metrics are not collected")
+            self.assertNotEqual(run_aidw(root, "kb", "collect", "does-not-exist").returncode, 0)
+
+    def test_collect_reads_old_artifact_names(self) -> None:
+        """A demand from before the rename (Portuguese file names and headings) is still collected."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             demand = root / "contexts" / "exemplo" / "demandas" / "us-9"
             demand.mkdir(parents=True)
             (demand / "exploracao-rota.md").write_text(
@@ -1300,21 +1468,20 @@ class KnowledgeTest(unittest.TestCase):
                 "# Plano v1\n\n## Decisões tomadas\n| 1 | Tema | Decisão | usuário, 2026-10-23 |\n\n## Objetivo\nx\n",
                 encoding="utf-8")
             (demand / "plano-us-9-v1.md").write_text("## Decisões tomadas\nvelha\n", encoding="utf-8")
-            (demand / "review-us-9-r1.md").write_text("### R1-01 — SUGESTAO — `a.cs:2`\n", encoding="utf-8")
             (demand / "aprendizados-us-9.md").write_text("- decisão do Tech Lead → [[sistema-a]]\n", encoding="utf-8")
+            (demand / "resumo-us-9.md").write_text("# Resumo\n\n## Conhecimento\n- `sistemas/sistema-a.md` — núcleo\n",
+                                                   encoding="utf-8")
+            (demand / "metricas.md").write_text("## Base de conhecimento\n- nunca colhido\n", encoding="utf-8")
             out = run_aidw(root, "kb", "collect", "us-9")
             self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
             text = (demand / "collect-us-9.md").read_text(encoding="utf-8")
-            self.assertIn("## exploracao-rota.md", text)
-            self.assertIn("rota X", text)
-            self.assertNotIn("## Q1", text, "só a seção Base de conhecimento do relatório")
-            self.assertIn("usuário, 2026-10-23", text)
-            self.assertNotIn("velha", text, "a versão antiga do plano não entra")
-            self.assertNotIn("review-us-9-r1.md", text, "relatório sem a seção não entra")
-            self.assertIn("decisão do Tech Lead", text)
-            self.assertNotEqual(run_aidw(root, "kb", "collect", "nao-existe").returncode, 0)
+            for expected in ("## exploracao-rota.md", "rota X", "usuário, 2026-10-23", "decisão do Tech Lead",
+                             "(notes cited by the summary)", "núcleo"):
+                self.assertIn(expected, text)
+            for absent in ("## Q1", "velha", "nunca colhido"):
+                self.assertNotIn(absent, text)
 
-    def test_base_de_conhecimento(self) -> None:
+    def test_knowledge_base(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
             wt = WorktreeTest()
@@ -1326,79 +1493,78 @@ class KnowledgeTest(unittest.TestCase):
             self.assertEqual(code, 0, a)
             self.assertEqual([l["key"] for l in a["links"]], ["sistema-b", "contrato-ab", "solicitacao"])
             self.assertEqual([b["key"] for b in a["backlinks"]], ["contrato-ab", "solicitacao"],
-                             "[[sistemas/sistema-a.md|A]] também conta como link para o sistema-a")
+                             "[[sistemas/sistema-a.md|A]] also counts as a link to sistema-a")
             code, b = wt.aidw_json(root, "kb", "show", "sistema-b", "--json")
-            self.assertEqual(b["meta"]["sistemas"], ["sistema-b"], "lista em bloco, como o Obsidian grava")
+            self.assertEqual(b["meta"]["sistemas"], ["sistema-b"], "a block list, as Obsidian writes it")
             code, alias = wt.aidw_json(root, "kb", "show", "Protocolo", "--json")
-            self.assertEqual(alias["key"], "solicitacao", "acha pelo alias, sem caixa")
-            code, miss = wt.aidw_json(root, "kb", "show", "nao-existe", "--json")
+            self.assertEqual(alias["key"], "solicitacao", "found by the alias, case-insensitive")
+            code, miss = wt.aidw_json(root, "kb", "show", "does-not-exist", "--json")
             self.assertEqual(code, 1)
 
             code, found = wt.aidw_json(root, "kb", "search", "solicitacao", "--json")
-            self.assertEqual(found["hits"][0]["key"], "solicitacao", "sem acento acha 'Solicitação'; o título pesa mais")
+            self.assertEqual(found["hits"][0]["key"], "solicitacao", "without the accent finds 'Solicitação'; the title weighs more")
             self.assertEqual({h["key"] for h in found["hits"]}, {"solicitacao", "sistema-a"})
 
             code, idx = wt.aidw_json(root, "kb", "index", "--json")
             index = (kb / "index.md").read_text(encoding="utf-8")
-            self.assertIn("## Sistemas (2)", index)
+            self.assertIn("## Systems (2)", index)
             self.assertIn("| [[solicitacao\\|Solicitação]] | pedido, request |", index)
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
-            self.assertEqual(chk["errors"], [], "o índice gerado não quebra o check")
+            self.assertEqual(chk["errors"], [], "the generated index does not break the check")
 
             self.assertEqual(run_aidw(root, "apply").returncode, 0)
-            gen = (root / ".claude" / "agents" / "codificador.md").read_text(encoding="utf-8")
+            gen = (root / ".claude" / "agents" / "coder.md").read_text(encoding="utf-8")
             self.assertIn(f"- Knowledge: `{(kb / 'sistemas' / 'sistema-a.md').as_posix()}`", gen)
             self.assertIn("kb show <system|note>", gen)
-            self.assertIn("a fact, not a rule", gen, "a nota descreve; o guia do time e as policies decidem")
+            self.assertIn("a fact, not a rule", gen, "the note describes; the team guide and the policies decide")
 
-            longa = kb / "integracoes" / "contrato-ab.md"
-            longa.write_text(longa.read_text(encoding="utf-8").replace("atualizado: 2026-10-07", "atualizado: 2020-01-01")
-                             + "".join(f"- linha {i}\n" for i in range(160)), encoding="utf-8")
+            long_note = kb / "integracoes" / "contrato-ab.md"
+            long_note.write_text(long_note.read_text(encoding="utf-8").replace("atualizado: 2026-10-07", "atualizado: 2020-01-01")
+                                 + "".join(f"- line {i}\n" for i in range(160)), encoding="utf-8")
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
-            self.assertEqual(chk["errors"], [], "tamanho e idade são avisos, não erros")
-            avisos = "\n".join(chk["warnings"])
-            self.assertIn("contrato-ab.md: 1", avisos)
-            self.assertIn("divida em notas ligadas", avisos)
-            self.assertIn("conferida pela última vez em 2020-01-01", avisos)
-            self.assertNotIn("solicitacao.md: conferida", avisos)
+            self.assertEqual(chk["errors"], [], "size and age are warnings, not errors")
+            warnings = "\n".join(chk["warnings"])
+            self.assertIn("contrato-ab.md: 1", warnings)
+            self.assertIn("split into linked notes", warnings)
+            self.assertIn("last checked on 2020-01-01", warnings)
+            self.assertNotIn("solicitacao.md: last checked", warnings)
 
             (kb / "sistemas" / "sistema-b.md").unlink()
             (kb / "integracoes" / "quebrada.md").write_text(
                 "---\ntipo: integracao\nresumo: x\nsistemas: [sistema-z]\natualizado: 2026-10-07\n---\n\n"
-                "Ver [[inexistente]]. Password=abc12345\n", encoding="utf-8")
+                "See [[inexistente]]. Password=abc12345\n", encoding="utf-8")
             (kb / "conceitos" / "sistema-a.md").write_text("---\ntipo: conceito\nresumo: x\n---\n", encoding="utf-8")
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
             self.assertEqual(code, 1)
             errors = "\n".join(chk["errors"])
-            for expected in ("nome repetido 'sistema-a'", "link quebrado [[sistema-b]]", "link quebrado [[inexistente]]",
-                             "falta `fontes`", "sistema-z", "parece segredo"):
+            for expected in ("repeated name 'sistema-a'", "broken link [[sistema-b]]", "broken link [[inexistente]]",
+                             "`fontes` is missing", "sistema-z", "looks like a secret"):
                 self.assertIn(expected, errors)
-            self.assertTrue(any("sistema 'sistema-b' sem nota" in w for w in chk["warnings"]), chk["warnings"])
+            self.assertTrue(any("system 'sistema-b' has no note" in w for w in chk["warnings"]), chk["warnings"])
             code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
             self.assertEqual(code, 1)
-            self.assertTrue(any(e.startswith("base de conhecimento:") for e in ctx["errors"]), ctx)
+            self.assertTrue(any(e.startswith("knowledge base:") for e in ctx["errors"]), ctx)
 
             code, made = wt.aidw_json(root, "context", "create", "novo", "--description", "Novo", "--json")
             novo = root / "contexts" / "novo"
             self.assertIn('[knowledge]\ndir = "conhecimento"', (novo / "context.toml").read_text(encoding="utf-8"))
-            self.assertIn("# Base de conhecimento — Novo", (novo / "conhecimento" / "README.md").read_text(encoding="utf-8"))
+            self.assertIn("# Knowledge base — Novo", (novo / "conhecimento" / "README.md").read_text(encoding="utf-8"))
             self.assertTrue((novo / "conhecimento" / "demandas").is_dir())
             graph = json.loads((novo / ".obsidian" / "graph.json").read_text(encoding="utf-8"))
             self.assertIn("path:conhecimento/sistemas", [g["query"] for g in graph["colorGroups"]],
-                          "o vault é a pasta do contexto: as cores apontam para dentro da base")
+                          "the vault is the context folder: the colors point inside the base")
 
-
-    def test_vault_no_contexto_upstream_e_colheita(self) -> None:
+    def test_vault_in_the_context_upstream_and_harvest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
             wt = WorktreeTest()
             ctx_dir = root / "contexts" / "exemplo"
             kb = ctx_dir / "conhecimento"
-            nota = kb / "sistemas" / "sistema-b.md"
-            nota.write_text(nota.read_text(encoding="utf-8") + "\nSegue a policy [[regra]].\n", encoding="utf-8")
+            note = kb / "sistemas" / "sistema-b.md"
+            note.write_text(note.read_text(encoding="utf-8") + "\nFollows the policy [[regra]].\n", encoding="utf-8")
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
-            self.assertEqual(chk["errors"], [], "[[regra]] acha policies/regra.md: o vault é a pasta do contexto")
+            self.assertEqual(chk["errors"], [], "[[regra]] finds policies/regra.md: the vault is the context folder")
             code, b = wt.aidw_json(root, "kb", "show", "sistema-b", "--json")
             self.assertTrue(b["links"][0]["outside"][0].endswith("policies/regra.md"), b["links"])
 
@@ -1406,44 +1572,49 @@ class KnowledgeTest(unittest.TestCase):
                 "---\ntipo: conceito\nresumo: x\natualizado: 2026-10-07\n---\n\n[[sistema-a]]\n", encoding="utf-8")
             wt.aidw_json(root, "kb", "index", "--json")
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
-            self.assertTrue(any("'guia' também existe em shared/guia.md" in w for w in chk["warnings"]), chk)
-            self.assertFalse(any("index.md desatualizado" in w for w in chk["warnings"]))
+            self.assertTrue(any("'guia' also exists in shared/guia.md" in w for w in chk["warnings"]), chk)
+            self.assertFalse(any("index.md out of date" in w for w in chk["warnings"]))
             (kb / "conceitos" / "guia.md").unlink()
             code, chk = wt.aidw_json(root, "kb", "check", "--json")
-            self.assertTrue(any("index.md desatualizado" in w for w in chk["warnings"]), chk)
+            self.assertTrue(any("index.md out of date" in w for w in chk["warnings"]), chk)
             wt.aidw_json(root, "kb", "index", "--json")
             self.assertIn("[[conhecimento/README|README]]", (kb / "index.md").read_text(encoding="utf-8"))
 
             guide = tmp / "guideline"
             guide.mkdir()
             for args in (["init", "-q", "-b", "main"], ["config", "user.email", "t@t"], ["config", "user.name", "t"],
-                         ["commit", "-q", "--allow-empty", "-m", "primeiro"]):
+                         ["commit", "-q", "--allow-empty", "-m", "first"]):
                 subprocess.run(["git", "-C", str(guide), *args], check=True)
             first = subprocess.run(["git", "-C", str(guide), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
             toml = ctx_dir / "context.toml"
             toml.write_text(toml.read_text(encoding="utf-8") + f'\n[upstream.guia]\nrepo = "{guide.as_posix()}"\n'
                             f'synced = "{first}"\ncovers = ["shared/guia.md"]\n', encoding="utf-8")
             code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
-            self.assertFalse(any("upstream" in w for w in ctx["warnings"]), "em dia: sem aviso")
-            subprocess.run(["git", "-C", str(guide), "commit", "-q", "--allow-empty", "-m", "AutoMapper proibido"], check=True)
+            self.assertFalse(any("upstream" in w for w in ctx["warnings"]), "up to date: no warning")
+            subprocess.run(["git", "-C", str(guide), "commit", "-q", "--allow-empty", "-m", "AutoMapper forbidden"], check=True)
             code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
-            self.assertTrue(any("upstream guia" in w and "AutoMapper proibido" in w for w in ctx["warnings"]), ctx)
+            self.assertTrue(any("upstream guia" in w and "AutoMapper forbidden" in w for w in ctx["warnings"]), ctx)
 
             wt.aidw_json(root, "demand", "set", "us-9", "--status", "done", "--json")
             demand_dir = root / "contexts" / "exemplo" / "demandas" / "us-9"
-            (demand_dir / "aprendizados-us-9.md").write_text("- fato\n", encoding="utf-8")
+            (demand_dir / "learnings-us-9.md").write_text("- fact\n", encoding="utf-8")
             code, st = wt.aidw_json(root, "status", "--json")
             self.assertTrue(any("us-9" in a and "/aidw:done" in a for a in st["attention"]), st["attention"])
+            (demand_dir / "learnings-us-9.md").unlink()
+            (demand_dir / "aprendizados-us-9.md").write_text("- fato\n", encoding="utf-8")
+            code, st = wt.aidw_json(root, "status", "--json")
+            self.assertTrue(any("us-9" in a and "/aidw:done" in a for a in st["attention"]),
+                            "the old learnings name counts too")
             (kb / "demandas").mkdir(exist_ok=True)
             (kb / "demandas" / "us-9.md").write_text("---\ntipo: demanda\nresumo: x\n---\n", encoding="utf-8")
             code, st = wt.aidw_json(root, "status", "--json")
-            self.assertFalse(any("us-9" in a for a in st["attention"]), "colhida: não avisa mais")
+            self.assertFalse(any("us-9" in a for a in st["attention"]), "harvested: no more warning")
 
 
 class PluginMigrationTest(unittest.TestCase):
-    """O install troca um plugin antigo (ex.: `aidw-<contexto>`) pelo `aidw`, com o CLI simulado."""
+    """install replaces an old plugin (e.g. `aidw-<context>`) with `aidw`, with the CLI simulated."""
 
-    def test_migra_plugin_antigo(self) -> None:
+    def test_migrates_old_plugin(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "exemplo")
@@ -1472,14 +1643,15 @@ class PluginMigrationTest(unittest.TestCase):
             self.assertTrue(ok)
             self.assertIn(["plugin", "uninstall", "aidw-exemplo@aidw-local"], calls)
             self.assertIn(["plugin", "install", "aidw@aidw-local"], calls)
-            self.assertIn(["plugin", "install", "aidw-mods@aidw-local"], calls, "os mods vão junto")
+            self.assertIn(["plugin", "install", "aidw-mods@aidw-local"], calls, "the mods go along")
             manifest = json.loads((root / ".aidw" / "install-manifest.json").read_text(encoding="utf-8"))
             self.assertEqual((manifest["plugins"], manifest["context"]),
-                             (["aidw-mods@aidw-local", "aidw@aidw-local"], "exemplo"), "o aidw fica por último")
+                             (["aidw-mods@aidw-local", "aidw@aidw-local"], "exemplo"), "aidw comes last")
 
 
 class CodexInstallTest(unittest.TestCase):
-    """install/uninstall --provider codex: só agentes e skills aidw-*; limpa perfil, regras e hooks de installs antigos."""
+    """install/uninstall --provider codex: only agents and aidw-* skills; cleans the profile, rules and hooks of old
+    installs."""
 
     def test_install_uninstall_codex(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
@@ -1487,10 +1659,10 @@ class CodexInstallTest(unittest.TestCase):
             root = make_sandbox(tmp, "claude", "native", "exemplo")
             home, skills = tmp / "codex-home", tmp / "agents-skills"
             home.mkdir()
-            user_hook = {"hooks": [{"type": "command", "command": "echo meu-hook"}]}
+            user_hook = {"hooks": [{"type": "command", "command": "echo my-hook"}]}
             guard = {"matcher": "apply_patch|Bash|mcp__.*",
                      "hooks": [{"type": "command", "command": f'python "{root.as_posix()}/aidw_guard.py"'}]}
-            # sobras de uma instalação antiga: perfil, regras e o grupo do AiDW no hooks.json
+            # leftovers of an old install: profile, rules and the AiDW group in hooks.json (with the old mark)
             (home / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [user_hook], "PreToolUse": [guard]}}),
                                              encoding="utf-8")
             (home / "aidw.config.toml").write_text("# Gerado por aidw.py install — perfil antigo\n",
@@ -1498,49 +1670,49 @@ class CodexInstallTest(unittest.TestCase):
 
             proc = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-            self.assertTrue((home / "agents" / "aidw-codificador.toml").is_file())
+            self.assertTrue((home / "agents" / "aidw-coder.toml").is_file())
             orq = (skills / "aidw-go" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-go", orq)
             self.assertIn("$aidw-exit", orq)
-            self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
+            self.assertNotIn("`EnterWorktree` with the demand id", orq, "Codex has no EnterWorktree")
             self.assertNotIn("AskUserQuestion", orq)
-            self.assertNotIn("perfil `aidw`", orq, "no Codex o AiDW não instala perfil")
-            self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
-            self.assertNotIn("## Modo interativo", orq)
+            self.assertNotIn("--profile aidw", orq, "on Codex AiDW installs no profile")
+            self.assertFalse((skills / "aidw-diff").exists(), "Codex has no EnterWorktree: no diff skill")
+            self.assertNotIn("## Interactive mode", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-go" / "agents" / "openai.yaml").read_text())
-            lev = (skills / "aidw-survey" / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("name: aidw-survey", lev)
-            self.assertIn("`$aidw-go <id>`", lev)
-            self.assertNotIn("# WORKFLOW", lev)
-            self.assertNotIn("disable-model-invocation", lev)
+            survey = (skills / "aidw-survey" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-survey", survey)
+            self.assertIn("`$aidw-go <id>`", survey)
+            self.assertNotIn("# WORKFLOW", survey)
+            self.assertNotIn("disable-model-invocation", survey)
             self.assertIn("allow_implicit_invocation: false",
                           (skills / "aidw-survey" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-exit", (skills / "aidw-exit" / "SKILL.md").read_text(encoding="utf-8"))
             to_spec = (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-to-spec", to_spec)
-            self.assertNotIn("user-invocable", to_spec, "chave do Claude; o Codex não esconde skill")
+            self.assertNotIn("user-invocable", to_spec, "a Claude key; Codex does not hide skills")
             done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-done", done)
-            self.assertNotIn("disable-model-invocation", done, "chave do Claude; no Codex vale o openai.yaml")
+            self.assertNotIn("disable-model-invocation", done, "a Claude key; on Codex openai.yaml applies")
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-done" / "agents" / "openai.yaml").read_text())
             self.assertFalse((skills / "aidw-to-spec" / "agents" / "openai.yaml").exists())
 
-            # só agentes e skills: sem regras, sem perfil, e o hooks.json fica só com o que é do usuário
-            self.assertFalse((home / "rules" / "aidw.rules").exists(), "o install do Codex não grava regras")
-            self.assertFalse((home / "aidw.config.toml").exists(), "o perfil antigo do AiDW sai")
+            # only agents and skills: no rules, no profile, and hooks.json keeps only what is the user's
+            self.assertFalse((home / "rules" / "aidw.rules").exists(), "the Codex install writes no rules")
+            self.assertFalse((home / "aidw.config.toml").exists(), "the old AiDW profile goes (old Portuguese mark)")
             self.assertEqual(json.loads((home / "hooks.json").read_text(encoding="utf-8")),
-                             {"hooks": {"Stop": [user_hook]}}, "sai só o grupo do AiDW; o hook do usuário fica")
+                             {"hooks": {"Stop": [user_hook]}}, "only the AiDW group goes; the user's hook stays")
             manifest_path = root / ".aidw" / "install-manifest.json"
             written = json.loads(manifest_path.read_text(encoding="utf-8"))["codex"]["files"]
             self.assertTrue(all(Path(k).is_relative_to(home / "agents") or Path(k).is_relative_to(skills) for k in written),
-                            "o manifesto do Codex só tem agentes e skills")
-            self.assertIn("multi_agent_v2", proc.stdout, "avisa que o spawn_agent precisa de multi_agent_v2")
+                            "the Codex manifest only has agents and skills")
+            self.assertIn("multi_agent_v2", proc.stdout, "warns that spawn_agent needs multi_agent_v2")
 
             again = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
-            self.assertIn("0 arquivo(s) mudaram", again.stdout, "idempotente")
+            self.assertIn("0 file(s) changed", again.stdout, "idempotent")
 
-            # skill renomeada (aidw-lev → aidw-survey): o arquivo antigo do manifesto sai, e a pasta junto
+            # renamed skill (aidw-lev → aidw-survey): the manifest's old file goes, and the folder with it
             old_skill = skills / "aidw-lev"
             (old_skill / "agents").mkdir(parents=True)
             old_files = {old_skill / "SKILL.md": b"---\nname: aidw-lev\n---\n",
@@ -1552,22 +1724,22 @@ class CodexInstallTest(unittest.TestCase):
             manifest_path.write_text(json.dumps(data), encoding="utf-8")
             renamed = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(renamed.returncode, 0, renamed.stdout + renamed.stderr)
-            self.assertFalse(old_skill.exists(), "a pasta da skill antiga não fica vazia")
+            self.assertFalse(old_skill.exists(), "the old skill's folder does not stay empty")
 
             (home / "config.toml").write_text("[features]\nmulti_agent_v2 = true\n", encoding="utf-8")
             quiet = run_aidw(root, "install", "--provider", "codex")
-            self.assertNotIn("ligue `multi_agent_v2`", quiet.stdout, "com a feature ligada, sem aviso")
+            self.assertNotIn("turn on `multi_agent_v2`", quiet.stdout, "with the feature on, no warning")
 
-            both = run_aidw(root, "install", "--skip-cli")  # sem --provider: o Codex já instalado é atualizado junto
+            both = run_aidw(root, "install", "--skip-cli")  # no --provider: an installed Codex is updated too
             self.assertEqual(both.returncode, 0, both.stdout + both.stderr)
-            self.assertIn("Instalação global no Codex", both.stdout)
+            self.assertIn("Global install in Codex", both.stdout)
             self.assertIn("codex", json.loads(manifest_path.read_text(encoding="utf-8")),
-                          "o install do Claude não apaga o registro do Codex")
+                          "the Claude install does not erase the Codex record")
 
             gone = run_aidw(root, "uninstall", "--provider", "codex")
             self.assertEqual(gone.returncode, 0, gone.stdout + gone.stderr)
             self.assertEqual(json.loads((home / "hooks.json").read_text(encoding="utf-8")), {"hooks": {"Stop": [user_hook]}})
-            self.assertFalse((home / "agents" / "aidw-codificador.toml").exists())
+            self.assertFalse((home / "agents" / "aidw-coder.toml").exists())
             self.assertFalse((skills / "aidw-go").exists())
             code = run_aidw(root, "open", "--provider", "codex", "--path", str(tmp), "--print")
             self.assertIn("--enable multi_agent_v2", code.stdout)
@@ -1575,26 +1747,26 @@ class CodexInstallTest(unittest.TestCase):
 
 
 class SetupDoctorTest(unittest.TestCase):
-    """Setup cria as pastas que faltam; doctor termina com o veredito e o código de saída certo."""
+    """Setup creates the missing folders; doctor ends with the verdict and the right exit code."""
 
-    def test_setup_cria_pastas(self) -> None:
+    def test_setup_creates_folders(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             tmp = Path(tmp).resolve()
             root = make_sandbox(tmp, "claude", "native", "")
             shutil.rmtree(root / "contexts", ignore_errors=True)
             proc = run_aidw(root, "setup", "--skip-tools")
             for path in (root / "contexts", root / "state", tmp / "wt"):
-                self.assertTrue(path.is_dir(), f"setup deveria criar {path}\n{proc.stdout}{proc.stderr}")
-            self.assertIn("== Resultado ==", proc.stdout, proc.stderr)
-            self.assertIn("em dia com as fontes", proc.stdout, "doctor logo após o apply deve dizer que está em dia")
+                self.assertTrue(path.is_dir(), f"setup should create {path}\n{proc.stdout}{proc.stderr}")
+            self.assertIn("== Result ==", proc.stdout, proc.stderr)
+            self.assertIn("up to date with the sources", proc.stdout, "doctor right after apply must say it is up to date")
 
-    def test_doctor_nao_pronto_com_contexto_ausente(self) -> None:
+    def test_doctor_not_ready_with_missing_context(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "inexistente", copy_context=False)
             proc = run_aidw(root, "doctor")
             self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
-            self.assertIn("NÃO PRONTO", proc.stdout)
-            self.assertIn("contexto 'inexistente' não encontrado", proc.stdout)
+            self.assertIn("NOT READY", proc.stdout)
+            self.assertIn("context 'inexistente' not found", proc.stdout)
 
 
 if __name__ == "__main__":

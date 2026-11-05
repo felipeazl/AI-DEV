@@ -1,36 +1,38 @@
 ---
 name: knowledge
-description: Consulta a base de conhecimento do contexto ativo — o que o AiDW já aprendeu sobre um sistema, contrato, conceito, decisão ou demanda — e responde com as notas e os links entre elas; também corrige ou completa uma nota quando o usuário pedir. Use quando o usuário perguntar o que se sabe sobre um projeto, sistema ou tema, ou chamar /knowledge.
+description: Queries the active context's knowledge base — what the AiDW has already learned about a system, contract, concept, decision or demand — and answers with the notes and the links between them; also corrects or completes a note when the user asks. Use when the user asks what is known about a project, system or topic, or calls /knowledge.
 aidw: admin
 ---
 
 # knowledge
 
-`aidw.py` fica em `{{root}}` (raiz do AiDW). Rode os comandos exatamente na forma `python "{{root}}/aidw.py" ...`, com as
-aspas: é a que as regras de permissão liberam. O pedido do usuário está na mensagem que chamou esta skill.
+`aidw.py` lives in `{{root}}` (the AiDW root). Run the commands exactly as `python "{{root}}/aidw.py" ...`, with the
+quotes: that is the form the permission rules allow. The user's request is in the message that called this skill.
 
-## Responder
+**Language:** talk to the user in the AiDW UI language (`[ui] language`, shown by `python "{{root}}/aidw.py" show`);
+write knowledge notes in the context's language (`language` in its `context.toml`; when absent, the UI language).
 
-1. **Achar a nota:** `python "{{root}}/aidw.py" kb show <tema>` aceita a chave do sistema (`sistema-a`), o nome da nota, um
-   alias ou o título. Sem nota com esse nome, ele sugere parecidas; para um assunto, use
-   `python "{{root}}/aidw.py" kb search <palavras>` (sem acento nem caixa).
-2. **Seguir os links** só até onde a pergunta pede: o `kb show` lista os links da nota e quem a cita (as demandas que
-   mexeram ali, os contratos que a usam). Abra as que respondem, um nível por vez.
-3. **Responder curto:** o que a base diz, com o caminho de cada nota usada (link clicável), e o que ela **não**
-   diz. Diga a data `atualizado` quando ela pesar (nota antiga sobre código que muda muito). Não leia código para
-   completar a resposta, a não ser que o usuário peça; se ler, diga o que confirmou e onde (`arquivo:linha`).
-4. Se a pergunta vier sem tema ("o que temos?"), mostre o `index.md` da base resumido: quantas notas por tipo e as
-   mais citadas.
+## Answer
 
-## Corrigir ou completar (só quando o usuário pedir)
+1. **Find the note:** `python "{{root}}/aidw.py" kb show <topic>` accepts the system key (`system-a`), the note name,
+   an alias or the title. With no note of that name, it suggests similar ones; for a subject, use
+   `python "{{root}}/aidw.py" kb search <words>` (accents and case do not matter).
+2. **Follow the links** only as far as the question needs: `kb show` lists the note's links and who cites it (the
+   demands that touched it, the contracts that use it). Open the ones that answer, one level at a time.
+3. **Answer briefly:** what the base says, with the path of each note used (a clickable link), and what it does
+   **not** say. Give the `atualizado` date when it matters (an old note about code that changes a lot). Do not read
+   code to complete the answer unless the user asks; if you do, say what you confirmed and where (`file:line`).
+4. If the question comes without a topic ("what do we have?"), show the base's `index.md` summarized: how many notes
+   per type and the most cited ones.
 
-- Siga o `README.md` da base: o fato vai na nota onde ele mora (não crie outra), com a fonte e `atualizado` com a
-  data de hoje; uma nota nova só quando nenhuma cabe, com tipo, `resumo`, `fontes` e pelo menos um link.
-- Depois: `python "{{root}}/aidw.py" kb index` e `python "{{root}}/aidw.py" kb check`; corrija o que ele apontar.
-- Não faça commit: o `/aidw:done` (ou o usuário) leva as mudanças para o repositório do contexto. Diga quais
-  arquivos mudaram.
+## Correct or complete (only when the user asks)
 
-## Sem base
+- Follow the base's `README.md`: the fact goes in the note where it lives (do not create another), with the source and
+  `atualizado` with today's date; a new note only when none fits, with type, `resumo`, `fontes` and at least one link.
+- Then: `python "{{root}}/aidw.py" kb index` and `python "{{root}}/aidw.py" kb check`; fix what it points out.
+- Do not commit: `/aidw:done` (or the user) takes the changes to the context's repository. Say which files changed.
 
-Se o `kb` responder que não há base de conhecimento no contexto ativo, diga isso e que ela se liga com
-`[knowledge] dir = "<pasta>"` no `context.toml` (convenções num `README.md` dessa pasta).
+## No base
+
+If `kb` answers that the active context has no knowledge base, say so, and that it is enabled with
+`[knowledge] dir = "<folder>"` in `context.toml` (conventions in a `README.md` in that folder).

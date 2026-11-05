@@ -1,128 +1,133 @@
 ---
 name: done
-description: Fecha a tarefa: grava no contexto ativo o que a demanda descobriu e que vale para as próximas — na base de conhecimento (a nota da demanda e as notas de sistema, integração, conceito e decisão que ela tocou, ligadas sem duplicar) e, para build e ambiente, no context.toml —, valida, reinstala o AiDW e faz commit e push do repositório do contexto. Só quando o usuário chamar.
+description: Closes the task: records in the active context what the demand discovered that is worth keeping for the next ones — in the knowledge base (the demand's note and the system, integration, concept and decision notes it touched, linked without duplicating) and, for build and environment, in context.toml —, validates, reinstalls the AiDW and commits and pushes the context's repository. Only when the user calls it.
 aidw: admin
 disable-model-invocation: true
 ---
 
 # done
 
-`aidw.py` fica em `{{root}}` (raiz do AiDW). Rode os comandos exatamente na forma `python "{{root}}/aidw.py" ...`, com as
-aspas: é a que as regras de permissão liberam.
+`aidw.py` lives in `{{root}}` (the AiDW root). Run the commands exactly as `python "{{root}}/aidw.py" ...`, with the
+quotes: that is the form the permission rules allow.
 
-O usuário chama esta skill ao terminar uma tarefa. **Chamar é a autorização** para fazer commit e push do repositório do
-**contexto** (e só dele) na branch atual, mesmo que seja a `main`: é o repositório privado de conhecimento do usuário, e
-não código de produto, por decisão dele. Nada de commit, push ou merge nos repositórios do produto. O pedido do usuário,
-se houver, está na mensagem que chamou esta skill.
+**Language:** talk to the user in the AiDW UI language (`[ui] language`, shown by `python "{{root}}/aidw.py" show`);
+write the knowledge notes and the context content in the context's language (`language` in its `context.toml`; when
+absent, the UI language).
 
-## 1. O que foi a tarefa
+The user calls this skill when a task is finished. **Calling it is the authorization** to commit and push the
+**context's** repository (and only that one) on the current branch, even if it is `main`: it is the user's private
+knowledge repository, not product code, by their decision. No commit, push or merge in the product repositories. The
+user's request, if any, is in the message that called this skill.
 
-- **Contexto ativo:** `python "{{root}}/aidw.py" status --json` → `context.name`. A pasta é `{{root}}/contexts/<nome>`.
-  Sem contexto ativo: diga que não há onde gravar e pare.
-- **Demanda:** a desta sessão, ou a do pedido. Se não estiver claro, use `project detect --json` (o campo `demand`) e
-  `demand list --active --json`. Uma tarefa sem demanda (manutenção, investigação) também vale: use a conversa.
-- **Base de conhecimento:** `status --json` não a mostra; leia `[knowledge] dir` no `context.toml` do contexto (a
-  pasta é `<contexto>/<dir>`; convenções no `README.md` dela). Sem `[knowledge]`, tudo vai para o `context.toml`
-  e o `reference/`, como na tabela da seção 2.
-- **Fontes, da mais barata para a mais cara:**
-  1. `python "{{root}}/aidw.py" kb collect <id>` — grava `collect-<id>.md` na pasta da demanda com o que ela já
-     separou para a base: as seções *Base de conhecimento* dos relatórios dos agentes, o `aprendizados-<id>.md` (o que
-     nasceu no chat), as notas que o resumo citou e as decisões do plano. **Comece por ele** e esta conversa;
-  2. um artefato inteiro (`exploracao-*`, `plano-*`, `review-*`, `levantamento-*`) só quando um fato do collect
-     precisar de mais contexto;
-  3. o diff do worktree (`git -C <worktree> diff <base>...HEAD --stat`, e o diff só dos trechos que importam).
-- **Notas existentes:** `kb show <nota> --brief` para ler a nota sem a lista de quem a cita; a versão completa só
-  quando precisar dos backlinks.
+## 1. What the task was
 
-## 2. O que vale guardar
+- **Active context:** `python "{{root}}/aidw.py" status --json` → `context.name`. The folder is
+  `{{root}}/contexts/<name>`. No active context: say there is nowhere to record and stop.
+- **Demand:** this session's, or the one in the request. If it is not clear, use `project detect --json` (the
+  `demand` field) and `demand list --active --json`. A task without a demand (maintenance, investigation) also counts:
+  use the conversation.
+- **Knowledge base:** `status --json` does not show it; read `[knowledge] dir` in the context's `context.toml` (the
+  folder is `<context>/<dir>`; conventions in its `README.md`). Without `[knowledge]`, everything goes to
+  `context.toml` and `reference/`, as in the table of section 2.
+- **Sources, cheapest first:**
+  1. `python "{{root}}/aidw.py" kb collect <id>` — writes `collect-<id>.md` in the demand folder with what the demand
+     already set aside for the base: the *Knowledge base* sections of the agents' reports, `learnings-<id>.md` (what
+     was born in the chat), the notes the summary cited and the plan's decisions. **Start from it** and this
+     conversation;
+  2. a whole artifact (`exploration-*`, `plan-*`, `review-*`, `survey-*`) only when a fact from the collect needs more
+     context;
+  3. the worktree diff (`git -C <worktree> diff <base>...HEAD --stat`, and the diff of only the parts that matter).
+- **Existing notes:** `kb show <note> --brief` to read the note without the list of who cites it; the full version
+  only when you need the backlinks.
 
-Guarde só o que passar em **todos** os critérios:
-- **Serve para a próxima demanda:** um fato do sistema ou do ambiente, e não um detalhe desta entrega.
-- **Foi verificado:** comando que rodou, `arquivo:linha`, saída do build. Hipótese não entra.
-- **É novo ou corrige o que está lá:** antes de escrever, procure onde o fato já mora (`kb search <palavras>`,
-  `kb show <nota>`) e atualize aquela nota; não crie outra. O que a base dizia e se mostrou errado é corrigido na
-  própria nota, com a fonte nova.
-- **É fato, não regra:** a base descreve como o código **é** (inclusive o legado fora do padrão); como ele **deve** ser
-  é do guia do time e das `policies/`. Um padrão legado vai para a nota como fato ("o sistema-a usa ADO.NET com
-  procedure em X"), nunca como recomendação; convenção do time e regra de trabalho vão para `shared/` ou `policies/`.
-- **É curto:** uma linha por fato, com a fonte quando não é óbvia. A seção *Systems* do `context.toml` vai no prompt
-  de toda mensagem: lá só o que todo agente precisa sempre (build, teste, bloqueio de ambiente).
-- **Nunca** segredo, token, senha, connection string, PIN, dado pessoal ou dado de cliente. Isso vale também para o
-  conteúdo do card: nome, e-mail e CPF não entram.
+## 2. What is worth keeping
 
-Para cada fato, o lugar certo:
+Keep only what passes **all** the criteria:
+- **Useful for the next demand:** a fact about the system or the environment, not a detail of this delivery.
+- **Verified:** a command that ran, `file:line`, build output. A hypothesis does not go in.
+- **New, or corrects what is there:** before writing, look for where the fact already lives (`kb search <words>`,
+  `kb show <note>`) and update that note; do not create another. What the base said and turned out wrong is
+  corrected in the note itself, with the new source.
+- **A fact, not a rule:** the base describes how the code **is** (including legacy that does not follow the standard);
+  how it **should** be belongs to the team's guide and `policies/`. A legacy pattern goes into the note as a fact
+  ("system-a uses ADO.NET with a procedure in X"), never as a recommendation; team conventions and work rules go to
+  `shared/` or `policies/`.
+- **Short:** one line per fact, with the source when it is not obvious. The *Systems* section of `context.toml` goes
+  into the prompt of every message: only what every agent always needs goes there (build, test, environment block).
+- **Never** a secret, token, password, connection string, PIN, personal data or customer data. This also applies to
+  the card's content: name, e-mail and national id numbers do not go in.
 
-| Fato | Onde |
+For each fact, the right place:
+
+| Fact | Where |
 |---|---|
-| Repositório, stack, build, teste ou dependência de um sistema | `context.toml`, `[systems.<chave>]` (`repos`, `stack`, `build`, `test`, `depends_on`) |
-| Bloqueio de ambiente e como destravar (clone, restore, flag, ordem de build) | `notes` do sistema, com a data `(conferido em AAAA-MM-DD)` |
-| Pasta vizinha que o código alcança por caminho relativo (HintPath `..\X`) | `worktree_link` do sistema |
-| Como o sistema funciona, onde fica cada coisa, armadilha do código | a nota do sistema (`sistemas/<chave>.md`) ou do componente |
-| Contrato entre dois lados (endpoint, SOAP, enum, evento, chave de configuração compartilhada, serviço externo) | nota de `integracoes/`, ligada aos dois sistemas |
-| Regra de negócio, termo do domínio | nota de `conceitos/` |
-| Como operar o ambiente (host, autenticação, banco, receita de API) | nota de `ambiente/` |
-| Decisão durável da PO, do Tech Lead ou do usuário (com autor e data) | nota de `decisoes/`; se virou regra de trabalho, `policies/` ou `shared/` |
-| O que a demanda foi | a nota da demanda, `demandas/<id>.md` (seção 2.1) |
-| Procedimento que vai se repetir | proponha uma skill do contexto (`skills/<nome>/SKILL.md`) e pergunte antes de criar |
-| Melhoria do próprio AiDW (`aidw.py`, agentes e skills genéricos) | não edite: liste como sugestão no relatório |
+| Repository, stack, build, test or dependency of a system | `context.toml`, `[systems.<key>]` (`repos`, `stack`, `build`, `test`, `depends_on`) |
+| Environment block and how to unblock it (clone, restore, flag, build order) | the system's `notes`, with the date `(checked YYYY-MM-DD)` |
+| A neighboring folder the code reaches by a relative path (HintPath `..\X`) | the system's `worktree_link` |
+| How the system works, where each thing lives, a trap in the code | the system's note (`sistemas/<key>.md`) or the component's |
+| A contract between two sides (endpoint, SOAP, enum, event, shared configuration key, external service) | a note in `integracoes/`, linked to both systems |
+| A business rule, a domain term | a note in `conceitos/` |
+| How to operate the environment (host, authentication, database, API recipe) | a note in `ambiente/` |
+| A durable decision of the PO, the Tech Lead or the user (with author and date) | a note in `decisoes/`; if it became a work rule, `policies/` or `shared/` |
+| What the demand was | the demand's note, `demandas/<id>.md` (section 2.1) |
+| A procedure that will repeat | propose a context skill (`skills/<name>/SKILL.md`) and ask before creating it |
+| An improvement to the AiDW itself (`aidw.py`, generic agents and skills) | do not edit: list it as a suggestion in the report |
 
-Sem base de conhecimento no contexto, as linhas das notas viram `notes` do sistema ou o arquivo de `reference/` do
-tema.
+Without a knowledge base in the context, the note rows become the system's `notes` or the topic's `reference/` file.
 
-### 2.1 A nota da demanda e os links
+### 2.1 The demand's note and the links
 
-Toda demanda fechada ganha `demandas/<id>.md` — desenvolvimento, revisão de PR ou levantamento —, curta (até ~20
-linhas), no formato do `README.md` da base: o que o card pediu (uma linha), o que mudou e onde (`[[sistema]]`,
-arquivos principais), as decisões, o que se aprendeu com o link da nota que recebeu cada fato, a PR. Revisão de PR:
-o que a PR fazia, os achados que importam para o sistema e se a PR foi aprovada. Levantamento: a estimativa e as dúvidas.
+Every closed demand gets `demandas/<id>.md` — development, PR review or survey —, short (up to ~20 lines), in the
+format of the base's `README.md`: what the card asked (one line), what changed and where (`[[system]]`, main files),
+the decisions, what was learned with the link to the note that received each fact, the PR. PR review: what the PR did,
+the findings that matter for the system and whether the PR was approved. Survey: the estimate and the open doubts.
 
-- **Ligue, não copie:** a nota da demanda aponta para as notas que tocou; cada nota atualizada ganha a fonte
-  (`fontes:` com o id da demanda) e `atualizado:` com a data. Um fato novo vai numa nota só; as outras citam com
-  `[[link]]`.
-- **Nota nova** só quando o fato não cabe numa existente: tipo e pasta certos, nome único, `resumo`, `fontes`,
-  `palavras-chave` (nota técnica) e pelo menos um link de ou para outra nota.
-- **Palavras-chave:** quando um fato novo traz um identificador que alguém vai procurar (classe, chave de config, rota,
-  tabela, enum), acrescente-o às `palavras-chave` da nota; ao dividir uma nota grande, cada parte leva as suas.
+- **Link, don't copy:** the demand's note points to the notes it touched; each updated note gets the source
+  (`fontes:` with the demand id) and `atualizado:` with the date. A new fact goes in one note only; the others cite
+  it with `[[link]]`.
+- **A new note** only when the fact does not fit an existing one: right type and folder, unique name, `resumo`,
+  `fontes`, `palavras-chave` (technical note) and at least one link from or to another note.
+- **Keywords:** when a new fact brings an identifier someone will search for (class, config key, route, table, enum),
+  add it to the note's `palavras-chave`; when splitting a large note, each part takes its own.
 
-## 3. Gravar e validar
+## 3. Record and validate
 
-1. Edite os arquivos do contexto. No `context.toml`, preserve os comentários e o estilo das entradas vizinhas.
-2. Se o contexto mudou nada, diga isso e pule para a seção 5.
-3. Com base de conhecimento: `python "{{root}}/aidw.py" kb index` (regenera o mapa) e
-   `python "{{root}}/aidw.py" kb check` — corrija link quebrado, nome repetido, frontmatter e segredo; nota órfã
-   que você criou ganha um link. Nos avisos das notas que você tocou: a que passou de 150 linhas, divida em notas
-   ligadas (uma parte vira integração, componente ou ambiente); a que estava sem conferência há mais de 6 meses e
-   esta demanda conferiu, atualize o `atualizado`. As outras, só liste no relatório.
-4. Rode `python "{{root}}/aidw.py" context check <nome>`. Com erro, corrija e rode de novo. Não faça commit de contexto
-   quebrado.
-5. Regenere e reinstale:
+1. Edit the context's files. In `context.toml`, keep the comments and the style of the neighboring entries.
+2. If the context changed nothing, say so and skip to section 5.
+3. With a knowledge base: `python "{{root}}/aidw.py" kb index` (regenerates the map) and
+   `python "{{root}}/aidw.py" kb check` — fix broken links, repeated names, frontmatter and secrets; an orphan note
+   you created gets a link. In the warnings about the notes you touched: one that passed 150 lines, split into linked
+   notes (a part becomes an integration, component or environment note); one unchecked for more than 6 months that
+   this demand checked, update its `atualizado`. The others, only list in the report.
+4. Run `python "{{root}}/aidw.py" context check <name>`. On error, fix and run again. Do not commit a broken context.
+5. Regenerate and reinstall:
    - `python "{{root}}/aidw.py" apply`;
-   - `python "{{root}}/aidw.py" status --json`: com `claude.installed`, rode `install`; com `codex.installed`, rode
+   - `python "{{root}}/aidw.py" status --json`: with `claude.installed`, run `install`; with `codex.installed`, run
      `install --provider codex`.
 
-## 4. Commit e push do contexto
+## 4. Commit and push the context
 
-- `git -C "<pasta do contexto>" status --short`, depois `git add` **só dos arquivos que você alterou** neste passo.
-  Nunca adicione a pasta de estado das demandas (a `state_dir` do contexto, ex.: `<contexto>/demandas/`), nem arquivo
-  que você não editou. As notas da base (inclusive `<base>/demandas/<id>.md`) entram.
-- Commit com uma mensagem curta: o que foi aprendido e em qual demanda. Termine com a linha de coautoria da sessão.
-- `git -C "<pasta do contexto>" push` na branch atual. Se falhar (sem remoto, sem permissão, branch protegida que exige
-  PR, branch atrás do remoto), mostre a mensagem e pare. Não force, não faça rebase, não crie outra branch para
-  contornar: o usuário decide.
+- `git -C "<context folder>" status --short`, then `git add` **only the files you changed** in this step. Never add the
+  demands' state folder (the context's `state_dir`, e.g. `<context>/demandas/`), nor a file you did not edit. The
+  base's notes (including `<base>/demandas/<id>.md`) go in.
+- Commit with a short message: what was learned and in which demand. End it with the session's co-author line.
+- `git -C "<context folder>" push` on the current branch. If it fails (no remote, no permission, protected branch that
+  requires a PR, branch behind the remote), show the message and stop. Do not force, do not rebase, do not create
+  another branch to get around it: the user decides.
 
-## 5. Fechar a demanda
+## 5. Close the demand
 
-- Com demanda: `python "{{root}}/aidw.py" demand set <id> --status done --note "<uma linha do que foi entregue>"`.
-- Mostre a situação do worktree (`worktree inspect <id>`). Se estiver limpo e publicado, sugira
-  `worktree remove <id>`. Não remova sem o usuário pedir: a branch ou o PR podem ainda estar em revisão.
-- Esta skill também encerra o modo orquestrador desta sessão, como o `exit`: por último, rode
-  `python "{{root}}/aidw.py" session unbind` (no terminal, o hook não recebe o `/aidw:done`).
+- With a demand: `python "{{root}}/aidw.py" demand set <id> --status done --note "<one line of what was delivered>"`.
+- Show the worktree's situation (`worktree inspect <id>`). If it is clean and published, suggest
+  `worktree remove <id>`. Do not remove it unless the user asks: the branch or the PR may still be under review.
+- This skill also ends the orchestrator mode of this session, like `exit`: last, run
+  `python "{{root}}/aidw.py" session unbind` (in the terminal, the hook does not receive `/aidw:done`).
 
-## 6. Relatório
+## 6. Report
 
-- O que entrou no contexto, arquivo por arquivo, uma linha por fato; com base de conhecimento, a nota da demanda e
-  as notas que ela tocou (o usuário vê o grafo abrindo a pasta do contexto no Obsidian).
-- O que você deixou de fora e por quê: não verificado, só desta demanda ou sensível.
-- O commit (hash) e o resultado do push.
-- As sugestões para o AiDW, se houver.
-- Que o plugin foi reinstalado e que as regras novas valem num **chat novo**.
+- What went into the context, file by file, one line per fact; with a knowledge base, the demand's note and the notes
+  it touched (the user sees the graph by opening the context folder in Obsidian).
+- What you left out and why: not verified, only about this demand, or sensitive.
+- The commit (hash) and the push result.
+- The suggestions for the AiDW, if any.
+- That the plugin was reinstalled and that the new rules apply in a **new chat**.

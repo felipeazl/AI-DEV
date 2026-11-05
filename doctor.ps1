@@ -1,6 +1,6 @@
-# Doctor do AiDW no Windows: verifica tudo (Python, Git, Node, Claude, Codex, login, contexto,
-# MCPs, pastas e se o ambiente gerado está em dia) e termina com PRONTO ou NÃO PRONTO.
-# Não altera nada. Para corrigir o que faltar, rode .\setup.ps1
+# AiDW doctor on Windows: checks everything (Python, Git, Node, Claude, Codex, login, context,
+# MCPs, folders and whether the generated environment is up to date) and ends with READY or NOT READY.
+# Changes nothing. To fix what is missing, run .\setup.ps1
 $ErrorActionPreference = 'Stop'
 
 function Find-Python {
@@ -16,7 +16,7 @@ function Find-Python {
 
 $python = Find-Python
 if (-not $python) {
-    Write-Host 'NAO PRONTO - Python 3.11+ nao encontrado. Rode .\setup.ps1 (ele oferece instalar).'
+    Write-Host 'NOT READY - Python 3.11+ not found. Run .\setup.ps1 (it offers to install it).'
     exit 1
 }
 

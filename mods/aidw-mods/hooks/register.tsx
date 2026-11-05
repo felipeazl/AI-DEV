@@ -14,28 +14,30 @@ import {
 import type { AgentDef } from './aidw'
 import type { DemandFile, ExternalStep } from './artifacts'
 import { checkDelegation } from './guards'
+import { parseUiLanguage, setLang, t } from './i18n'
+import { DIR_NAME } from './names'
 import type { Runtime } from './guards'
 import { redact, redactValue } from './secrets'
 import { buildSnapshot, stateNote, wanted } from './snapshot'
 import { Band, Panel, pendingCount, tabHasData, viewFor, viewTitle, visibleTabs } from './views'
 import type { Actions, BandNav, UI, View } from './views'
 
-// Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
-// Ligado só no modo orquestrador: a sessão está no state/sessions.json, que o guard do AiDW grava ao
-// `/aidw:go` e `/aidw:survey` e apaga no `/aidw:exit` e no `/aidw:done`.
+// Session state (what the screen reads lives in $.state; a module reload does not lose it).
+// On only in orchestrator mode: the session is in state/sessions.json, which the AiDW guard writes on
+// `/aidw:go` and `/aidw:survey` and removes on `/aidw:exit` and `/aidw:done`.
 const active = atom({ plugin: 'aidw-mods', key: 'active' } as const, false)
 const snap = atom({ plugin: 'aidw-mods', key: 'snap' } as const, null)
 const running = atom({ plugin: 'aidw-mods', key: 'running' } as const, [])
-// Subagentes em segundo plano: a métrica chega no turn.complete deles, pelo agentId. Fica no estado, e não numa
-// variável do módulo, porque o agente costuma atravessar um `/reload-plugins` ou um `aidw.py install`.
+// Background subagents: the metric arrives on their turn.complete, by agentId. It lives in the state, not in a
+// module variable, because the agent often outlives a `/reload-plugins` or an `aidw.py install`.
 const background = atom({ plugin: 'aidw-mods', key: 'background' } as const, {})
 const hidden = atom({ plugin: 'aidw-mods', key: 'hidden' } as const, false)
 const tabs = atom({ plugin: 'aidw-mods', key: 'tabs' } as const, {})
 const tick = atom({ plugin: 'aidw-mods', key: 'tick' } as const, 0)
 const reviewRound = atom({ plugin: 'aidw-mods', key: 'reviewRound' } as const, 0)
 const usage = atom({ plugin: 'aidw-mods', key: 'usage' } as const, null)
-// O maior contexto visto desde a última mensagem sua: com a faixa ao vivo, o `usage` já mostra o contexto depois da
-// compactação quando a mensagem chega; a queda se mede contra este pico (2026-11-04).
+// The largest context seen since your last message: with the live strip, `usage` already shows the context after
+// compaction when the message arrives; the drop is measured against this peak (2026-11-04).
 const contextPeak = atom({ plugin: 'aidw-mods', key: 'contextPeak' } as const, 0)
 const codeReads = atom({ plugin: 'aidw-mods', key: 'codeReads' } as const, 0)
 const reviewFile = atom({ plugin: 'aidw-mods', key: 'reviewFile' } as const, '')
@@ -44,19 +46,19 @@ const NO_FILTER: ReviewFilter = { severities: [], sources: [], statuses: [], ope
 const reviewFilter = atom({ plugin: 'aidw-mods', key: 'reviewFilter' } as const, NO_FILTER)
 const expanded = atom({ plugin: 'aidw-mods', key: 'expanded' } as const, {})
 
-// Um pane por painel (painel v4), aberto pelo botão da faixa ou pelo comando, nunca sozinho.
+// One pane per panel (panel v4), opened by the strip button or the command, never by itself.
 const COMPACTED_FROM = 40_000
-const PANE: Record<View, string> = { geral: 'aidw-geral', metricas: 'aidw-metricas', decidir: 'aidw-decidir' }
-// Etapas em que um ajuste de teste pode estar aplicado (ou já devia ter saído).
+const PANE: Record<View, string> = { general: 'aidw-general', metrics: 'aidw-metrics', decide: 'aidw-decide' }
+// Steps at which a test adjustment may be applied (or should already be gone).
 const MARK_STEPS = new Set(['TEST', 'TEST_ADJUST', 'MANUAL_TEST', 'PR', 'ORCHESTRATOR_TEST', 'PREPARE_REVIEW', 'REVIEW', 'DOCS', 'FINAL_REVIEW'])
 const CODE_FILE = /\.(cs|ts|tsx|js|jsx|mjs|vue|py|java|kt|go|rs|cpp|c|h|vb|sql|xaml|cshtml|razor|html|scss|css)$/i
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 
 let root = 'C:/AiDW'
 let python = 'python'
-// O uso de cada subagente (turn.step), no estado para atravessar recargas: `last` é a última resposta (o tamanho do
-// contexto no fim, o `totalTokens` do Agent e o `subagent_tokens` da notificação); `sum` soma todas as respostas, o que
-// a API cobra (o custo em US$ da delegação, 2026-11-04).
+// Usage of each subagent (turn.step), in the state to survive reloads: `last` is the last answer (the context size
+// at the end, the Agent's `totalTokens` and the notification's `subagent_tokens`); `sum` adds up all answers, what
+// the API charges (the delegation's US$ cost, 2026-11-04).
 const agentUsage = atom({ plugin: 'aidw-mods', key: 'agentUsage' } as const, {})
 
 async function addUsage($: EngineInterface, id: string, r: TurnUsage): Promise<void> {
@@ -82,7 +84,7 @@ async function addUsage($: EngineInterface, id: string, r: TurnUsage): Promise<v
   })
 }
 
-/** Tira o uso de um subagente do estado e o devolve (undefined quando o mod não viu as respostas dele). */
+/** Takes a subagent's usage out of the state and returns it (undefined when the mod did not see its answers). */
 async function takeUsage($: EngineInterface, id: string | undefined): Promise<{ last: TokenUsage; sum: TokenUsage } | undefined> {
   if (!id) return undefined
   const u = (await read($, agentUsage))[id]
@@ -90,20 +92,42 @@ async function takeUsage($: EngineInterface, id: string | undefined): Promise<{ 
   return u
 }
 
-/** Os argumentos do custo para o `aidw.py record` (vazio quando o mod não viu as respostas do subagente). */
+/** The cost arguments for `aidw.py record` (empty when the mod did not see the subagent's answers). */
 function costArgs(u: TokenUsage | undefined): string[] {
   return u
     ? ['--usage-model', u.model, '--input', String(u.input_tokens), '--cache-write', String(u.cache_creation_input_tokens),
         '--cache-read', String(u.cache_read_input_tokens), '--output', String(u.output_tokens)]
     : []
 }
-// As últimas mensagens do usuário (a trava de `model` confere se ele pediu outro modelo).
+// The user's latest messages (the `model` lock checks whether they asked for another model).
 const userPrompts: string[] = []
 let kbCache: { name: string; folder: string; path: string }[] | null = null
-// A compactação por ociosidade agendada no fim do último turno; uma mensagem nova a cancela.
+// The idle compaction scheduled at the end of the last turn; a new message cancels it.
 let idleTimer: Timer | null = null
-// A compactação ociosa do próprio mod: a nota do estado da demanda vai na próxima mensagem.
+// The mod's own idle compaction: the demand state note goes with the next message.
 let compactedByIdle = false
+
+// UI language: `[ui] language` of the AiDW aidw.config.toml, read once per session (and again on session.start).
+let langSession: string | null = null
+
+/** Sets the UI language from aidw.config.toml (pt* → pt-BR, anything else or nothing → en); cached per session. */
+async function loadLanguage($: EngineInterface, force = false): Promise<void> {
+  let id = ''
+  try {
+    id = await $.session.id()
+  } catch {
+    id = ''
+  }
+  if (!force && langSession === id) return
+  langSession = id
+  let tag: string | null = null
+  try {
+    tag = parseUiLanguage(await $.fs.read(`${root}/aidw.config.toml`))
+  } catch {
+    tag = null // no config: English
+  }
+  setLang(tag)
+}
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 const under = (path: string, dir: string) => norm(path).toLowerCase().startsWith(`${norm(dir).toLowerCase()}/`)
@@ -111,7 +135,7 @@ const under = (path: string, dir: string) => norm(path).toLowerCase().startsWith
 // ---------------------------------------------------------------------------------------------------------------
 // Disco e AiDW
 
-// O runtime.json só muda num `aidw.py apply`: lido de novo no máximo a cada minuto, não a cada refresh (2026-11-04).
+// runtime.json only changes on `aidw.py apply`: read again at most once a minute, not on every refresh (2026-11-04).
 const RUNTIME_TTL = 60_000
 let runtimeCache: { at: number; value: Record<string, unknown> } | null = null
 
@@ -122,7 +146,7 @@ async function runtimeJson($: EngineInterface): Promise<Record<string, unknown>>
   try {
     value = JSON.parse(await $.fs.read(`${root}/.aidw/runtime.json`)) as Record<string, unknown>
   } catch {
-    // sem runtime.json: as travas e o painel ficam no padrão
+    // no runtime.json: the locks and the panel stay at the default
   }
   runtimeCache = { at: now, value }
   return value
@@ -133,16 +157,16 @@ async function stateDir($: EngineInterface): Promise<string | null> {
   return typeof r.state_dir === 'string' ? norm(r.state_dir) : null
 }
 
-/** O nome, o modelo e o effort da variante, para o card do agente na faixa. */
+/** The name, model and effort of the variant, for the agent card in the strip. */
 async function specOf($: EngineInterface, variant: string) {
   const agents = Object.values(((await runtimeJson($)).agents ?? {}) as Record<string, AgentDef>)
   return agentSpec(variant, agents)
 }
 
-/** A tabela de níveis e os agentes ligados, para as travas da delegação. */
+/** The level table and the enabled agents, for the delegation locks. */
 async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
   const r = await runtimeJson($)
-  // sem `variants` (um runtime.json de antes do fluxo v3), a trava fica desligada até o próximo `aidw.py apply`
+  // without `variants` (a runtime.json from before flow v3), the lock is off until the next `aidw.py apply`
   const variants = r.variants as Runtime['variants'] | undefined
   if (!variants) return null
   const on = Object.entries((r.agents ?? {}) as Record<string, { name: string; enabled: boolean }>)
@@ -152,13 +176,13 @@ async function loadRuntime($: EngineInterface): Promise<Runtime | null> {
   return { variants, agents, roles }
 }
 
-// O retrato da pasta no último refresh (nome, tamanho e data de cada arquivo): o relógio compara com ele e só relê a
-// demanda quando algo mudou, mesmo fora das ferramentas (você no editor, outro chat, um script).
+// The folder picture at the last refresh (name, size and date of each file): the clock compares with it and only re-reads
+// the demand when something changed, even outside the tools (you in the editor, another chat, a script).
 let seen: { dir: string; sig: string } | null = null
 const signature = (entries: readonly { name: string; kind: string; size: number; mtimeMs: number }[]) =>
   entries.filter(f => f.kind === 'file').map(f => `${f.name}:${f.size}:${f.mtimeMs}`).sort().join('|')
 
-/** Relê a demanda quando um arquivo da pasta mudou desde o último refresh (o relógio, a cada WATCH_MS). */
+/** Re-reads the demand when a folder file changed since the last refresh (the clock, every WATCH_MS). */
 async function watchDemand($: EngineInterface): Promise<void> {
   if (!(await read($, active))) return
   const dir = (await read($, snap))?.dir
@@ -167,14 +191,14 @@ async function watchDemand($: EngineInterface): Promise<void> {
   if (entries && !(seen?.dir === dir && seen.sig === signature(entries))) await refresh($, dir)
 }
 
-/** Um Write ou Edit (seu ou de um agente) num arquivo da pasta da demanda: a faixa e os painéis mostram na hora. */
+/** A Write or Edit (yours or an agent's) on a demand folder file: the strip and the panels show it right away. */
 async function afterWrite($: EngineInterface, path: string | undefined): Promise<void> {
   if (!path || !(await read($, active))) return
   const dir = (await read($, snap))?.dir
   if (dir && under(path, dir)) await refresh($, dir)
 }
 
-/** Relê a demanda do disco e redesenha a faixa e o painel. */
+/** Re-reads the demand from disk and redraws the strip and the panel. */
 async function refresh($: EngineInterface, dir?: string): Promise<void> {
   const target = dir ? norm(dir) : (await read($, snap))?.dir
   if (!target) return
@@ -192,7 +216,7 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
   const r = await runtimeJson($)
   const externalSteps = Array.isArray(r.external_steps) ? (r.external_steps as ExternalStep[]) : []
   const next = buildSnapshot({ dir: target, demand, files, texts, externalSteps })
-  if (next.kind === 'desenvolvimento' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
+  if (next.kind === 'development' && MARK_STEPS.has(next.step)) next.testMarks = await testMarks($, next)
   const before = await read($, snap)
   await update($, snap, () => next)
   if (before?.id !== next.id) {
@@ -203,17 +227,17 @@ async function refresh($: EngineInterface, dir?: string): Promise<void> {
   }
 }
 
-/** Diz no status quantos segredos o filtro ocultou (só o nome, nunca o valor). */
+/** Says in the status how many secrets the filter hid (only the name, never the value). */
 function hidSecrets($: EngineInterface, hits: string[]) {
-  $.ui.status(`AiDW: ${hits.length} segredo(s) ocultado(s) na conversa (${hits.slice(0, 3).join(', ')})`)
+  $.ui.status(t('msg.secretsHidden', { n: hits.length, names: hits.slice(0, 3).join(', ') }))
 }
 
 /**
- * Depois de uma compactação, o estado da demanda volta junto da próxima mensagem sua. Não pelo session.compact nem
- * pelo SessionStart: um plugin de segurança da organização, quando instalado, passa os dois adiante sem chamar os
- * plugins do usuário; o prompt.submit chega aqui. A compactação se vê pela do próprio mod ou pelo contexto que caiu
- * para menos da metade (a partir de COMPACTED_FROM tokens); uma seção fixa no prompt de sistema mudaria a cada etapa
- * e regravaria o cache da conversa inteira.
+ * After a compaction, the demand state comes back with your next message. Not through session.compact nor
+ * SessionStart: an organization security plugin, when installed, passes both along without calling the
+ * user's plugins; prompt.submit does reach here. Compaction is seen by the mod's own or by the context dropping
+ * below half (from COMPACTED_FROM tokens); a fixed section in the system prompt would change at every step
+ * and rewrite the cache of the whole conversation.
  */
 async function stateAfterCompaction($: EngineInterface): Promise<string[]> {
   const before = Math.max(await read($, contextPeak), (await read($, usage))?.tokens ?? 0)
@@ -227,11 +251,11 @@ async function stateAfterCompaction($: EngineInterface): Promise<string[]> {
   return s ? [stateNote(s)] : []
 }
 
-// O git grep das marcas roda no máximo a cada MARKS_TTL por demanda e etapa; uma delegação que termina o refaz.
+// The marks git grep runs at most once per MARKS_TTL per demand and step; a delegation that ends redoes it.
 const MARKS_TTL = 30_000
 let marksCache: { key: string; at: number; value: Record<string, number> } | null = null
 
-/** As marcas AIDW-TESTE de cada worktree: ajustes de teste que ainda precisam sair antes do commit da PR. */
+/** The AIDW-TESTE marks of each worktree: test adjustments that still have to go before the PR commit. */
 async function testMarks($: EngineInterface, s: Snapshot): Promise<Record<string, number>> {
   const key = `${s.dir}|${s.step}`
   const now = await $.clock.now()
@@ -250,7 +274,7 @@ async function testMarks($: EngineInterface, s: Snapshot): Promise<Record<string
   return out
 }
 
-/** A demanda da pasta da sessão: o primeiro trecho do caminho que é uma demanda do contexto ativo. */
+/** The demand of the session folder: the first path segment that is a demand of the active context. */
 async function fromCwd($: EngineInterface, cwd: string): Promise<string | null> {
   const dir = await stateDir($)
   if (!dir) return null
@@ -261,9 +285,9 @@ async function fromCwd($: EngineInterface, cwd: string): Promise<string | null> 
 }
 
 /**
- * Confere se esta sessão está no modo orquestrador e qual demanda ela conduz (os painéis só abrem pelo botão ou
- * comando). A demanda é a pasta que o registro da sessão traz (`aidw.py session bind` ou `demand set`, em qualquer
- * contexto e plataforma); sem ela, a pasta do chat quando ele abriu na demanda ou num worktree dela.
+ * Checks whether this session is in orchestrator mode and which demand it drives (the panels only open by the button or
+ * command). The demand is the folder the session record carries (`aidw.py session bind` or `demand set`, in any
+ * context and platform); without it, the chat folder when it opened in the demand or in one of its worktrees.
  */
 async function checkActive($: EngineInterface): Promise<boolean> {
   let on = false
@@ -289,30 +313,31 @@ async function checkActive($: EngineInterface): Promise<boolean> {
   return on
 }
 
-/** O painel vale em todo contexto, menos no que o desliga (`[mods] panel = false`); a faixa e o resto do mod, sempre. */
+/** The panel applies in every context except one that turns it off (`[mods] panel = false`); the strip and the rest of the mod, always. */
 async function panelOn($: EngineInterface): Promise<boolean> {
   return (await runtimeJson($)).panel !== false
 }
 
-/** Abre um painel; devolve o motivo quando ele não coube na janela. */
+/** Opens a panel; returns the reason when it did not fit in the window. */
 async function openPanel($: EngineInterface, view: View): Promise<string | null> {
   const s = await read($, snap)
-  const opened = await $.ui.open({ id: PANE[view], title: `AiDW · ${viewTitle(view, s?.kind ?? 'desenvolvimento')}` })
-  return opened.isPlaced ? null : (opened.reason ?? 'sem espaço')
+  const opened = await $.ui.open({ id: PANE[view], title: `AiDW · ${viewTitle(view, s?.kind ?? 'development')}` })
+  return opened.isPlaced ? null : (opened.reason ?? t('msg.noRoom'))
 }
 
-/** `/panel [aba]`, `/metrics`, `/review-tests`: abre o painel (e a aba pedida) e diz o que aconteceu. */
+/** `/panel [tab]`, `/metrics`, `/review-tests`: opens the panel (and the requested tab) and says what happened. */
 async function openFromCommand($: EngineInterface, arg: string): Promise<{ text: string }> {
-  if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
+  await loadLanguage($)
+  if (!(await panelOn($))) return { text: t('msg.panelOff') }
   const s = await read($, snap)
-  if (!s) return { text: 'AiDW: nenhuma demanda nesta sessão (chame /aidw:go).' }
+  if (!s) return { text: t('msg.noDemand') }
   const { view, tab } = viewFor(s.kind, arg.trim().toLowerCase())
   if (tab) await update($, tabs, x => ({ ...x, [view]: tab }))
   const missing = await openPanel($, view)
-  return { text: missing ? `AiDW: o painel não coube (${missing}); alargue a janela.` : `AiDW: painel ${viewTitle(view, s.kind)} aberto (${s.id}).` }
+  return { text: missing ? t('msg.panelNoRoom', { why: missing }) : t('msg.panelOpened', { view: viewTitle(view, s.kind), id: s.id }) }
 }
 
-/** `aidw.py demand set <id> --step X`: a etapa mudou (ou a demanda é outra). */
+/** `aidw.py demand set <id> --step X`: the step changed (or the demand is another one). */
 async function afterShell($: EngineInterface, command: string): Promise<void> {
   const id = demandSetId(command)
   if (!id) return
@@ -322,7 +347,7 @@ async function afterShell($: EngineInterface, command: string): Promise<void> {
 
 const RECORDED = '\u0000gravado'
 
-/** Grava a linha no metricas.md pelo próprio `aidw.py record` e devolve o header + resumo que ele imprime. */
+/** Writes the line to the metrics file through `aidw.py record` itself and returns the header + summary it prints. */
 async function record(
   $: EngineInterface,
   p: Pending,
@@ -344,39 +369,34 @@ async function record(
     const ran = await $.process.run(argv, { cwd: root, timeoutMs: 60_000 })
     marksCache = null
     await refresh($, p.demand)
-    // a última linha JSON da saída: um aviso impresso antes não quebra o registro (2026-11-04)
+    // the last JSON line of the output: a warning printed before it does not break the record (2026-11-04)
     const line = ran.stdout.split(/\r?\n/).reverse().find(l => l.trimStart().startsWith('{'))
     const out = (line ? JSON.parse(line) : {}) as { header?: string; resumo?: string; error?: string }
     if (out.header) return `${out.header}\n${out.resumo ?? ''}`
-    // gravou (código 0) mas sem o header: não peça ao orquestrador para registrar de novo (a linha duplicaria)
+    // written (code 0) but without the header: do not ask the orchestrator to record again (the line would duplicate)
     return ran.exitCode === 0 && !out.error ? RECORDED : null
   } catch {
     return null
   }
 }
 
-/** Os quatro números de uma resposta somados: o contexto que ela leu mais o que escreveu. */
+/** The four numbers of an answer summed: the context it read plus what it wrote. */
 const totalTokens = (u: TokenUsage) => u.input_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens + u.output_tokens
 
-/** Quantas ferramentas o agente chamou: os tool_use do transcript dele, como o `tool_uses` da notificação. */
+/** How many tools the agent called: the tool_use blocks of its transcript, like the notification's `tool_uses`. */
 async function toolUses($: EngineInterface, agentId: string): Promise<number> {
   const found = await $.session.messages({ agentId }).catch(() => null)
   return Array.isArray(found) ? found.reduce((n, m) => n + (m.role === 'assistant' ? m.toolUses.length : 0), 0) : 0
 }
 
 function notice(header: string | null, p: Pending): string {
-  if (header === RECORDED) {
-    return `AiDW: delegação registrada no metricas.md pelo mod aidw-mods (${p.label}), sem o header; não rode \`aidw.py record\` para ela.`
-  }
-  return header
-    ? 'AiDW: delegação registrada no metricas.md pelo mod aidw-mods (não rode `aidw.py record` para ela). ' +
-        `Abra o resultado com estas duas linhas, ao pé da letra:\n${header}`
-    : `AiDW: o mod aidw-mods não conseguiu registrar esta delegação (${p.label}); rode \`aidw.py record\` você mesmo.`
+  if (header === RECORDED) return t('notice.recordedNoHeader', { label: p.label })
+  return header ? t('notice.recorded', { header }) : t('notice.failed', { label: p.label })
 }
 
 /**
- * Grava o contexto e as janelas de uso do plano (5h, 7d) para a faixa, só quando algo que ela mostra mudou (o % ou o
- * milhar de tokens, uma janela): cada gravação a redesenha. Devolve os tokens do contexto.
+ * Stores the context and the plan usage windows (5h, 7d) for the strip, only when something it shows changed (the % or the
+ * thousand of tokens, a window): each write redraws it. Returns the context tokens.
  */
 async function setUsage($: EngineInterface, u: { context: SessionContextUsage; rateLimits?: readonly SessionRateLimit[] }): Promise<number> {
   const tokens = u.context.tokens ?? 0
@@ -392,16 +412,16 @@ async function setUsage($: EngineInterface, u: { context: SessionContextUsage; r
   return tokens
 }
 
-/** O contexto (em tokens) e as janelas de uso do plano (5h, 7d) para a faixa, lidos agora. */
+/** The context (in tokens) and the plan usage windows (5h, 7d) for the strip, read now. */
 async function measure($: EngineInterface): Promise<number | null> {
   try {
     return await setUsage($, await $.session.usage())
   } catch {
-    return null // sem uso medido nesta superfície
+    return null // no usage measured on this surface
   }
 }
 
-/** Soma o turno do chat principal ao metricas-orquestrador.md da demanda (`aidw.py record-orchestrator`). */
+/** Adds the main chat turn to the demand's orchestrator metrics file (`aidw.py record-orchestrator`). */
 async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: number): Promise<void> {
   const argv = [
     python, `${root}/aidw.py`, 'record-orchestrator', '--demand', s.dir, '--session', await $.session.id(),
@@ -413,8 +433,8 @@ async function recordTurn($: EngineInterface, s: Snapshot, u: TurnUsage, ms: num
 }
 
 /**
- * Compacta a conversa parada há IDLE_MS (o agendamento do fim do turno; uma mensagem nova o cancela). Mede de novo:
- * abaixo de IDLE_MIN não compensa.
+ * Compacts the conversation idle for IDLE_MS (scheduled at the end of the turn; a new message cancels it). Measures
+ * again: below IDLE_MIN it is not worth it.
  */
 async function compactIdle($: EngineInterface): Promise<void> {
   idleTimer = null
@@ -424,21 +444,17 @@ async function compactIdle($: EngineInterface): Promise<void> {
   const s = await read($, snap)
   try {
     const r = await $.session.compact({
-      instructions:
-        'Compactação do AiDW depois de um tempo parado' + (s ? `, na etapa ${s.step} da demanda ${s.id}` : '') + '. ' +
-        'Mantenha o que está com o usuário (a pergunta, a aprovação ou o pacote, com as opções e a recomendação), a ' +
-        'próxima ação, os agentes em andamento (o que cada um faz e o arquivo da tarefa) e as decisões ainda não ' +
-        'gravadas; o resto está nos arquivos da pasta da demanda.',
+      instructions: t('compact.instructions', { where: s ? t('compact.where', { step: s.step, id: s.id }) : '' }),
     })
     if (r.skip !== undefined) return
     compactedByIdle = true
     await measure($)
   } catch {
-    // um turno começou antes: a compactação fica para a próxima pausa
+    // a turn started before: the compaction waits for the next pause
   }
 }
 
-/** O fim de um turno do orquestrador: métrica do turno, contexto e a compactação por ociosidade. */
+/** The end of an orchestrator turn: turn metric, context and idle compaction. */
 async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs: number }): Promise<void> {
   await refresh($)
   const before = await read($, snap)
@@ -452,11 +468,19 @@ async function endOfTurn($: EngineInterface, e: { usage?: TurnUsage; durationMs:
   idleTimer = $.clock.after(IDLE_MS, () => void compactIdle($))
 }
 
-/** As notas da base de conhecimento do contexto ativo (para `[[nota]]` no prompt). */
+/** The knowledge base notes of the active context (for `[[note]]` in the prompt). */
 async function kbNotes($: EngineInterface): Promise<{ name: string; folder: string; path: string }[]> {
   if (kbCache) return kbCache
   const r = await runtimeJson($)
-  const base = `${root}/contexts/${String(r.context ?? '')}/conhecimento`
+  const ctx = `${root}/contexts/${String(r.context ?? '')}`
+  // the knowledge folder: `knowledge/` (new) or `conhecimento/` (old)
+  let base = `${ctx}/${DIR_NAME.knowledge[0]}`
+  for (const name of DIR_NAME.knowledge) {
+    if (await $.fs.exists(`${ctx}/${name}`).catch(() => false)) {
+      base = `${ctx}/${name}`
+      break
+    }
+  }
   const out: { name: string; folder: string; path: string }[] = []
   for (const dir of await $.fs.list(base).catch(() => [])) {
     if (dir.kind !== 'dir') continue
@@ -470,7 +494,7 @@ async function kbNotes($: EngineInterface): Promise<{ name: string; folder: stri
   return out
 }
 
-/** O texto das notas citadas como `[[nome]]`, para ir junto da mensagem. */
+/** The text of the notes cited as `[[name]]`, to go with the message. */
 async function kbContext($: EngineInterface, text: string): Promise<string[]> {
   const names = [...new Set([...text.matchAll(/\[\[([a-z0-9][\w-]*)\]\]/gi)].map(m => (m[1] ?? '').toLowerCase()))].slice(0, 3)
   if (!names.length) return []
@@ -480,24 +504,20 @@ async function kbContext($: EngineInterface, text: string): Promise<string[]> {
     const note = notes.find(n => n.name.toLowerCase() === name)
     if (!note) continue
     const body = await $.fs.read(note.path).catch(() => '')
-    if (body) out.push(`Nota [[${note.name}]] da base de conhecimento (${note.path}):\n${body.slice(0, 6000)}`)
+    if (body) out.push(t('kb.note', { name: note.name, path: note.path, body: body.slice(0, 6000) }))
   }
   return out
 }
 
-/** O código que o orquestrador leu no próprio chat (fora da pasta do AiDW): conta e devolve o aviso. */
+/** The code the orchestrator read in its own chat (outside the AiDW folder): counts it and returns the warning. */
 async function codeRead($: EngineInterface, path: string): Promise<string | null> {
   if (!path || under(path, root) || !CODE_FILE.test(path)) return null
   const n = (await read($, codeReads)) + 1
   await update($, codeReads, () => n)
-  return (
-    `AiDW: o orquestrador leu código no próprio chat (${n}ª vez nesta sessão). Esse texto fica no contexto até o ` +
-    'fim da demanda: para planejar ou entender, delegue ao explorador. Se é uma verificação pontual de premissa ' +
-    '(skill verificar-premissa), siga.'
-  )
+  return t('codeRead.warn', { n })
 }
 
-/** Anda o relógio do painel enquanto há agente rodando. */
+/** Moves the panel clock while an agent is running. */
 async function tickRunning($: EngineInterface): Promise<void> {
   if ((await read($, running)).length) await update($, tick, n => n + 1)
 }
@@ -509,21 +529,22 @@ export const register: Register = (on, options) => {
   python = String(options.python ?? 'python')
 
   on('session.start', async ($, e, next) => {
+    await loadLanguage($, true)
     await checkActive($)
     const panel = await panelOn($)
     for (const command of [
-      { name: 'strip', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
+      { name: 'strip', description: t('cmd.strip') },
       ...(panel
         ? [
-            { name: 'panel', description: 'Abre o painel Geral da demanda do AiDW (ou o painel da aba pedida)', argumentHint: '[aba]' },
-            { name: 'metrics', description: 'Abre o painel de métricas da demanda do AiDW' },
-            { name: 'review-tests', description: 'Abre o painel Testes e Review (Dúvidas no levantamento): achados, roteiro, comentários de PR' },
+            { name: 'panel', description: t('cmd.panel'), argumentHint: t('cmd.panelArg') },
+            { name: 'metrics', description: t('cmd.metrics') },
+            { name: 'review-tests', description: t('cmd.reviewTests') },
           ]
         : []),
     ]) {
       await $.command.register(command).catch(() => undefined)
     }
-    // a cada 5 s: o tempo dos agentes rodando anda, e a demanda é relida se um arquivo da pasta mudou
+    // every 5 s: the running agents' time moves, and the demand is re-read if a folder file changed
     $.clock.every(5_000, () => {
       void tickRunning($)
       void watchDemand($)
@@ -539,6 +560,7 @@ export const register: Register = (on, options) => {
       if (userPrompts.length > 8) userPrompts.shift()
     }
     const isOn = await read($, active)
+    if (isOn) await loadLanguage($)
     const notes = isOn ? [...(await stateAfterCompaction($)), ...(await kbContext($, e.text))] : []
     const ran = await next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
     await checkActive($)
@@ -548,18 +570,20 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'strip' }, async $ => {
     const now = !(await read($, hidden))
     await update($, hidden, () => now)
-    return { text: now ? 'Faixa do AiDW escondida.' : 'Faixa do AiDW visível.' }
+    await loadLanguage($)
+    return { text: now ? t('msg.stripHidden') : t('msg.stripVisible') }
   })
 
   on('command.run', { command: 'panel' }, ($, e) => openFromCommand($, e.args))
-  on('command.run', { command: 'metrics' }, $ => openFromCommand($, 'metricas'))
-  on('command.run', { command: 'review-tests' }, $ => openFromCommand($, 'decidir'))
+  on('command.run', { command: 'metrics' }, $ => openFromCommand($, 'metrics'))
+  on('command.run', { command: 'review-tests' }, $ => openFromCommand($, 'decide'))
 
-  // Travas da delegação e registro da métrica.
+  // Delegation locks and metric recording.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const d = parseDelegation(e.prompt)
     const isOn = await read($, active)
     if (isOn) {
+      await loadLanguage($)
       const rt = await loadRuntime($)
       if (rt) {
         const why = checkDelegation({
@@ -603,7 +627,7 @@ export const register: Register = (on, options) => {
     return { ...ran, context: [...(ran.context ?? []), notice(header, p)] }
   })
 
-  // O id do subagente de cada Agent: os passos dele levam esse id, e o card da faixa soma os tokens por ele.
+  // The subagent id of each Agent: its steps carry that id, and the strip card sums the tokens by it.
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
     if ('agentId' in r && r.agentId) {
@@ -613,13 +637,13 @@ export const register: Register = (on, options) => {
     return r
   })
 
-  // O contexto e as janelas do plano, empurrados pelo engine quando mudam (inclusive no meio do turno).
+  // The context and the plan windows, pushed by the engine when they change (even mid-turn).
   on('session.measure', async ($, e, next) => {
     if (await read($, active)) await setUsage($, e)
     return next(e)
   })
 
-  // Um arquivo da pasta da demanda gravado por você ou por um agente: a faixa e os painéis mostram na hora.
+  // A demand folder file written by you or by an agent: the strip and the panels show it right away.
   on('tool.call', { tool: 'Write' }, async ($, e, next) => {
     const ran = await next(e)
     if (ran.deny === undefined && !ran.isError) await afterWrite($, e.file_path)
@@ -632,8 +656,8 @@ export const register: Register = (on, options) => {
     return ran
   })
 
-  // O uso de cada resposta de um subagente: o registro em segundo plano grava o da última; o card mostra os tokens.
-  // Do chat principal, o contexto da faixa anda a cada resposta, sem esperar o fim do turno.
+  // The usage of each subagent answer: the background record writes the last one's; the card shows the tokens.
+  // For the main chat, the strip context moves at every answer, without waiting for the end of the turn.
   on('turn.step', async function* ($, e, next) {
     const r = yield* next(e)
     const id = e.agentId
@@ -648,7 +672,7 @@ export const register: Register = (on, options) => {
     return r
   })
 
-  // Economia: o orquestrador lendo código no próprio chat.
+  // Savings: the orchestrator reading code in its own chat.
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const ran = await next(e)
     if (ran.deny !== undefined || e.agentId || !(await read($, active))) return ran
@@ -674,6 +698,7 @@ export const register: Register = (on, options) => {
     const last = used?.last
     const p = id ? (await read($, background))[id] : undefined
     if (id && p) {
+      await loadLanguage($)
       await update($, background, b => Object.fromEntries(Object.entries(b).filter(([k]) => k !== id)))
       await update($, running, list => list.filter(r => r.key !== id))
       const state = parseState(e.answer)
@@ -687,15 +712,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // Filtro de segredos: o resultado de cada ferramenta (do orquestrador ou dos agentes) é filtrado antes de virar
-  // linha da conversa. Não há hook de session.append: um plugin de segurança da organização, quando instalado,
-  // roda antes e o pulava, e o app avisava disso a cada sessão (removido em 2026-11-04).
+  // Secrets filter: the result of each tool (the orchestrator's or the agents') is filtered before it becomes a
+  // conversation line. There is no session.append hook: an organization security plugin, when installed,
+  // ran before and skipped it, and the app warned about it on every session (removed on 2026-11-04).
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    // um negado fica como está; o resto vai como resultado próprio (o core o mapeia de novo)
+    // a denied one stays as is; the rest goes as its own result (the core maps it again)
     if (ran.deny !== undefined || !(await read($, active))) return ran
     if (ran.isError) {
-      // o erro também leva segredo (uma connection string numa exceção): volta como erro, com o texto filtrado
+      // the error also carries secrets (a connection string in an exception): it comes back as an error, with the text filtered
       const r = redact(ran.text ?? (typeof ran.result === 'string' ? ran.result : ''))
       if (!r.hits.length) return ran
       hidSecrets($, r.hits)
@@ -714,12 +739,13 @@ export const register: Register = (on, options) => {
     }
     const ui = $.ui.resolve(e) as unknown as UI
     await read($, tick)
+    await loadLanguage($)
     const nav: BandNav | undefined = (await panelOn($))
       ? {
           open: view => void openPanel($, view),
-          canDecide: visibleTabs(s, 'decidir').length > 0,
+          canDecide: visibleTabs(s, 'decide').length > 0,
           pending: pendingCount({ snap: s, reviewFile: await read($, reviewFile) }),
-          hasMetrics: tabHasData(s, 'metricas'),
+          hasMetrics: tabHasData(s, 'metrics'),
         }
       : undefined
     return Band(ui, s, await read($, running), await read($, usage), await $.clock.now(), nav,
@@ -729,21 +755,23 @@ export const register: Register = (on, options) => {
   for (const view of Object.keys(PANE) as View[]) on('ui.render', { component: 'Pane', requestId: PANE[view] }, async ($, e) => {
     const ui = $.ui.resolve(e) as unknown as UI
     const s = await read($, snap)
+    await loadLanguage($)
     if (!(await panelOn($))) {
       const { Text } = ui
-      return <Text dimColor>O painel do AiDW está desligado neste contexto.</Text>
+      return <Text dimColor>{t('msg.paneOff')}</Text>
     }
     if (!s) {
       const { Text } = ui
-      return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:survey.</Text>
+      return <Text dimColor>{t('msg.paneNoDemand')}</Text>
     }
+
     await read($, tick)
     const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])
     const act: Actions = {
-      tab: t => void update($, tabs, x => ({ ...x, [view]: t })),
+      tab: id => void update($, tabs, x => ({ ...x, [view]: id })),
       refresh: () => void refresh($),
       reviewFile: f => void update($, reviewFile, () => f),
-      decisionTab: t => void update($, decisionTab, () => t),
+      decisionTab: id => void update($, decisionTab, () => id),
       toggleFilter: (kind, value) => void update($, reviewFilter, f => ({ ...f, [kind]: toggle(f[kind], value) })),
       toggleFilters: () => void update($, reviewFilter, f => ({ ...f, open: !f.open })),
       expand: key => void update($, expanded, x => ({ ...x, [key]: !x[key] })),

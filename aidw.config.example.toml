@@ -1,36 +1,42 @@
-# Exemplo de configuração do AiDW (genérico, sem contexto). Cada máquina tem o seu aidw.config.toml, que
-# NÃO é versionado: o `setup` cria pelo wizard (ou copie este arquivo e ajuste).
-# Pode editar à mão; depois rode `python aidw.py apply` e abra um chat novo.
-# Atenção: `configure` reescreve este arquivo (comentários próprios são perdidos).
+# Example AiDW configuration (generic, no context). Each machine has its own aidw.config.toml, which is
+# NOT versioned: `setup` creates it through the wizard (or copy this file and adjust it).
+# You may edit it by hand; then run `python aidw.py apply` and open a new chat.
+# Note: `configure` rewrites this file (your own comments are lost).
 
 [provider]
-# "claude" = tudo no Claude Code · "codex" = tudo no Codex CLI. Um provedor por vez.
+# "claude" = everything on Claude Code · "codex" = everything on Codex CLI. One provider at a time.
 name = "claude"
 
+# [ui]
+# language: BCP-47 tag (e.g. "en", "pt-BR"); default "en". The language the orchestrator chat uses with the user.
+# A context's own `language` (top level of contexts/<name>/context.toml) inherits this one when absent; it is the
+# language of the context's content and of the demand artifacts' content. File names are always English.
+# language = "en"
+
 [delegation]
-# "native"   = subagentes nativos do provedor (Claude: ferramenta Agent; Codex: spawn_agent)
-# "headless" = um processo do CLI por tarefa, via `python aidw.py delegate`
+# "native"   = the provider's native subagents (Claude: Agent tool; Codex: spawn_agent)
+# "headless" = one CLI process per task, via `python aidw.py delegate`
 mode = "native"
 
 [workspace]
-# Pastas dos seus projetos. Liberadas para o orquestrador e todos os agentes.
+# Your project folders. Allowed for the orchestrator and every agent.
 project_dirs = []
 
 [worktree]
-# Onde ficam os worktrees das demandas (<raiz>/<id>/<repo>). Curta e fora de qualquer repositório.
+# Where the demands' worktrees live (<root>/<id>/<repo>). Short and outside any repository.
 root = "C:/wt"
 
 [mcp]
-# Servidores de config/mcp.toml registrados no projeto. O orquestrador decide quando usar.
+# Servers from config/mcp.toml registered in the project. The orchestrator decides when to use them.
 enabled = ["playwright", "chrome-devtools", "figma", "context7"]
 
 [context]
-# Pacote de regras de trabalho em contexts/<nome>/ ("" = nenhum).
+# Package of working rules in contexts/<name>/ ("" = none).
 active = ""
 
 [policies]
-# deny = bloqueado sempre · ask = sempre pede confirmação (vence qualquer allow).
-# Sintaxe do Claude Code; no Codex, as regras de comando viram .codex/rules/aidw.rules.
+# deny = always blocked · ask = always asks for confirmation (wins over any allow).
+# Claude Code syntax; on Codex, the command rules become .codex/rules/aidw.rules.
 deny = [
     "Bash(git push --force *)",
     "Bash(git push -f *)",
@@ -46,68 +52,68 @@ deny = [
 ask = [
 ]
 
-# [agents.<papel>] — o papel é fixo. Opcionais:
-#   name   nome do agente (aceita acento e espaço; sem ele, vale o padrão comentado)
-#   model  chave de config/models.toml do provedor; sem ele, vale o tier padrão do papel
-#          (Opus/top no orquestrador; Sonnet/mid no planejador, codificador, revisor e qa;
-#           Haiku/fast no explorador e no documentador). Modelo de outro provedor vira o equivalente.
-#   effort effort padrão do agente; as exceções permitidas ficam em [effort.variants] do routing.toml.
-# Fluxo v3 (2026-10-23): sem níveis de demanda; os agentes api, bugs e segurança saíram (o explorador e o qa
-# fazem as consultas do api; o revisor revisa qualidade, bugs e segurança numa passada).
+# [agents.<role>] — the role is fixed. Optional:
+#   name   the agent's name (accents and spaces allowed; without it, the commented default applies)
+#   model  key from config/models.toml for the provider; without it, the role's default tier applies
+#          (Opus/top for the orchestrator; Sonnet/mid for the planner, coder, reviewer and qa;
+#           Haiku/fast for the explorer and the documenter). A model from another provider becomes the equivalent.
+#   effort the agent's default effort; the allowed exceptions live in [effort.variants] of routing.toml.
+# Flow v3 (2026-10-23): no demand levels; the api, bugs and security agents were removed (the explorer and the qa
+# make the api's queries; the reviewer reviews quality, bugs and security in one pass).
 
 [agents.orchestrator]
-# name = "orquestrador"
-# O chat aberto; o effort é a recomendação para o chat (o modelo é o que você escolhe nele).
+# name = "orchestrator"
+# The open chat; the effort is the recommendation for the chat (the model is the one you pick in it).
 enabled = true
 effort = "medium"
-skills = ["to-spec", "verificar-premissa", "preparar-worktree"]
+skills = ["to-spec", "verify-premise", "prepare-worktree"]
 
-# Para desligar um agente: enabled = false (o orquestrador faz a etapa dele ou a pula).
+# To turn an agent off: enabled = false (the orchestrator does its step or skips it).
 [agents.planner]
-# name = "planejador"
-# O plano SDD (simples e autossuficiente para o codificador) e o ajuste dele, num contexto novo.
+# name = "planner"
+# The SDD plan (simple and self-contained for the coder) and its adjustment, in a fresh context.
 model = "sonnet"
 enabled = true
 effort = "high"
-skills = ["to-spec", "verificar-premissa"]
+skills = ["to-spec", "verify-premise"]
 preload = ["to-spec"]
 
 [agents.explorer]
-# name = "explorador"
-# Código com arquivo:linha, contratos, ids e SELECT pelo validador. Haiku (sem effort); Sonnet só nas exceções.
+# name = "explorer"
+# Code with file:line, contracts, ids and SELECT through the validator. Haiku (no effort); Sonnet only in the exceptions.
 model = "haiku"
 enabled = true
 effort = "low"
 skills = ["database-safe"]
 
 [agents.coder]
-# name = "codificador"
+# name = "coder"
 model = "sonnet"
 enabled = true
 effort = "high"
-skills = ["preparar-worktree"]
+skills = ["prepare-worktree"]
 
 [agents.reviewer]
-# name = "revisor"
-# Qualidade, bugs e segurança numa passada; medium/low só na re-revisão das correções.
+# name = "reviewer"
+# Quality, bugs and security in one pass; medium/low only when re-reviewing the fixes.
 model = "sonnet"
 enabled = true
 effort = "high"
-skills = ["code-review", "verificar-premissa"]
+skills = ["code-review", "verify-premise"]
 preload = ["code-review"]
 
 [agents.qa]
 # name = "qa"
-# Roteiro e massa em paralelo com o codificador; depois da sua revisão, o teste (API e navegador sozinho, o resto
-# com você).
+# Test script and test data in parallel with the coder; after your review, the test (API and browser on its own,
+# the rest with you).
 model = "sonnet"
 enabled = true
 effort = "medium"
 skills = ["database-safe"]
 
 [agents.documenter]
-# name = "documentador"
-# As Tasks no board e o texto da PR.
+# name = "documenter"
+# The Tasks on the board and the PR text.
 model = "haiku"
 enabled = true
 effort = "medium"

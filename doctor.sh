@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Doctor do AiDW no Linux/macOS: verifica tudo (Python, Git, Node, Claude, Codex, login, contexto,
-# MCPs, pastas e se o ambiente gerado está em dia) e termina com PRONTO ou NÃO PRONTO.
-# Não altera nada. Para corrigir o que faltar, rode ./setup.sh
+# AiDW doctor on Linux/macOS: checks everything (Python, Git, Node, Claude, Codex, login, context,
+# MCPs, folders and whether the generated environment is up to date) and ends with READY or NOT READY.
+# Changes nothing. To fix what is missing, run ./setup.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -12,5 +12,5 @@ for candidate in python3 python; do
         exec "$candidate" aidw.py doctor
     fi
 done
-echo "NÃO PRONTO — Python 3.11+ não encontrado. Rode ./setup.sh"
+echo "NOT READY — Python 3.11+ not found. Run ./setup.sh"
 exit 1

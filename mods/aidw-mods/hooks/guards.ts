@@ -1,14 +1,14 @@
-// Travas da delegação: as regras do orquestrador que o modelo pode esquecer, conferidas antes do `Agent` rodar.
-// Puro (sem `$`): o register.tsx monta o `DelegationCheck` com o runtime.json, a demanda e a conversa.
+// Delegation locks: the orchestrator rules the model may forget, checked before the `Agent` runs.
+// Pure (no `$`): register.tsx builds the `DelegationCheck` from runtime.json, the demand and the conversation.
 
 import type { DemandKind } from '../types'
 
 export type Runtime = {
-  /** {agente: [subagent_type permitidos]} — o padrão e as exceções da tabela Agents and effort (fluxo v3). */
+  /** {agent: [allowed subagent_type]} — the default and the exceptions of the Agents and effort table. */
   variants: Record<string, string[]>
-  /** Nomes dos agentes ligados (planejador, codificador…), como o aidw.config.toml os chama. */
+  /** Names of the enabled agents (planner, coder…), as aidw.config.toml calls them. */
   agents: string[]
-  /** O papel de cada agente ligado ({codificador: 'coder'}): o nome é configurável, o papel não. */
+  /** The role of each enabled agent ({coder: 'coder'}): the name is configurable, the role is not. */
   roles: Record<string, string>
 }
 
@@ -17,16 +17,20 @@ export type DelegationCheck = {
   prompt: string
   model?: string
   runtime: Runtime
-  /** As últimas mensagens do usuário nesta sessão (a mais nova por último). */
+  /** The user's latest messages in this session (newest last). */
   userPrompts: string[]
 }
+
+import { t } from './i18n'
+import { TERM } from './names'
 
 export type { DemandKind }
 
 const MAX_PROMPT = 6000
-const MODEL_WORDS = /\b(opus|sonnet|haiku|fable|modelo)\b/i
+const MODEL_WORDS = /\b(opus|sonnet|haiku|fable|modelo|model)\b/i
 
-/** O agente da tabela a que a variante pertence (`aidw:codificador-medium` → `codificador`). */
+
+/** The table agent the variant belongs to (`aidw:coder-medium` → `coder`). */
 export function agentOf(subagentType: string, runtime: Runtime): string | null {
   const bare = subagentType.split(':').pop() ?? subagentType
   const byPrefix = runtime.agents
@@ -38,40 +42,23 @@ export function agentOf(subagentType: string, runtime: Runtime): string | null {
 const said = (check: DelegationCheck, re: RegExp) => check.userPrompts.some(p => re.test(p))
 
 /**
- * O motivo para recusar a delegação, ou null quando ela segue as regras. Só julga agentes do AiDW: um
- * `general-purpose` ou outro subagente qualquer passa.
+ * The reason to refuse the delegation, or null when it follows the rules. It only judges AiDW agents: a
+ * `general-purpose` or any other subagent passes.
  */
 export function checkDelegation(check: DelegationCheck): string | null {
   const { runtime, prompt } = check
   const agent = agentOf(check.subagentType, runtime)
   if (!agent) return null
   const bare = check.subagentType.split(':').pop() ?? check.subagentType
-  const fix = (why: string) => `AiDW (trava da delegação): ${why}`
+  const fix = (why: string) => t('guard.prefix', { why })
 
-  if (check.model && !said(check, MODEL_WORDS)) {
-    return fix(
-      `não passe \`model\` (${check.model}): o modelo de cada agente vem da tabela Agents and effort. ` +
-        'Só passe outro modelo quando o usuário pedir nesta conversa.',
-    )
-  }
-  if (!/Pasta da demanda:/.test(prompt)) {
-    return fix('o prompt precisa de `Tarefa: <arquivo>. Pasta da demanda: <pasta>.` (falta a pasta).')
-  }
+  if (check.model && !said(check, MODEL_WORDS)) return fix(t('guard.model', { model: check.model }))
+  if (!new RegExp(`${TERM.demandFolder}:`).test(prompt)) return fix(t('guard.folder'))
   const allowed = runtime.variants[agent]
-  if (!allowed) {
-    return fix(`o agente \`${agent}\` está desligado nesta configuração; faça a etapa você mesmo ou ligue o agente.`)
-  }
+  if (!allowed) return fix(t('guard.disabled', { agent }))
   if (!allowed.includes(bare)) {
-    return fix(
-      `\`${bare}\` não está na tabela Agents and effort; para \`${agent}\` use ${allowed.map(a => `\`${a}\``).join(', ')} ` +
-        '(o padrão, ou a exceção cujo motivo vale para esta tarefa).',
-    )
+    return fix(t('guard.variant', { variant: bare, agent, allowed: allowed.map(a => `\`${a}\``).join(', ') }))
   }
-  if (prompt.length > MAX_PROMPT) {
-    return fix(
-      `prompt de ${prompt.length} caracteres: insumos grandes (diff, plano, review) vão por caminho, ` +
-        'num arquivo da pasta da demanda, nunca colados.',
-    )
-  }
+  if (prompt.length > MAX_PROMPT) return fix(t('guard.long', { n: prompt.length }))
   return null
 }

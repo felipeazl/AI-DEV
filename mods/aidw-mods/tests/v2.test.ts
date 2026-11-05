@@ -11,55 +11,59 @@ import {
   parseFindings,
   parseItems,
   parsePrTriage,
-  parseRoteiro,
+  parseTestScript,
   parseSection,
   parseSplit,
   progress,
 } from '../hooks/artifacts'
 import { buildSnapshot, stateLabel } from '../hooks/snapshot'
 import { C, reviewRounds, roundName, svgDoc, viewFor, visibleTabs } from '../hooks/views'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 const steps = (...s: string[]) => ({ step: s.at(-1), history: s.map(step => ({ step, at: '' })) })
 
 describe('progresso do Mapa da demanda', () => {
   test('etapas do AiDW e de fora, com a atual', async () => {
-    const p = progress('desenvolvimento', steps('UNDERSTAND', 'IMPLEMENT', 'REVIEW', 'PR'))
+    const p = progress('development', steps('UNDERSTAND', 'IMPLEMENT', 'REVIEW', 'PR'))
     expect([p.current, p.index, p.total]).toEqual(['PR', 8, 11])
     expect(p.stages.map(s => s.name)).toEqual([
       'Entendimento', 'Plano', 'Sua aprovação', 'Implementação', 'Revisão', 'Sua revisão', 'Testes', 'PR', 'Code review', 'Testes QA', 'Concluída',
     ])
-    expect(p.stages.map(s => s.state)).toEqual([...Array(7).fill('feito'), 'atual', 'pendente', 'pendente', 'pendente'])
-    // as etapas antigas caem na fase equivalente (demandas abertas antes do fluxo v3)
-    expect(progress('desenvolvimento', steps('FINAL_REVIEW')).current).toBe('PR')
-    expect(progress('desenvolvimento', steps('TICKETS')).current).toBe('Sua aprovação')
+    expect(p.stages.map(s => s.state)).toEqual([...Array(7).fill('done'), 'current', 'pending', 'pending', 'pending'])
+    // old steps fall into the equivalent phase (demands opened before flow v3)
+    expect(progress('development', steps('FINAL_REVIEW')).current).toBe('PR')
+    expect(progress('development', steps('TICKETS')).current).toBe('Sua aprovação')
   })
 
   test('com o time e de volta do Code review', async () => {
-    const withTeam = progress('desenvolvimento', steps('IMPLEMENT', 'PR', 'CODE_REVIEW'))
-    expect(withTeam.stages.find(s => s.name === 'Code review')?.state).toBe('com-time')
-    const back = progress('desenvolvimento', steps('IMPLEMENT', 'PR', 'CODE_REVIEW', 'CODER_FIX'))
+    const withTeam = progress('development', steps('IMPLEMENT', 'PR', 'CODE_REVIEW'))
+    expect(withTeam.stages.find(s => s.name === 'Code review')?.state).toBe('with-team')
+    const back = progress('development', steps('IMPLEMENT', 'PR', 'CODE_REVIEW', 'CODER_FIX'))
     expect([back.current, back.returnedFrom, back.returns['Code review']]).toEqual(['Revisão', 'Code review', 1])
-    expect(back.stages.find(s => s.name === 'Code review')?.state).toBe('voltou')
-    const qa = progress('desenvolvimento', steps('PR', 'CODE_REVIEW', 'CODER_FIX', 'CODE_REVIEW', 'QA_TEST'))
+    expect(back.stages.find(s => s.name === 'Code review')?.state).toBe('returned')
+    const qa = progress('development', steps('PR', 'CODE_REVIEW', 'CODER_FIX', 'CODE_REVIEW', 'QA_TEST'))
     expect([qa.current, qa.returnedFrom, qa.returns['Code review']]).toEqual(['Testes QA', null, 1])
   })
 
   test('pronto marca tudo como feito', async () => {
-    const p = progress('desenvolvimento', steps('PR', 'DONE'))
-    expect(p.stages.every(s => s.state === 'feito')).toBe(true)
+    const p = progress('development', steps('PR', 'DONE'))
+    expect(p.stages.every(s => s.state === 'done')).toBe(true)
   })
 
   test('etapa de fora do contexto: só na demanda que passa por ela, antes da etapa indicada', async () => {
-    // fluxo v3: o UX valida pelos prints depois dos testes e antes da PR
+    // flow v3: UX validates by the screenshots after the tests and before the PR
     const ux = [{ step: 'UX_VALIDATION', name: 'Validação UX', before: 'PR', who: 'o UX' }]
     const names = (p: ReturnType<typeof progress>) => p.stages.map(s => s.name)
-    expect(names(progress('desenvolvimento', steps('IMPLEMENT'), ux))).not.toContain('Validação UX')
-    const marked = progress('desenvolvimento', { ...steps('IMPLEMENT'), extra_steps: ['UX_VALIDATION'] }, ux)
+    expect(names(progress('development', steps('IMPLEMENT'), ux))).not.toContain('Validação UX')
+    const marked = progress('development', { ...steps('IMPLEMENT'), extra_steps: ['UX_VALIDATION'] }, ux)
     expect(names(marked).slice(6, 9)).toEqual(['Testes', 'Validação UX', 'PR'])
     expect(marked.total).toBe(12)
-    const withUx = progress('desenvolvimento', steps('TEST', 'UX_VALIDATION'), ux)
-    expect(withUx.stages.find(s => s.name === 'Validação UX')).toEqual({ name: 'Validação UX', group: 'fora', who: 'o UX', state: 'com-time' })
-    const back = progress('desenvolvimento', steps('TEST', 'UX_VALIDATION', 'CODER_FIX'), ux)
+    const withUx = progress('development', steps('TEST', 'UX_VALIDATION'), ux)
+    expect(withUx.stages.find(s => s.name === 'Validação UX')).toEqual({ name: 'Validação UX', group: 'outside', who: 'o UX', state: 'with-team' })
+    const back = progress('development', steps('TEST', 'UX_VALIDATION', 'CODER_FIX'), ux)
     expect([back.current, back.returnedFrom, back.returns['Validação UX']]).toEqual(['Revisão', 'Validação UX', 1])
     expect(progress('pr-review', steps('UX_VALIDATION'), ux).stages.map(s => s.name)).not.toContain('Validação UX')
   })
@@ -73,7 +77,7 @@ describe('critérios, regras e cenários', () => {
     const matrix = '| CA | Cenário | Passos |\n|---|---|---|\n| CA1 | CN2 — A1 online | 1. emitir |'
     expect(parseItems(matrix, 'CN')).toEqual([{ id: 'CN2', text: 'A1 online' }])
     const cov = parseCoverage('| ID | Status | Evidência |\n|---|---|---|\n| CA1 | coberto | E2E |\n| RN1 | Implementado | x.cs |\n')
-    expect(cov).toEqual({ CA1: 'coberto', RN1: 'implementado' })
+    expect(cov).toEqual({ CA1: 'covered', RN1: 'implemented' })
   })
 
   test('snapshot junta plano e cobertura: o arquivo antigo ou o status derivado (fluxo v3)', async () => {
@@ -89,18 +93,18 @@ describe('critérios, regras e cenários', () => {
     }
     const status = (s: ReturnType<typeof build>) => s.coverage.map(c => `${c.id}:${c.status}`)
     const before = build('IMPLEMENT')
-    expect([before.summary, before.coverageRecorded, status(before)]).toEqual(['Resumo', true, ['CA1:falta', 'CA2:falta', 'RN1:falta']])
-    // passou da implementação: o que as entregas cobrem está implementado
-    expect(status(build('REVIEW'))).toEqual(['CA1:implementado', 'CA2:falta', 'RN1:implementado'])
-    // um passo do roteiro com ✅ cobre o critério dele
+    expect([before.summary, before.coverageRecorded, status(before)]).toEqual(['Resumo', true, ['CA1:missing', 'CA2:missing', 'RN1:missing']])
+    // past implementation: what the deliveries cover is implemented
+    expect(status(build('REVIEW'))).toEqual(['CA1:implemented', 'CA2:missing', 'RN1:implemented'])
+    // a test script step with ✅ covers its criterion
     const roteiro = '## Login\n| Passo | Critério | Como | O que fazer | Esperado | Evidência | Resultado |\n|---|---|---|---|---|---|---|\n' +
       '| P01 | CA1 | auto-browser | abrir | abre | print | ✅ abriu |\n| P02 | CA2 | manual | fechar | fecha | print | |\n'
     const tested = build('MANUAL_TEST', { 'roteiro-testes-us-1.md': roteiro })
-    expect(status(tested)).toEqual(['CA1:coberto', 'CA2:falta', 'RN1:implementado'])
+    expect(status(tested)).toEqual(['CA1:covered', 'CA2:missing', 'RN1:implemented'])
     expect(tested.manual.map(m => `${m.id}:${m.criteria.join(',')}:${m.how}`)).toEqual(['P01:CA1:auto-browser', 'P02:CA2:manual'])
     // demanda antiga: o cobertura-<id>.md continua valendo
     const old = build('REVIEW', { 'cobertura-us-1.md': '| CA1 | coberto | e2e |\n| RN1 | implementado | — |' })
-    expect(status(old)).toEqual(['CA1:coberto', 'CA2:falta', 'RN1:implementado'])
+    expect(status(old)).toEqual(['CA1:covered', 'CA2:missing', 'RN1:implemented'])
   })
 })
 
@@ -122,17 +126,17 @@ describe('revisão V2', () => {
       '- (b) Alinhar ao Guideline',
       '**Recomendação:** (a).',
     ].join('\n')
-    const [f, d] = parseFindings(review, 1, 'revisão', 'review-us-1-r1.md')
+    const [f, d] = parseFindings(review, 1, 'review', 'review-us-1-r1.md')
     expect([f?.before, f?.after, f?.file]).toEqual(['Sanear(ip, false, false);', 'Sanear(ip, TipoDado.EnderecoIp);', 'review-us-1-r1.md'])
     expect(d?.options).toEqual(['(a) Manter a convenção do repositório', '(b) Alinhar ao Guideline'])
     expect(d?.recommendation).toBe('(a).')
   })
 
   test('decisão pela triagem', async () => {
-    expect(decisionOf('Corrigir: summary na classe')).toBe('mantido')
-    expect(decisionOf('Cai — o card já tem as PRs')).toBe('descartado')
-    expect(decisionOf('Mantida, vai ao usuário/Tech Lead')).toBe('pendente')
-    expect(decisionOf('')).toBe('pendente')
+    expect(decisionOf('Corrigir: summary na classe')).toBe('kept')
+    expect(decisionOf('Cai — o card já tem as PRs')).toBe('discarded')
+    expect(decisionOf('Mantida, vai ao usuário/Tech Lead')).toBe('pending')
+    expect(decisionOf('')).toBe('pending')
   })
 
   test('rodadas por arquivo e "corrigido na rN"', async () => {
@@ -146,14 +150,14 @@ describe('revisão V2', () => {
     const s = buildSnapshot({ dir: 'C:/x/it-9', demand: JSON.parse(all['demand.json'] ?? '{}'), files: Object.keys(all), texts: all })
     expect(reviewRounds(s).map(r => r.label)).toEqual(['Código r1', 'Código r2', 'Otimização r1'])
     const r1 = s.findings.find(f => f.file === 'review-it-9-r1.md')
-    expect([r1?.status, r1?.decision, r1?.title]).toEqual(['corrigido na r2', 'mantido', 'falta summary'])
+    expect([r1?.status, r1?.decision, r1?.title]).toEqual(['corrigido na r2', 'kept', 'falta summary'])
     const fixed = s.findings.find(f => f.file === 'review-it-9-r2.md')
     expect(fixed?.title).not.toContain('IMPORTANTE')
     expect(roundName(s.findings.find(f => f.file.startsWith('review-otim')) ?? r1!)).toBe('Otimização')
     const named = (file: string) => roundName({ ...r1!, file })
     expect([named('review-T3-a3-r1.md'), named('review-us-131190-r2.md'), named('review-otimizacao-101662-r1.md')])
       .toEqual(['T3-a3', 'Código', 'Otimização'])
-    const [o] = parseFindings('### O1-02 — REDUZIR — `Utils/Saneador.cs:1-110`\n**O quê:** enxugar', 1, 'revisão', 'review-otimizacao-x-r1.md')
+    const [o] = parseFindings('### O1-02 — REDUZIR — `Utils/Saneador.cs:1-110`\n**O quê:** enxugar', 1, 'review', 'review-otimizacao-x-r1.md')
     expect([o?.id, o?.severity, o?.where]).toEqual(['O1-02', 'SUGESTAO', 'Utils/Saneador.cs:1-110'])
   })
 })
@@ -171,7 +175,7 @@ describe('teste manual V2', () => {
       '| T1 | rota | abrir /fast | máscara | ✅ ok |',
       '| T5 | removido na v5 | fora do escopo | — | |',
     ].join('\n')
-    const steps2 = parseRoteiro(text)
+    const steps2 = parseTestScript(text)
     expect(steps2.map(s => [s.id, s.section, s.removed, s.result])).toEqual([
       ['P0', 'Preparação', false, ''],
       ['T1', 'Critérios do card', false, '✅'],
@@ -319,9 +323,9 @@ describe('painel v3', () => {
 
   test('abas sem dados ficam ocultas; a Geral fica sempre', async () => {
     const s = buildSnapshot({ dir: 'C:/x/us-1', demand: { id: 'us-1', step: 'IMPLEMENT' }, files: [], texts: {} })
-    expect(visibleTabs(s, 'geral').map(([id]) => id)).toEqual(['geral'])
-    expect(visibleTabs(s, 'metricas')).toEqual([])
-    expect(visibleTabs(s, 'decidir')).toEqual([])
+    expect(visibleTabs(s, 'general').map(([id]) => id)).toEqual(['general'])
+    expect(visibleTabs(s, 'metrics')).toEqual([])
+    expect(visibleTabs(s, 'decide')).toEqual([])
   })
 
   test('riscos da estimativa: subtópicos, na linha ou a seção antiga', async () => {
@@ -334,13 +338,13 @@ describe('painel v3', () => {
   })
 
   test('painel v4: o argumento do /panel leva ao painel e à aba', async () => {
-    expect(viewFor('desenvolvimento', '')).toEqual({ view: 'geral', tab: '' })
-    expect(viewFor('desenvolvimento', 'critérios')).toEqual({ view: 'geral', tab: '' })
-    expect(viewFor('desenvolvimento', 'revisao')).toEqual({ view: 'decidir', tab: 'revisao' })
-    expect(viewFor('desenvolvimento', 'roteiro')).toEqual({ view: 'decidir', tab: 'manual' })
-    expect(viewFor('pr-review', 'achados')).toEqual({ view: 'decidir', tab: 'comentarios' })
-    expect(viewFor('levantamento', 'decisoes')).toEqual({ view: 'decidir', tab: '' })
-    expect(viewFor('levantamento', 'agentes')).toEqual({ view: 'metricas', tab: '' })
-    expect(viewFor('desenvolvimento', 'diffs')).toEqual({ view: 'geral', tab: '' })
+    expect(viewFor('development', '')).toEqual({ view: 'general', tab: '' })
+    expect(viewFor('development', 'critérios')).toEqual({ view: 'general', tab: '' })
+    expect(viewFor('development', 'revisao')).toEqual({ view: 'decide', tab: 'review' })
+    expect(viewFor('development', 'roteiro')).toEqual({ view: 'decide', tab: 'manual' })
+    expect(viewFor('pr-review', 'achados')).toEqual({ view: 'decide', tab: 'comments' })
+    expect(viewFor('survey', 'decisoes')).toEqual({ view: 'decide', tab: '' })
+    expect(viewFor('survey', 'agentes')).toEqual({ view: 'metrics', tab: '' })
+    expect(viewFor('development', 'diffs')).toEqual({ view: 'general', tab: '' })
   })
 })

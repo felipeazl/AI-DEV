@@ -1,27 +1,27 @@
-export type DemandKind = 'desenvolvimento' | 'pr-review' | 'levantamento'
+export type DemandKind = 'development' | 'pr-review' | 'survey'
 
-export type TimelineItem = { name: string; state: 'feito' | 'atual' | 'pendente'; visits: number }
+export type TimelineItem = { name: string; state: 'done' | 'current' | 'pending'; visits: number }
 
-/** Uma etapa da barra de progresso do Mapa da demanda (docs/painel.md). */
+/** A step of the progress bar of the demand map (docs/painel.md). */
 export type ProgressStage = {
   name: string
-  /** `aidw`: o AiDW trabalha; `fora`: o time (Code review) ou a QA. */
-  group: 'aidw' | 'fora'
-  /** `com-time`: a etapa de fora em que a demanda está; `voltou`: a etapa de fora que devolveu o trabalho. */
-  state: 'feito' | 'atual' | 'pendente' | 'com-time' | 'voltou'
-  /** Com quem a demanda fica numa etapa de fora ("o time", "a QA", "o UX"). */
+  /** `aidw`: the AiDW works; `outside`: the team (Code review) or QA. */
+  group: 'aidw' | 'outside'
+  /** `with-team`: the outside step the demand is in; `returned`: the outside step that sent the work back. */
+  state: 'done' | 'current' | 'pending' | 'with-team' | 'returned'
+  /** Who has the demand at an outside step ("the team", "QA", "UX"). */
   who?: string
 }
 
 export type Progress = {
   stages: ProgressStage[]
-  /** Nome da etapa atual e a posição dela (1…total). */
+  /** Name of the current step and its position (1…total). */
   current: string
   index: number
   total: number
-  /** A etapa de fora que devolveu o trabalho e ainda não foi retomada (null quando não há). */
+  /** The outside step that sent the work back and has not been resumed yet (null when there is none). */
   returnedFrom: string | null
-  /** Quantas vezes cada etapa de fora devolveu ("Code review" → 1). */
+  /** How many times each outside step sent the work back ("Code review" → 1). */
   returns: Record<string, number>
 }
 
@@ -36,30 +36,30 @@ export type Delegation = {
   tools: number
   seconds: number
   tokens: number
-  /** Custo em USD quando o metricas.md traz (Codex e headless); o subagente nativo do Claude não informa. */
+  /** Cost in USD when the metrics file has it (Codex and headless); Claude's native subagent does not report it. */
   cost: number | null
 }
 
-/** Uma linha do metricas-orquestrador.md: o chat principal numa sessão, com um modelo. */
+/** A line of the orchestrator metrics file: the main chat in one session, with one model. */
 export type OrchestratorRow = {
   session: string
   updated: string
   model: string
   turns: number
   seconds: number
-  /** Entrada, cache escrito, cache lido e saída somados. */
+  /** Input, cache written, cache read and output, summed. */
   tokens: number
   cacheWrite: number
   cacheRead: number
   output: number
-  /** Equivalente em preço de API (não é a conta da assinatura). */
+  /** API price equivalent (not the subscription bill). */
   cost: number | null
 }
-/** Uma linha da seção *Por etapa* do metricas-orquestrador.md: os turnos do chat principal numa etapa da demanda. */
+/** A line of the *Per step* section of the orchestrator metrics file: the main chat turns at one step of the demand. */
 export type OrchestratorStep = { step: string; turns: number; tokens: number; cost: number | null }
 export type OrchestratorUsage = {
   rows: OrchestratorRow[]
-  /** A seção *Por etapa* (2026-11-04); vazia nos arquivos de antes. */
+  /** The *Per step* section (2026-11-04); empty in older files. */
   steps: OrchestratorStep[]
   turns: number
   tokens: number
@@ -69,10 +69,10 @@ export type OrchestratorUsage = {
 export type Finding = {
   id: string
   round: number
-  source: 'revisão' | 'plano' | 'bugs' | 'segurança'
-  /** A categoria no título do achado (fluxo v3: o revisor cobre qualidade, bugs e segurança numa passada). */
-  category: 'qualidade' | 'bug' | 'seguranca' | ''
-  /** Arquivo da rodada (review-us-1-r2.md, review-otimizacao-…-r1.md): separa Código de Otimização. */
+  source: 'review' | 'plan' | 'bugs' | 'security'
+  /** The category in the finding title (flow v3: the reviewer covers quality, bugs and security in one pass). */
+  category: 'quality' | 'bug' | 'security' | ''
+  /** The round file (review-us-1-r2.md, review-optimization-…-r1.md): separates Code from Optimization. */
   file: string
   severity: 'CRITICO' | 'IMPORTANTE' | 'SUGESTAO' | 'ELOGIO' | 'DUVIDA' | null
   where: string
@@ -80,41 +80,41 @@ export type Finding = {
   status: string
   triage: string
   comment: string
-  /** A PR do rascunho de comentário (revisão de PR): "1234", "1234 e 5678". */
+  /** The PR of the comment draft (PR review): "1234", "1234 and 5678". */
   target: string
   published: boolean
-  /** Código antes e depois (blocos `**Antes:**` e `**Depois:**` do revisor); vazios quando o achado não propõe código. */
+  /** Code before and after (the reviewer's `**Before:**` and `**After:**` blocks); empty when the finding proposes no code. */
   before: string
   after: string
-  /** As opções de uma dúvida (`(a) …`, `(b) …`). */
+  /** The options of a question (`(a) …`, `(b) …`). */
   options: string[]
-  /** A recomendação do AiDW: a triagem, ou a recomendação do revisor quando ainda não há triagem. */
+  /** The AiDW recommendation: the triage, or the reviewer's recommendation when there is no triage yet. */
   recommendation: string
-  /** Decisão a partir da triagem: com você (pendente), mantido ou descartado. */
-  decision: 'pendente' | 'mantido' | 'descartado'
+  /** Decision from the triage: with you (pending), kept or discarded. */
+  decision: 'pending' | 'kept' | 'discarded'
 }
 
 export type Criterion = { id: string; text: string; how: string[]; result: string; evidence: string }
-/** Um critério de aceite, regra de negócio ou cenário, com a cobertura pelo nosso código e pelos nossos testes. */
-export type CoverageItem = { id: string; kind: 'CA' | 'RN' | 'CN'; text: string; status: 'falta' | 'implementado' | 'coberto' }
+/** An acceptance criterion, business rule or scenario, with the coverage by our code and our tests. */
+export type CoverageItem = { id: string; kind: 'CA' | 'RN' | 'CN'; text: string; status: 'missing' | 'implemented' | 'covered' }
 export type ManualStep = {
   id: string
   step: string
   expected: string
   result: '✅' | '❌' | ''
   note: string
-  /** Seção do roteiro (`## 1. Critérios do card` → "Critérios do card"). */
+  /** Section of the test script (`## 1. Card criteria` → "Card criteria"). */
   section: string
-  /** Passo marcado como removido no roteiro: fica escondido. */
+  /** Step marked as removed in the test script: hidden. */
   removed: boolean
-  /** Os critérios e regras que o passo prova (coluna `Critério`: CA1, RN2). */
+  /** The criteria and rules the step proves (`Criterion` column: CA1, RN2). */
   criteria: string[]
   /** Como prova (coluna `Como`): auto-api, auto-browser, auto-suite ou manual. */
   how: string
 }
 export type Point = { id: string; text: string; verdict: string; evidence: string }
-/** Uma linha do "Card × código" do levantamento. */
-export type CardPoint = { today: string; effect: string; situation: 'precisa mudar' | 'é a dor' | 'não muda' | 'nada a reaproveitar' | string }
+/** A row of the survey's "Card × code"; `situation` is shown as is (translated when synthesized). */
+export type CardPoint = { today: string; effect: string; situation: string }
 export type EffortBlock = { name: string; min: number; max: number; label: string }
 export type SplitItem = { n: string; text: string; sp: string }
 export type Estimate = {
@@ -122,14 +122,14 @@ export type Estimate = {
   hours: string
   complexity: string
   confidence: string
-  /** Modelo novo do levantamento: SP do card como está, SP quebrado, dias de dev e de QA, nível e passadas. */
+  /** New survey model: SP of the card as is, split SP, dev and QA days, level and passes. */
   spCard: string
   spSplit: string
   devDays: string
   qaDays: string
   level: string
   passes: string
-  /** O tópico `**Riscos:**` da estimativa (ou a seção `## Riscos` do modelo antigo), em Markdown. */
+  /** The estimate's `**Risks:**` bullet (or the old model's `## Risks` section), in Markdown. */
   risks: string
 }
 export type Doubt = {
@@ -138,23 +138,23 @@ export type Doubt = {
   question: string
   why: string
   to: string
-  /** Tema (Escopo e produto, Contrato…) e quanto muda a estimativa ("+3 SP se migrar"). */
+  /** Theme (Scope and product, Contract…) and how much it changes the estimate ("+3 SP if migrating"). */
   group: string
   affects: string
 }
-/** Um comentário da triagem de uma revisão de PR (`C1`…; referência *triagem-pr*). */
+/** A comment of the triage of a PR review (`C1`…; *pr-triage* reference). */
 export type PrComment = {
   id: string
   pr: string
   severity: string
   where: string
-  /** Os achados que ele junta (`R1-01`, `B1-02`…). */
+  /** The findings it groups (`R1-01`, `B1-02`…). */
   origins: string[]
   recommendation: string
-  /** Como a triagem diz que está: `a decidir`, `não publicado (r1)`, `publicado (thread 23720), resolvido na r2`… */
+  /** How the triage says it stands: `to decide`, `not published (r1)`, `published (thread 23720), resolved in r2`… */
   situation: string
   published: boolean
-  /** Decidido não publicar numa rodada anterior. */
+  /** Decided not to publish in an earlier round. */
   declined: boolean
   title: string
   draft: string
@@ -163,7 +163,7 @@ export type PrTriage = { file: string; round: number; comments: PrComment[]; out
 
 export type Repo ={ name: string; path: string; branch: string; base: string; pr: string; source: string }
 
-/** Tudo o que os painéis e a faixa mostram de uma demanda, relido do disco a cada mudança. */
+/** Everything the panels and the strip show of a demand, re-read from disk on every change. */
 export type Snapshot = {
   dir: string
   id: string
@@ -171,9 +171,9 @@ export type Snapshot = {
   kind: DemandKind
   step: string
   status: string
-  /** A nota do demand.json (o próximo passo que o orquestrador gravou). */
+  /** The demand.json note (the next step the orchestrator recorded). */
   note: string
-  /** O resumo de até 4 linhas do demand.json (`demand set --summary`). */
+  /** The up-to-4-line summary of demand.json (`demand set --summary`). */
   summary: string
   waiting: string | null
   timeline: TimelineItem[]
@@ -183,21 +183,21 @@ export type Snapshot = {
   passes: string
   planVersion: string
   round: number
-  roundKind: 'plano' | 'revisão' | null
+  roundKind: 'plan' | 'review' | null
   delegations: Delegation[]
   tokens: number
-  /** O próprio orquestrador (chat principal), do metricas-orquestrador.md. */
+  /** The orchestrator itself (main chat), from the orchestrator metrics file. */
   orchestrator: OrchestratorUsage
   budget: number
   findings: Finding[]
-  /** A triagem da última rodada de uma revisão de PR no formato *triagem-pr*; null sem ela (o painel cai nos achados). */
+  /** The triage of the last round of a PR review in the *pr-triage* format; null without it (the panel falls back to the findings). */
   prTriage: PrTriage | null
   criteria: Criterion[]
   coverage: CoverageItem[]
-  /** Há `cobertura-<id>.md`: sem ele, tudo aparece como "falta" com um aviso. */
+  /** There is a coverage file or a plan: without them, everything shows as "missing" with a warning. */
   coverageRecorded: boolean
   manual: ManualStep[]
-  roteiro: string
+  testScript: string
   points: Point[]
   cardAsk: string
   cardPoints: CardPoint[]
@@ -205,16 +205,16 @@ export type Snapshot = {
   split: SplitItem[]
   estimate: Estimate | null
   doubts: Doubt[]
-  /** A seção "Onde a mudança toca" do levantamento, em Markdown (sistemas, contratos, banco). */
+  /** The survey's "Where the change touches" section, in Markdown (systems, contracts, database). */
   touches: string
-  levantamento: string
-  /** Marcas AIDW-TESTE (ajustes temporários de teste) por repositório; null quando não foi conferido. */
+  surveyFile: string
+  /** AIDW-TESTE marks (temporary test adjustments) per repository; null when not checked. */
   testMarks: Record<string, number> | null
 }
 
 /**
- * Um agente rodando, na faixa: o nome, o modelo e o effort (da variante e do runtime.json), o label, desde quando e os
- * tokens da última resposta dele (a mesma conta do metricas.md), que andam a cada passo.
+ * A running agent, in the strip: the name, model and effort (from the variant and runtime.json), the label, since when and the
+ * tokens of its last answer (the same count as the metrics file), which move at every step.
  */
 export type RunningAgent = {
   key: string
@@ -224,16 +224,16 @@ export type RunningAgent = {
   display?: string
   model?: string
   effort?: string
-  /** O id do loop do subagente (`agent.spawn`), para casar os passos dele com o card. */
+  /** The subagent loop id (`agent.spawn`), to match its steps with the card. */
   agentId?: string
   tokens?: number
 }
 
-/** Uma delegação do AiDW à espera do registro no metricas.md (a de um agente em segundo plano, até ele terminar). */
+/** An AiDW delegation waiting to be recorded in the metrics file (a background agent's, until it ends). */
 export type Pending = { agent: string; level: string | null; label: string; demand: string }
 
-/** Uma janela de uso do plano (5h, 7d), da `$.session.usage().rateLimits`. */
-/** Os quatro números de uso de uma resposta (ou a soma de várias) e o modelo que respondeu. */
+/** A plan usage window (5h, 7d), from `$.session.usage().rateLimits`. */
+/** The four usage numbers of an answer (or the sum of several) and the model that answered. */
 export type TokenUsage = {
   model: string
   input_tokens: number
@@ -245,7 +245,7 @@ export type TokenUsage = {
 export type Limit = { kind: '5h' | '7d'; percent: number; resetsAt: string }
 export type Usage = { percent: number; tokens: number; limits: Limit[] }
 
-/** Os filtros da Revisão: o que está desligado sai da lista. */
+/** The Review filters: what is switched off leaves the list. */
 export type ReviewFilter = { severities: string[]; sources: string[]; statuses: string[]; open: boolean }
 
 declare module 'claude-code' {
@@ -254,27 +254,27 @@ declare module 'claude-code' {
       active: boolean
       snap: Snapshot | null
       running: RunningAgent[]
-      /** Agentes do AiDW em segundo plano, pelo agentId: o registro sai quando cada um termina. */
+      /** AiDW agents in the background, by agentId: the record goes out when each one ends. */
       background: Record<string, Pending>
       /**
-       * Uso de cada subagente pelo agentId: a última resposta (os tokens do registro) e a soma de todas (o custo).
-       * No estado, e não no módulo, para atravessar um `/reload-plugins` ou um `aidw.py install` (2026-11-04).
+       * Usage of each subagent by agentId: the last answer (the record's tokens) and the sum of all (the cost).
+       * In the state, not in the module, to survive a `/reload-plugins` or an `aidw.py install` (2026-11-04).
        */
       agentUsage: Record<string, { last: TokenUsage; sum: TokenUsage }>
       hidden: boolean
-      /** A aba aberta em cada painel (`geral`, `metricas`, `decidir`). */
+      /** The open tab of each panel (`general`, `metrics`, `decide`). */
       tabs: Record<string, string>
       tick: number
       reviewRound: number
       usage: Usage | null
-      /** O maior contexto (tokens) visto desde a última mensagem sua: a compactação se mede contra ele. */
+      /** The largest context (tokens) seen since your last message: compaction is measured against it. */
       contextPeak: number
       codeReads: number
-      /** A rodada (arquivo do review), a aba e os filtros da Revisão; o painel só informa, a decisão é no chat. */
+      /** The round (review file), the tab and the filters of the Review; the panel only informs, the decision is in the chat. */
       reviewFile: string
       decisionTab: string
       reviewFilter: ReviewFilter
-      /** Grupos recolhidos que você abriu (dúvidas, artefatos, preparação, delegações). */
+      /** Collapsed groups you opened (questions, artifacts, preparation, delegations). */
       expanded: Record<string, boolean>
     }
   }
