@@ -104,7 +104,7 @@ export function parseDelegations(text: string): MetricsRow[] {
 /**
  * Compactação por ociosidade: IDLE_MS depois do fim de um turno do orquestrador sem mensagem nova, com o contexto em
  * IDLE_MIN tokens ou mais, ele compacta sozinho — antes do cache de 1h expirar, para a volta não regravar a conversa
- * inteira (Felipe, 2026-10-30: a regra antiga, por etapa e espera, não disparava).
+ * inteira (decisão, 2026-10-30: a regra antiga, por etapa e espera, não disparava).
  */
 export const IDLE_MS = 50 * 60_000
 export const IDLE_MIN = 100_000

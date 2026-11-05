@@ -43,8 +43,8 @@ Guarde só o que passar em **todos** os critérios:
   `kb show <nota>`) e atualize aquela nota; não crie outra. O que a base dizia e se mostrou errado é corrigido na
   própria nota, com a fonte nova.
 - **É fato, não regra:** a base descreve como o código **é** (inclusive o legado fora do padrão); como ele **deve** ser
-  é do guia do time e das `policies/`. Um padrão legado vai para a nota como fato ("o Hope usa ADO.NET com procedure
-  em X"), nunca como recomendação; convenção do time e regra de trabalho vão para `shared/` ou `policies/`.
+  é do guia do time e das `policies/`. Um padrão legado vai para a nota como fato ("o sistema-a usa ADO.NET com
+  procedure em X"), nunca como recomendação; convenção do time e regra de trabalho vão para `shared/` ou `policies/`.
 - **É curto:** uma linha por fato, com a fonte quando não é óbvia. A seção *Systems* do `context.toml` vai no prompt
   de toda mensagem: lá só o que todo agente precisa sempre (build, teste, bloqueio de ambiente).
 - **Nunca** segredo, token, senha, connection string, PIN, dado pessoal ou dado de cliente. Isso vale também para o
@@ -115,7 +115,7 @@ o que a PR fazia, os achados que importam para o sistema e se a PR foi aprovada.
 - Com demanda: `python "{{root}}/aidw.py" demand set <id> --status done --note "<uma linha do que foi entregue>"`.
 - Mostre a situação do worktree (`worktree inspect <id>`). Se estiver limpo e publicado, sugira
   `worktree remove <id>`. Não remova sem o usuário pedir: a branch ou o PR podem ainda estar em revisão.
-- Esta skill também encerra o modo orquestrador desta sessão, como o `sair`: por último, rode
+- Esta skill também encerra o modo orquestrador desta sessão, como o `exit`: por último, rode
   `python "{{root}}/aidw.py" session unbind` (no terminal, o hook não recebe o `/aidw:done`).
 
 ## 6. Relatório

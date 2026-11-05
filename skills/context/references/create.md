@@ -1,10 +1,4 @@
----
-name: contexto-criar
-description: Cria um contexto de trabalho novo do AiDW (contexts/<nome>, repositório Git privado) a partir de uma análise criteriosa dos repositórios indicados e de no mínimo 10 perguntas ao usuário — sistemas, build e teste, convenções, políticas, aprovações e MCPs. Use quando o usuário pedir para criar ou montar um contexto.
-aidw: admin
----
-
-# contexto-criar
+# context create
 
 Um contexto é o pacote de regras de uma empresa ou squad: sistemas, comandos, convenções e políticas que o
 orquestrador e os agentes seguem. Ele fica em `{{root}}/contexts/<nome>/`, num **repositório Git próprio e
@@ -89,6 +83,6 @@ análise, a **recomendação** e o porquê. Pergunte mais sempre que a análise 
 
 Mostre ao usuário: o que foi criado (arquivos), os sistemas e comandos, as políticas, o que ficou como
 referência e os avisos do `check`. Proponha, sem executar:
-- ativar: skill `contexto-usar` (`context use <nome>`);
+- ativar: `/aidw:context use <nome>` (`context use <nome>`);
 - commit no repositório do contexto e, se houver remoto privado, `git remote add origin <url>` e o push —
   **commit e push pedem OK**; confirme que o remoto é **privado** antes do push.

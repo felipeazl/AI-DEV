@@ -5,9 +5,9 @@ import { redact, redactBlocks } from '../hooks/secrets'
 describe('filtro de segredos', () => {
   test('connection string mantém a chave e esconde o valor', async () => {
     // a senha vai em pedaços para o scanner de segredos do GitHub não tomar o exemplo por segredo real
-    const r = redact('Server=sql01;Database=Hope;User Id=app;Pass' + 'word=S3nh@Forte!;Encrypt=true')
+    const r = redact('Server=sql01;Database=App;User Id=app;Pass' + 'word=S3nh@Forte!;Encrypt=true')
     expect(r.text).toContain('Password=«segredo ocultado: Password, 11 caracteres»')
-    expect(r.text).toContain('Server=sql01;Database=Hope;User Id=app;')
+    expect(r.text).toContain('Server=sql01;Database=App;User Id=app;')
     expect(r.text).not.toContain('S3nh@Forte!')
     expect(r.hits).toEqual(['Password (11)'])
   })

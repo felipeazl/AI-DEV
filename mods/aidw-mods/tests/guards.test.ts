@@ -37,7 +37,7 @@ describe('travas da delegação', () => {
     expect(agentOf('Explore', RUNTIME)).toBe(null)
   })
 
-  test('model sem o Felipe pedir é recusado; com o pedido passa', async () => {
+  test('model sem o usuário pedir é recusado; com o pedido passa', async () => {
     expect(checkDelegation(base({ model: 'sonnet' }))).toContain('não passe `model`')
     expect(checkDelegation(base({ model: 'sonnet', userPrompts: ['use Sonnet no codificador'] }))).toBe(null)
   })

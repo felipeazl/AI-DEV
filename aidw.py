@@ -153,7 +153,7 @@ DEFAULT_NAMES = {
     "qa": "qa",
     "documenter": "documentador",
 }
-# Modelo e effort de cada papel (fluxo v3, sem níveis; Felipe, 2026-10-23): Opus no orquestrador; Sonnet high no
+# Modelo e effort de cada papel (fluxo v3, sem níveis; decisão, 2026-10-23): Opus no orquestrador; Sonnet high no
 # planejador, codificador e revisor; Sonnet medium no qa; Haiku no explorador e no documentador. As exceções
 # permitidas (descer numa re-revisão, subir quando o resultado não fez sentido) ficam em [effort.variants] do
 # routing.toml. No Codex o tier escolhe o equivalente (config/models.toml).
@@ -1324,7 +1324,8 @@ def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, ser
 
 def agent_tool_policy(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict) -> dict:
     """MCPs que o agente pode usar (None = sem lista: todos) e ferramentas MCP bloqueadas. O Claude aplica isso
-    pelo `tools`/`disallowedTools` do subagente; no Codex, que não limita MCP por agente, quem aplica é o guard."""
+    pelo `tools`/`disallowedTools` do subagente e o guard (hook do plugin `aidw`) confere de novo. No Codex não há
+    limite de MCP por agente nem guard: a instalação lá é só agentes e skills (docs/claude-e-codex.md)."""
     entry = claude_agent_entry(role, meta, prompt, ctx, servers)
     mcp = sorted({t[5:].split("__")[0] for t in entry.get("tools", []) if t.startswith("mcp__")})
     return {"mcp": mcp if entry.get("tools") else None,
@@ -1426,7 +1427,7 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "  - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, "
             "`model` the user did not ask for, missing task/folder, a pasted input) comes back denied with "
             "`AiDW (trava da delegação)` and the reason: fix the call, never work around it.",
-            "  - The AiDW panels (`/painel`, `/metricas`, `/testes-review`) only show the demand: every decision "
+            "  - The AiDW panels (`/panel`, `/metrics`, `/review-tests`) only show the demand: every decision "
             "(findings, manual steps, what to publish, PR approval, doubts) is asked and answered in chat.",
             explore_line(resolved),
         ]
@@ -1568,7 +1569,7 @@ def orchestrator_reference_section(refs: dict[str, dict], ref_dir: Path = GEN_RE
 def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
                         skills: dict, routing: dict, refs: dict[str, dict] | None = None, ns: str = "",
                         ref_dir: Path = GEN_REF_DIR, survey: bool = False) -> str:
-    """O CLAUDE.md/AGENTS.md (e a skill go); com `survey`, o prompt enxuto da skill lev: só o
+    """O CLAUDE.md/AGENTS.md (e a skill go); com `survey`, o prompt enxuto da skill survey: só o
     explorador, sem os workflows, com o procedimento e a régua já dentro (nada a ler sob demanda)."""
     orch = resolved[ORCHESTRATOR]
     refs = refs or {}
@@ -1599,7 +1600,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
     source_file = "CLAUDE.md" if provider == "claude" else "AGENTS.md"
     cmd = "install" if ns else "apply"
     parts = [
-        f"<!-- {GENERATED_MARK} {cmd} — {('skill lev' if survey else 'skill go') if ns else source_file + ' do orquestrador'}; "
+        f"<!-- {GENERATED_MARK} {cmd} — {('skill survey' if survey else 'skill go') if ns else source_file + ' do orquestrador'}; "
         f"não edite. Fontes: orchestrator/{SURVEY_MD.name if survey else ORCHESTRATOR_MD.name}, orchestrator/policies/ "
         "e o contexto ativo; rode "
         f"`python aidw.py {cmd}` após alterá-las. -->",
@@ -2159,7 +2160,10 @@ def is_admin_skill(path: Path) -> bool:
 
 def guard_skill(text: str) -> str:
     """Põe o aviso do AiDW no começo da descrição do SKILL.md, tira a marca `aidw:` do frontmatter e resolve
-    `{{root}}` (a skill roda em qualquer pasta e chama o aidw.py pelo caminho absoluto)."""
+    `{{root}}` (a skill roda em qualquer pasta e chama o aidw.py pelo caminho absoluto). Skill sem `aidw: admin`
+    é ferramenta dos agentes e do orquestrador, não comando: ganha `user-invocable: false` (some do menu `/`, e o
+    modelo continua chamando pelo Skill tool). Os comandos do usuário são as skills `aidw: admin` e as geradas
+    (`go`, `survey`, `exit`, `diff`)."""
     lines = text.split("\n")
     if not lines or lines[0].strip() != "---":
         return text
@@ -2172,17 +2176,20 @@ def guard_skill(text: str) -> str:
             quote = value[:1] if value[:1] in "\"'" else ""
             value = value[1:] if quote else value
             lines[i] = f"description: {quote}{guard} {value}"
+    hidden = not admin and not any(line.startswith("user-invocable:") for line in lines[1:end])
+    if hidden:
+        lines.insert(end, "user-invocable: false")
     lines = [line for i, line in enumerate(lines) if not (0 < i < end and line.startswith("aidw:"))]
     return "\n".join(lines).replace("{{root}}", ROOT.as_posix())
 
 
 def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
                        provider: str = "claude", survey: bool = False) -> str:
-    """`go`, ou `lev` (survey): o orquestrador só do levantamento (`orchestrator_md` enxuto)."""
+    """`go`, ou `survey`: o orquestrador só do levantamento (`orchestrator_md` enxuto)."""
     aidw = aidw_command(True)
     codex = provider == "codex"
-    leave = "$aidw-sair" if codex else f"/{plugin}:sair"
-    name = "lev" if survey else "go"
+    leave = "$aidw-exit" if codex else f"/{plugin}:exit"
+    name = "survey" if survey else "go"
     request = "o texto da mensagem que chamou esta skill." if codex else "$ARGUMENTS"
     workspace = "" if survey else ("6. **Código:** worktree da demanda (seção *Workspace*). No Codex não há `EnterWorktree`: toda tarefa "
                  "leva o caminho absoluto do worktree. O `worktree create` grava no `.git` do repositório, que o sandbox "
@@ -2261,7 +2268,7 @@ def exit_skill(plugin: str, provider: str = "claude") -> str:
     codex = provider == "codex"
     description = f"{PLUGIN_GUARD} Encerra o modo orquestrador AiDW nesta sessão."
     return "\n".join([
-        "---", f"name: {CODEX_NS + 'sair' if codex else 'sair'}", f"description: {json.dumps(description, ensure_ascii=False)}",
+        "---", f"name: {CODEX_NS + 'exit' if codex else 'exit'}", f"description: {json.dumps(description, ensure_ascii=False)}",
         *([] if codex else ["disable-model-invocation: true"]), "---", "",
         "Saia do modo orquestrador AiDW. Se há uma demanda aberta nesta sessão, grave onde parou: "
         f"`{aidw_command(True)} demand set <id> --status paused --note \"<próximo passo>\"` e, se ajudar, um "
@@ -2290,7 +2297,7 @@ def diff_skill(plugin: str) -> str:
         "ou na pasta da demanda); senão, a demanda desta sessão; senão `demand list --active --json`, e pergunte "
         "se houver mais de uma.",
         f"2. **Worktrees:** `{aidw} worktree list --json`, os `active` dessa demanda, na ordem da lista (a de "
-        "criação). Cada um tem `folder` (o repositório, ex.: `AssistenteCertificado.Front`), `branch`, `base` e `path`. "
+        "criação). Cada um tem `folder` (o repositório, ex.: `App.Front`), `branch`, `base` e `path`. "
         f"Sem nenhum (repositórios usados no lugar, como numa demanda importada): os `repos` de `{aidw} demand show "
         "<id>`, na ordem; `folder` é a última parte do `path`.",
         "3. **Destino:**",
@@ -2310,7 +2317,7 @@ def diff_skill(plugin: str) -> str:
         "5. **Sem essa ferramenta (terminal):** se a sessão entrou num worktree com `EnterWorktree`, saia com "
         "`ExitWorktree` e `action: \"keep\"`, nunca `remove`; ele volta à pasta onde a sessão abriu. No `sair`, "
         "pare aí. Depois, `EnterWorktree` com "
-        "`name: \"<demanda>/<folder>\"` (ex.: `us-123/AssistenteCertificado.Front`); o hook do AiDW devolve o "
+        "`name: \"<demanda>/<folder>\"` (ex.: `us-123/App.Front`); o hook do AiDW devolve o "
         "caminho. Não use `path`: o Claude só aceita worktree do repositório onde o chat abriu.",
         "6. Responda em até 3 linhas: onde o chat está agora (repositório e branch, ou a pasta da demanda), "
         "`git -C <path> diff --stat <base>...HEAD` resumido e o próximo da volta (`/" + plugin + ":diff`). O painel de "
@@ -2360,13 +2367,15 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 data = f.read_bytes()
                 if f.name == "SKILL.md":
                     data = guard_skill(data.decode("utf-8")).encode("utf-8")
+                elif f.suffix == ".md":  # referências da skill (ex.: context/references/*.md) também usam {{root}}
+                    data = data.replace(b"{{root}}", ROOT.as_posix().encode("utf-8"))
                 files[f"{base}/skills/{name}/{f.relative_to(src).as_posix()}"] = data
     put(f"{base}/skills/go/SKILL.md",
         orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "go" / "SKILL.md"))
-    put(f"{base}/skills/lev/SKILL.md",
-        orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "lev" / "SKILL.md",
+    put(f"{base}/skills/survey/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "survey" / "SKILL.md",
                            survey=True))
-    put(f"{base}/skills/sair/SKILL.md", exit_skill(plugin))
+    put(f"{base}/skills/exit/SKILL.md", exit_skill(plugin))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin))
     for name, r in b["orchestrator_refs"].items():
         put(f"{base}/reference/{name}.md", r["content"])
@@ -2990,7 +2999,7 @@ def worktree_create(cfg: dict, repo: str, demand: str, slug: str = "", base: str
     folder = main.name
     if any(e["demand"] == demand and Path(e["repo"]).name.lower() == folder.lower()
            and norm_path(e["repo"]) != norm_path(main)
-           for e in reg["worktrees"]):  # ex.: ProjetosLegados/Hope e ProjetosTFS/Hope na mesma demanda
+           for e in reg["worktrees"]):  # ex.: C:/Repos/Legado/App e C:/Repos/Novo/App na mesma demanda
         folder = f"{main.name}.{main.parent.name}"
     path = worktree_root(cfg) / demand / folder  # a pasta da demanda junta os worktrees de todos os repositórios dela
     warnings = []
@@ -3176,7 +3185,7 @@ def in_demand_folder(e: dict) -> bool:
 
 
 def wt_folder(e: dict) -> str:
-    """Pasta do repositório no worktree (ex.: `AssistenteCertificado.Front`), nos dois formatos."""
+    """Pasta do repositório no worktree (ex.: `App.Front`), nos dois formatos."""
     p = Path(e["path"])
     return p.name if in_demand_folder(e) else p.parent.name
 
@@ -3551,8 +3560,10 @@ CODEX_NO_IMPLICIT = "policy:\n  allow_implicit_invocation: false\n"  # agents/op
 
 
 def codex_skill_copy(text: str, name: str) -> str:
-    """SKILL.md para o Codex: nome `aidw-<nome>`, aviso do AiDW e {{root}} resolvido."""
+    """SKILL.md para o Codex: nome `aidw-<nome>`, aviso do AiDW e {{root}} resolvido. `disable-model-invocation`
+    vira agents/openai.yaml; `user-invocable` sai (o Codex não esconde skill do usuário: toda `$aidw-*` aparece)."""
     text = re.sub(r"(?m)^disable-model-invocation:.*\n", "", guard_skill(text), count=1)  # no Codex: agents/openai.yaml
+    text = re.sub(r"(?m)^user-invocable:.*\n", "", text, count=1)
     return re.sub(r"(?m)^name:\s*.*$", f"name: {CODEX_NS}{name}", text, count=1)
 
 
@@ -3639,6 +3650,8 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 data = f.read_bytes()
                 if f.name == "SKILL.md":
                     data = codex_skill_copy(data.decode("utf-8"), name).encode("utf-8")
+                elif f.suffix == ".md":
+                    data = data.replace(b"{{root}}", ROOT.as_posix().encode("utf-8"))
                 files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / f.relative_to(src)] = data
         if read_frontmatter(src / "SKILL.md")[0].get("disable-model-invocation") == "true":  # só quando chamada
             files[CODEX_SKILLS_HOME / f"{CODEX_NS}{name}" / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
@@ -3646,16 +3659,25 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     files[orq / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["orchestrator_md"], orq / "SKILL.md",
                                                  provider="codex").encode("utf-8")
     files[orq / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
-    lev = CODEX_SKILLS_HOME / f"{CODEX_NS}lev"
-    files[lev / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["survey_md"], lev / "SKILL.md",
-                                                 provider="codex", survey=True).encode("utf-8")
-    files[lev / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    survey = CODEX_SKILLS_HOME / f"{CODEX_NS}survey"
+    files[survey / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["survey_md"], survey / "SKILL.md",
+                                                    provider="codex", survey=True).encode("utf-8")
+    files[survey / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     for name, r in b["orchestrator_refs"].items():
         files[ref_dir / f"{name}.md"] = r["content"].encode("utf-8")
-    sair = CODEX_SKILLS_HOME / f"{CODEX_NS}sair"
-    files[sair / "SKILL.md"] = exit_skill(plugin_name(), provider="codex").encode("utf-8")
-    files[sair / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    leave = CODEX_SKILLS_HOME / f"{CODEX_NS}exit"
+    files[leave / "SKILL.md"] = exit_skill(plugin_name(), provider="codex").encode("utf-8")
+    files[leave / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
+
+
+def remove_empty_codex_dirs(paths) -> None:
+    """Apaga as pastas vazias que os arquivos do AiDW deixaram no Codex (sobe até as pastas-raiz, que ficam)."""
+    for d in sorted({Path(k).parent for k in paths}, key=lambda x: -len(x.parts)):
+        while d not in (CODEX_SKILLS_HOME, CODEX_AGENTS_HOME, CODEX_HOME, CODEX_GLOBAL_RULES.parent) and d.is_dir() \
+                and not any(d.iterdir()):
+            d.rmdir()
+            d = d.parent
 
 
 def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
@@ -3688,6 +3710,8 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
             changed += 1
             if not dry:
                 Path(k).unlink()
+    if not dry:  # pastas de skills que deixaram de ser geradas (ex.: aidw-lev → aidw-survey) não ficam vazias
+        remove_empty_codex_dirs(old.get("files", {}))
     remove_legacy_codex(dry, rep)
     agents = sum(1 for k in files if k.parent == CODEX_AGENTS_HOME)
     skills = len({k.relative_to(CODEX_SKILLS_HOME).parts[0] for k in files if CODEX_SKILLS_HOME in k.parents})
@@ -3723,11 +3747,7 @@ def uninstall_codex(dry: bool) -> bool:
             path.unlink()
     remove_legacy_codex(dry, rep)
     if not dry:
-        for d in sorted({Path(k).parent for k in old.get("files", {})}, key=lambda x: -len(x.parts)):
-            while d not in (CODEX_SKILLS_HOME, CODEX_AGENTS_HOME, CODEX_HOME, CODEX_GLOBAL_RULES.parent) and d.is_dir() \
-                    and not any(d.iterdir()):
-                d.rmdir()
-                d = d.parent
+        remove_empty_codex_dirs(old.get("files", {}))
         manifest.pop("codex")
         if manifest.get("plugins") or manifest.get("files"):
             write_if_changed(INSTALL_MANIFEST, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", dry, rep)
@@ -4056,7 +4076,7 @@ def context_command(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
                              ensure_ascii=False, indent=2))
             return 0
         if not items:
-            print("Nenhum contexto em contexts/. Crie um com a skill contexto-criar (ou `aidw.py context create`).")
+            print("Nenhum contexto em contexts/. Crie um com `/aidw:context create` (ou `aidw.py context create`).")
         for c in items:
             mark = "*" if c["active"] else " "
             if not c["ok"]:
@@ -4202,7 +4222,7 @@ def kb_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def kb_key(target: str) -> str:
-    """`[[sistemas/Hope.md]]` → `hope`: o Obsidian acha a nota pelo nome, em qualquer pasta."""
+    """`[[sistemas/Portal.md]]` → `portal`: o Obsidian acha a nota pelo nome, em qualquer pasta."""
     name = target.strip().replace("\\", "/").split("/")[-1]
     return (name[:-3] if name.lower().endswith(".md") else name).strip().lower()
 
@@ -5571,7 +5591,7 @@ def main() -> int:
     d_set.add_argument("--note", help="onde parou / próximo passo")
     d_set.add_argument("--summary", help="o que a demanda trata, em até 4 linhas (o painel mostra no Mapa da demanda)")
     d_set.add_argument("--pr", action="append", metavar="REPO=N",
-                       help="PR aberta de um repositório da demanda (repetível): AssistenteCertificado=7788")
+                       help="PR aberta de um repositório da demanda (repetível): App=1234")
     d_set.add_argument("--task", action="append", metavar="TICKET=ID",
                        help="work item (Task) criado para um ticket (repetível): front=5001")
     d_set.add_argument("--loop", help="laço de correção depois da entrega (ex.: bug-1234): as rodadas de "

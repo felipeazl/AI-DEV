@@ -321,10 +321,10 @@ function fenced(body: string, label: RegExp): string {
   return m ? (m[1] ?? '').replace(/\n$/, '') : ''
 }
 
-/** A decisão que a triagem registrou: mantido, descartado ou com você (pendente, inclusive "vai ao usuário"; "Felipe" fica pelas triagens antigas do safeweb). */
+/** A decisão que a triagem registrou: mantido, descartado ou com você (pendente, inclusive "vai ao usuário"). */
 export function decisionOf(triage: string): Finding['decision'] {
   const t = triage.toLowerCase()
-  if (!t || /felipe|usu[aá]rio|pergunta|com voc[eê]|pendente|aguarda/.test(t)) return 'pendente'
+  if (!t || /usu[aá]rio|pergunta|com voc[eê]|pendente|aguarda/.test(t)) return 'pendente'
   if (/^\W*(descart|cai\b|n[aã]o corrig|recusad|refutad|n[aã]o public|fora do escopo)/.test(t)) return 'descartado'
   if (/^\W*(corrig|mantid|aceit|publica|sim\b|aplica)/.test(t)) return 'mantido'
   return 'pendente'

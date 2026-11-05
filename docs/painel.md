@@ -1,6 +1,6 @@
 # Painéis e faixa do AiDW (V4)
 
-Especificação da faixa acima do prompt e dos painéis do AiDW (mod `aidw-mods`, só Claude Code). A V4 (Felipe,
+Especificação da faixa acima do prompt e dos painéis do AiDW (mod `aidw-mods`, só Claude Code). A V4 (decisão,
 2026-11-03) parte de que o app do Claude já tem barra lateral própria (Ambiente, Contexto, Saídas, Alterações) e o
 diff: o AiDW fica com a faixa e três painéis que só abrem quando você pede. Os mods em geral estão em
 [mods.md](mods.md); aqui fica o que cada tela mostra, de onde vem cada dado e o que os agentes gravam para isso.
@@ -17,7 +17,7 @@ no `context.toml`); dentro deles, cada aba só aparece quando há o arquivo que 
 - **Feito para o app desktop.** O terminal recebe a mesma informação, num desenho mais simples (barras ▰▱, teclas).
 - **Os painéis só informam:** toda decisão (manter ou descartar um achado, o resultado de um passo manual, o que
   publicar, aprovar uma PR, responder uma dúvida, comentar no card) é feita no chat, com o orquestrador e o agente da
-  etapa (revisor, QA). Nenhum painel tem botão de decisão nem campo de resposta (Felipe, 2026-11-03).
+  etapa (revisor, QA). Nenhum painel tem botão de decisão nem campo de resposta (decisão, 2026-11-03).
 - **Sem orçamento de tokens nem limite de rodadas** em nenhuma tela: a demanda itera até terminar.
 - **O que os mods desenham:** caixas (borda, cor), texto, botões, campos, seletor e SVG. Não há menu flutuante; os
   filtros são uma linha de botões que liga e desliga.
@@ -67,15 +67,15 @@ Três linhas:
   (100%)**: "limite · volta 16:40".
 - **Dados:** contexto e janelas de uso em `$.session.usage()` (`rateLimits` `five_hour`/`seven_day`, só em
   assinatura; sem leitura, o 7d e o 5h não aparecem); agentes rodando pelo próprio mod.
-- A faixa some em `DONE`; **`/faixa`** esconde e mostra.
+- A faixa some em `DONE`; **`/strip`** esconde e mostra.
 
 ## Painéis
 
 | Painel | Botão / comando | Desenvolvimento | Revisão de PR | Levantamento |
 |---|---|---|---|---|
-| Geral | **Geral** · `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
-| Métricas | **Métricas** · `/metricas` | consumo | consumo | consumo |
-| Testes e Review | **Testes e Review** · `/testes-review` | abas Revisão · Testes | Comentários | — (vira **Dúvidas**) |
+| Geral | **Geral** · `/panel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
+| Métricas | **Métricas** · `/metrics` | consumo | consumo | consumo |
+| Testes e Review | **Testes e Review** · `/review-tests` | abas Revisão · Testes | Comentários | — (vira **Dúvidas**) |
 
 O uso vem dos arquivos da demanda. Uma demanda que fechou o levantamento (`DONE` depois do `ESTIMATE`) e seguiu para
 outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado.
@@ -83,8 +83,8 @@ outra etapa já aparece como Desenvolvimento, mesmo antes de o plano ser gravado
 - **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Testes e Review" ou "AiDW · Dúvidas"); com dois ou mais abertos,
   o app mostra as abas entre eles. Ao sair do modo orquestrador, os três fecham. Numa janela estreita demais o painel
   não abre e o comando diz por quê.
-- **`/painel <aba>`** abre o painel que tem a aba (`/painel revisao`, `/painel roteiro` e `/painel duvidas` abrem
-  Testes e Review, ou Dúvidas; `/painel criterios`, `estimativa` e `codigo` abrem a Geral).
+- **`/panel <aba>`** abre o painel que tem a aba (`/panel revisao`, `/panel roteiro` e `/panel duvidas` abrem
+  Testes e Review, ou Dúvidas; `/panel criterios`, `estimativa` e `codigo` abrem a Geral).
 - **Cabeçalho único:** tipo e número (`US 128734 · Desenvolvimento`), a situação (`● Revisão · espera você`, ou
   `Code review · com o time` em azul, `Pausada`, `Concluída` em verde) e o título do card.
 - **Abas** (só em Testes e Review, e só com duas ou mais): a ativa com moldura, as outras apagadas; ao lado do nome,
@@ -172,7 +172,7 @@ Saíram na V4: a lista das delegações recentes e a dos artefatos (o app mostra
 ## Testes e Review (Dúvidas no levantamento)
 
 Só para consulta: os achados da revisão, o teste manual e os comentários de PR; no levantamento, as dúvidas. O número no
-botão da faixa soma o que ainda espera decisão em cada aba; a decisão é no chat. Sem nada (pelo `/testes-review`):
+botão da faixa soma o que ainda espera decisão em cada aba; a decisão é no chat. Sem nada (pelo `/review-tests`):
 "Ainda sem testes nem revisão nesta demanda." ou, no levantamento, "Nenhuma dúvida por enquanto."
 
 ### Revisão (desenvolvimento)

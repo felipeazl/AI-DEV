@@ -1,10 +1,4 @@
----
-name: contexto-usar
-description: Troca o contexto de trabalho ativo do AiDW — valida o contexto, grava no aidw.config.toml, regenera o ambiente e, se o AiDW estiver instalado, regenera o plugin aidw com as regras do novo contexto. Use quando o usuário pedir para usar, ativar ou trocar de contexto.
-aidw: admin
----
-
-# contexto-usar
+# context use
 
 `aidw.py` fica em `{{root}}` (raiz do AiDW). Rode os comandos exatamente na forma `python "{{root}}/aidw.py" ...`, com as aspas: é a que as regras de permissão liberam.
 

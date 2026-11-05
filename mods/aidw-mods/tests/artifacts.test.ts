@@ -52,8 +52,8 @@ describe('achados e triagem', () => {
     '**O quê:** os dois novos flags booleanos do fluxo fast não seguem o padrão de nomenclatura.',
     '**Correção sugerida:** renomear.',
     '',
-    '### R1-02 — SUGESTAO — PR 7639 — `async` sem `await` em `ValidateFacialRequirements`',
-    '**Rascunho do comentário de PR (7639):**',
+    '### R1-02 — SUGESTAO — PR 1234 — `async` sem `await` em `ValidateFacialRequirements`',
+    '**Rascunho do comentário de PR (1234):**',
     '> A resposta perdeu `livenessResult`.',
     '> Pode conferir?',
     '',
@@ -93,8 +93,8 @@ describe('achados e triagem', () => {
         '| R1-01 | CRITICO | **IMPORTANTE** | Bug real (confirmado em `LoginView.vue:102`) |',
         '| R1-D1 | DÚVIDA | Não comentar | fora do escopo da PR. |',
         '- R1-03: manter aberto como IMPORTANTE; vira comentário.',
-        '## Publicado (2026-10-06, com OK do Felipe)',
-        '- PR 7639: thread 22996, R1-01, ordem de deploy.',
+        '## Publicado (2026-10-06, com OK do usuário)',
+        '- PR 1234: thread 5678, R1-01, ordem de deploy.',
       ].join('\n'),
     )
     expect(t.decisions['R1-01']).toBe('IMPORTANTE — Bug real (confirmado em `LoginView.vue:102`)')

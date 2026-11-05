@@ -57,7 +57,7 @@ Worktrees criados antes da pasta por demanda, em `<root>/<repo>/<demanda>`, cont
 |---|---|
 | Demanda com um repositório, app desktop do Claude | o worktree (`change_directory` do app; o painel de diff segue) |
 | Demanda com vários repositórios, app desktop | a pasta da demanda |
-| Demanda sem worktree (só leitura, ou repositórios usados no lugar, como numa demanda importada), app desktop | a pasta de estado da demanda (`<state_dir>/<id>`, ex.: `contexts/safeweb/demandas/us-116332`), que toda demanda tem |
+| Demanda sem worktree (só leitura, ou repositórios usados no lugar, como numa demanda importada), app desktop | a pasta de estado da demanda (`<state_dir>/<id>`, ex.: `contexts/exemplo/demandas/us-123`), que toda demanda tem |
 | Terminal do Claude | `EnterWorktree` com o nome `<demanda>` |
 | Codex | não muda de pasta: todo comando e toda tarefa usam o caminho absoluto do worktree |
 | Chat já aberto na pasta da demanda ou num worktree dela | fica onde está |
@@ -67,7 +67,7 @@ Worktrees criados antes da pasta por demanda, em `<root>/<repo>/<demanda>`, cont
 Se o working copy principal tem alterações locais, o `worktree create` avisa e o orquestrador pergunta uma vez.
 
 No app desktop, depois de mudar (ou quando o chat já abriu na pasta da demanda), o orquestrador também adiciona à
-sessão a **pasta do contexto ativo** (ex.: `contexts/safeweb`, que tem a pasta `demandas/`) com o
+sessão a **pasta do contexto ativo** (ex.: `contexts/exemplo`, que tem a pasta `demandas/`) com o
 `request_directory` do app, uma vez por sessão. Assim o plano, o roteiro de testes, os relatórios e a documentação
 gerada na demanda abrem no app, que só abre arquivos das pastas da sessão. Se o estado das demandas (`state_dir`)
 ficar fora da pasta do contexto, ele entra também. O `aidw open --demand` faz o mesmo com `--add-dir`.
@@ -124,7 +124,7 @@ Apagar a branch é ação travada: peça ao orquestrador, que pede o seu OK.
 Para revisar a PR que outra pessoa abriu (workflow `pr-review`):
 
 ```powershell
-python aidw.py worktree create --repo C:\ProjetosLegados\Hope --demand us-127508 --pr 7639
+python aidw.py worktree create --repo C:\Repos\App --demand us-1234 --pr 5678
 ```
 
 - Busca `refs/pull/<n>/merge` no `origin`: a PR já mesclada no destino, como ficaria depois do merge. Funciona no

@@ -43,9 +43,9 @@ const DEMANDS: Record<string, Record<string, string>> = {
   'pr-7': {
     'demand.json': JSON.stringify({
       id: 'pr-7', step: 'FINAL_REVIEW',
-      repos: [{ repo: 'C:/p/Hope', path: 'C:/wt/pr-7/Hope', branch: 'pr/7', base: 'abc', pr: '7', source: 'def' }],
+      repos: [{ repo: 'C:/p/App', path: 'C:/wt/pr-7/App', branch: 'pr/7', base: 'abc', pr: '7', source: 'def' }],
     }),
-    'diff-pr7-Hope-r2.patch': 'diff --git a/x.cs b/x.cs\n--- a/x.cs\n+++ b/x.cs\n@@ -1 +1 @@\n-a\n+b\n',
+    'diff-pr7-App-r2.patch': 'diff --git a/x.cs b/x.cs\n--- a/x.cs\n+++ b/x.cs\n@@ -1 +1 @@\n-a\n+b\n',
     'review-pr-7-r1.md': [
       '### R1-01 — IMPORTANTE — `x.cs:1`', '**O quê:** troca o contrato', '**Rascunho do comentário de PR (7):**', '> Isto quebra o contrato.', '',
       '### R1-02 — SUGESTAO — `x.cs:2`', '**O quê:** nome', '', 'Voto sugerido: aguardar autor (`-5`).',
@@ -55,8 +55,8 @@ const DEMANDS: Record<string, Record<string, string>> = {
     'demand.json': JSON.stringify({
       id: 'pr-8', step: 'FINAL_REVIEW',
       repos: [
-        { repo: 'C:/p/Gedar', path: 'C:/wt/pr-8/Gedar', branch: 'pr/8', base: 'a', pr: '8', source: 'b' },
-        { repo: 'C:/p/Emissao', path: 'C:/wt/pr-8/Emissao', branch: 'pr/9', base: 'a', pr: '9', source: 'b' },
+        { repo: 'C:/p/Portal', path: 'C:/wt/pr-8/Portal', branch: 'pr/8', base: 'a', pr: '8', source: 'b' },
+        { repo: 'C:/p/Api', path: 'C:/wt/pr-8/Api', branch: 'pr/9', base: 'a', pr: '9', source: 'b' },
       ],
     }),
     'review-pr-8-r1.md': '### R1-01 — IMPORTANTE — `a.cs:1`\n**O quê:** trava a tela\n',
@@ -269,8 +269,8 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
 
   // /painel com a aba leva ao painel dela
   const before = f.opens
-  expect(JSON.stringify(await $.command.run({ command: 'painel', args: 'revisao' } as never))).toContain('painel Testes e Review aberto')
-  expect(JSON.stringify(await $.command.run({ command: 'metricas', args: '' } as never))).toContain('Métricas aberto')
+  expect(JSON.stringify(await $.command.run({ command: 'panel', args: 'revisao' } as never))).toContain('painel Testes e Review aberto')
+  expect(JSON.stringify(await $.command.run({ command: 'metrics', args: '' } as never))).toContain('Métricas aberto')
   expect(f.opens).toBe(before + 2)
 })
 
@@ -348,7 +348,7 @@ test('levantamento: pontos, estimativa e dúvidas', async ($, on) => {
   const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'AbovePrompt', props: PROPS_BAND })
   await has(band, /^Dúvidas/)
   await band.unmount()
-  expect(JSON.stringify(await $.command.run({ command: 'testes-review', args: '' } as never))).toContain('painel Dúvidas aberto')
+  expect(JSON.stringify(await $.command.run({ command: 'review-tests', args: '' } as never))).toContain('painel Dúvidas aberto')
   const duvidas = await $.ui.mount({ plugin: 'aidw-mods', surface: 'desktop', component: 'Pane', requestId: 'aidw-decidir', props: PROPS_PANE })
   await has(duvidas, /^Vale para PJ\?$/)
   expect(await duvidas.find({ key: 'duvida-D1' })).toBeUndefined()
@@ -364,7 +364,7 @@ test('contexto sem painel: a faixa aparece, o painel não abre e /painel explica
   await has(band, /^41% · 82k$/)
   expect(await band.find({ key: 'open-geral' })).toBeUndefined() // sem painel, sem os botões
   await band.unmount()
-  const r = await $.command.run({ command: 'painel', args: '' } as never)
+  const r = await $.command.run({ command: 'panel', args: '' } as never)
   expect(JSON.stringify(r)).toContain('painel está desligado')
   expect(f.opens).toBe(0)
   // as travas continuam: uma variante fora da tabela é recusada

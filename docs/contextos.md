@@ -207,7 +207,7 @@ permissões). Uma política diz o que fazer; a permissão do CLI garante. Para u
 ## Criar um contexto
 
 ```text
-/aidw:contexto-criar
+/aidw:context create
 ```
 
 1. Pergunta o nome e os repositórios.
@@ -237,7 +237,7 @@ identificadores e sinônimos que a busca pesa como o título) e moram na pasta d
 
 | Pasta | `tipo` | Uma nota por |
 |---|---|---|
-| `sistemas/` | `sistema` | sistema do `context.toml` — o nome do arquivo é a chave (`[systems.hope]` → `sistemas/hope.md`) |
+| `sistemas/` | `sistema` | sistema do `context.toml` — o nome do arquivo é a chave (`[systems.portal]` → `sistemas/portal.md`) |
 | `componentes/` | `componente` | biblioteca ou projeto compartilhado |
 | `integracoes/` | `integracao` | contrato entre dois lados: endpoint, SOAP, enum, evento, configuração compartilhada, serviço externo |
 | `conceitos/` | `conceito` | termo do domínio; `evitar:` lista os termos que não se usam (vira o glossário do índice) |
@@ -255,7 +255,7 @@ O `README.md` da pasta traz as convenções do time; `index.md` é gerado (`kb i
 - O orquestrador consulta a base no começo da demanda, passa os caminhos nas tarefas e anota em
   `aprendizados-<id>.md` o que foi verificado durante ([fluxo.md](fluxo.md#a-base-de-conhecimento-no-fluxo)).
 - O `/aidw:done` cria a nota da demanda e atualiza as notas que ela tocou, sem duplicar.
-- O `/aidw:conhecimento <tema>` responde o que a base sabe, fora de uma demanda.
+- O `/aidw:knowledge <tema>` responde o que a base sabe, fora de uma demanda.
 - O `kb check` (também dentro do `context check`) aponta link quebrado, nome repetido, frontmatter faltando,
   `sistemas` que não existem, sistema sem nota, nota órfã e texto com cara de segredo ou CPF; avisa nota com mais de
   150 linhas (divida: quem lê paga por linha) e nota sem conferência há mais de 6 meses.
@@ -286,9 +286,9 @@ Reconfira o que `covers` lista e atualize o `synced`.
 ## Ativar, validar, listar
 
 ```text
-/aidw:contexto-usar <nome>                  ← valida, grava [context] active, regenera; abra um chat novo
+/aidw:context use <nome>                  ← valida, grava [context] active, regenera; abra um chat novo
 python aidw.py context check <nome>          ← build completo com o contexto, repositório próprio, pasta de estado exclusiva
-python aidw.py context list                  ← (ou /aidw:contexto-listar)
+python aidw.py context list                  ← (ou /aidw:context list)
 ```
 
 Só um contexto fica ativo por vez. A pasta de estado de cada contexto é exclusiva: dois contextos não dividem demandas.

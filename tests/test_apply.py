@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import hashlib
 import io
 import importlib.util
 import json
@@ -226,7 +227,7 @@ class OrchestratorReferenceTest(unittest.TestCase):
             self.assertTrue(any("nome repetido 'etapa'" in e for e in rep.errors), rep.errors)
 
     def test_agentes_e_variantes(self) -> None:
-        """Fluxo v3 (Felipe, 2026-10-23): sem níveis; cada agente no seu padrão e só as exceções do routing.toml
+        """Fluxo v3 (decisão, 2026-10-23): sem níveis; cada agente no seu padrão e só as exceções do routing.toml
         (descer na re-revisão, subir quando o resultado não fez sentido, o explorador do levantamento); nada acima de
         high; os agentes api, bugs e segurança saíram; no Codex, o equivalente de cada modelo pelo tier."""
         esperado = {  # papel: {variante: modelo/effort}
@@ -358,12 +359,16 @@ class InstallTest(unittest.TestCase):
             self.assertIn(f'python "{root.as_posix()}/aidw.py" record', orq, "aidw.py por caminho absoluto")
             self.assertIn(f"{(root / '.aidw' / 'marketplace' / base / 'reference').as_posix()}/etapa.md", orq)
             self.assertIn("[AiDW]", files[f"{base}/agents/codificador.md"].decode("utf-8"))
-            self.assertIn("[AiDW]", files[f"{base}/skills/skill-exemplo/SKILL.md"].decode("utf-8"))
+            exemplo = files[f"{base}/skills/skill-exemplo/SKILL.md"].decode("utf-8")
+            self.assertIn("[AiDW]", exemplo)
+            self.assertIn("\nuser-invocable: false\n---", exemplo, "skill de fluxo fora do menu /")
             done = files[f"{base}/skills/done/SKILL.md"].decode("utf-8")
             self.assertIn("disable-model-invocation: true", done, "/aidw:done só quando o usuário chamar")
             self.assertIn(f'python "{root.as_posix()}/aidw.py" context check', done)
             self.assertIn("aidw.py\" session unbind", done, "o done tira a sessão do modo sem depender do hook")
-            self.assertIn("session unbind", files[f"{base}/skills/sair/SKILL.md"].decode("utf-8"))
+            self.assertIn("session unbind", files[f"{base}/skills/exit/SKILL.md"].decode("utf-8"))
+            self.assertNotIn("user-invocable", done, "aidw: admin é comando do usuário")
+            self.assertNotIn("user-invocable", orq)
             self.assertIn("session bind", orq, "a go liga o modo sem depender do hook")
             self.assertNotIn("aidw: admin", done)
             data = json.loads(settings.read_text(encoding="utf-8"))
@@ -680,7 +685,7 @@ class WorktreeTest(unittest.TestCase):
             self.assertEqual(wt3["outside_links"], [], "junction para outro lugar não é reaproveitada")
             self.assertTrue(any("outro lugar" in w for w in wt3["warnings"]), wt3["warnings"])
 
-            homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: ProjetosTFS/Hope x Legados/Hope)
+            homonimo = tmp / "outros" / "Aplicação"  # mesmo nome, outro repositório (ex.: Novo/App x Legado/App)
             homonimo.mkdir(parents=True)
             git(homonimo, "init", "-q", "-b", "main")
             (homonimo / "b.txt").write_text("b\n", encoding="utf-8")
@@ -946,9 +951,9 @@ class SessionModeTest(unittest.TestCase):
             self.assertEqual(d["history"][-1]["step"], "QA_TEST")
             demand_file = Path(d["folder"]) / "demand.json"
             data = json.loads(demand_file.read_text(encoding="utf-8"))
-            data["repos"] = [{"repo": "C:/p/Assistente.Front", "path": "C:/wt/us-5/Assistente.Front", "branch": "b"}]
+            data["repos"] = [{"repo": "C:/p/App.Front", "path": "C:/wt/us-5/App.Front", "branch": "b"}]
             demand_file.write_text(json.dumps(data), encoding="utf-8")
-            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "assistente.front=7789", "--json")
+            code, d = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "app.front=7789", "--json")
             self.assertEqual((code, d["repos"][0]["pr"]), (0, "7789"), d)
 
             hook = lambda payload: subprocess.run([sys.executable, str(root / "aidw_guard.py")],  # noqa: E731
@@ -966,19 +971,19 @@ class SessionModeTest(unittest.TestCase):
             self.assertIn("us-5 continuar", ctx)
             self.assertLess(len(ctx.encode()), 2000, "o hook só injeta ~2 KB")
             self.assertEqual(hook({"session_id": "s2", "hook_event_name": "SessionStart", "source": "compact"}), "")
-            hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:sair"})
+            hook({**base, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:exit"})
             cx = {"session_id": "c1", "cwd": str(tmp)}
             hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-go us-7"})
             out = json.loads(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}))
             ctx_codex = out["hookSpecificOutput"]["additionalContext"]
             self.assertIn("aidw-go/SKILL.md", ctx_codex)
-            self.assertIn("$aidw-sair", ctx_codex)
+            self.assertIn("$aidw-exit", ctx_codex)
             self.assertEqual(hook({**base, "hook_event_name": "SessionStart", "source": "resume"}), "")
             hook({**cx, "hook_event_name": "UserPromptSubmit", "prompt": "$aidw-done"})
             self.assertEqual(hook({**cx, "hook_event_name": "SessionStart", "source": "compact"}), "",
-                             "o done fecha a tarefa e encerra o modo orquestrador, como o sair")
+                             "o done fecha a tarefa e encerra o modo orquestrador, como o exit")
             lv = {"session_id": "l1", "cwd": str(tmp)}
-            hook({**lv, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:lev us-8"})
+            hook({**lv, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:survey us-8"})
             out = json.loads(hook({**lv, "hook_event_name": "SessionStart", "source": "compact"}))
             ctx_lev = out["hookSpecificOutput"]["additionalContext"]
             self.assertIn("aidw/skills/go/SKILL.md", ctx_lev, "a go entende o pedido de levantamento")
@@ -1056,15 +1061,15 @@ class SessionModeTest(unittest.TestCase):
             for gone in ("--mode", "AskUserQuestion", "## Modo interativo"):
                 self.assertNotIn(gone, orq, "sem a escolha de modo da sessão")
             self.assertLess(orq.index("Ao ser chamado"), orq.index("# ROLE"), "o protocolo vem antes do resto")
-            sair = files["plugins/aidw/skills/sair/SKILL.md"].decode("utf-8")
+            leave = files["plugins/aidw/skills/exit/SKILL.md"].decode("utf-8")
             diff = files["plugins/aidw/skills/diff/SKILL.md"].decode("utf-8")
             for step in ("ExitWorktree", 'action: "keep"', 'name: "<demanda>/<folder>"', "worktree list --json",
                          "**seguinte**", "`sair`: a pasta da demanda"):
                 self.assertIn(step, diff)
             self.assertIn("/aidw:diff sair", orq)
             self.assertIn("workflow `levantamento`", orq)
-            lev = files["plugins/aidw/skills/lev/SKILL.md"].decode("utf-8")
-            self.assertIn("name: lev", lev)
+            lev = files["plugins/aidw/skills/survey/SKILL.md"].decode("utf-8")
+            self.assertIn("name: survey", lev)
             self.assertIn("disable-model-invocation: true", lev)
             self.assertIn("**Levantamento:**", lev)
             # o orquestrador enxuto do levantamento: só o explorador, o procedimento já dentro, sem o desenvolvimento
@@ -1077,12 +1082,15 @@ class SessionModeTest(unittest.TestCase):
                 self.assertNotIn(gone, lev)
             self.assertLess(len(lev), len(orq), "menor que a skill orquestrar, mesmo com o procedimento dentro")
             self.assertIn("plugins/aidw/reference/levantamento.md", files)
-            self.assertIn("--status paused", sair)
-            self.assertIn("disable-model-invocation: true", sair)
+            self.assertIn("--status paused", leave)
+            self.assertIn("name: exit", leave)
+            self.assertIn("disable-model-invocation: true", leave)
+            for old in ("lev", "sair", "conhecimento", "contexto-usar"):
+                self.assertNotIn(f"plugins/aidw/skills/{old}/SKILL.md", files, "nomes antigos não são gerados")
 
 
 class ContextTest(unittest.TestCase):
-    """aidw.py context list / check / create / use (skills contexto-listar, contexto-usar, contexto-criar)."""
+    """aidw.py context list / check / create / use (skill context: list, use, create)."""
 
     def test_contexto_sobrescreve_routing_e_workflows(self) -> None:
         """contexts/<nome>/routing.toml vai por cima do núcleo; workflows/ do contexto substituem os de mesmo nome; o
@@ -1289,21 +1297,21 @@ class KnowledgeTest(unittest.TestCase):
                 "# Exploração\n\n## Q1 onde\n- fato\n\n## Base de conhecimento\n- novo → [[sistema-a]]: rota X — `a.cs:1`\n",
                 encoding="utf-8")
             (demand / "plano-us-9.md").write_text(
-                "# Plano v1\n\n## Decisões tomadas\n| 1 | Tema | Decisão | Felipe, 2026-10-23 |\n\n## Objetivo\nx\n",
+                "# Plano v1\n\n## Decisões tomadas\n| 1 | Tema | Decisão | usuário, 2026-10-23 |\n\n## Objetivo\nx\n",
                 encoding="utf-8")
             (demand / "plano-us-9-v1.md").write_text("## Decisões tomadas\nvelha\n", encoding="utf-8")
             (demand / "review-us-9-r1.md").write_text("### R1-01 — SUGESTAO — `a.cs:2`\n", encoding="utf-8")
-            (demand / "aprendizados-us-9.md").write_text("- decisão do Felipe → [[sistema-a]]\n", encoding="utf-8")
+            (demand / "aprendizados-us-9.md").write_text("- decisão do Tech Lead → [[sistema-a]]\n", encoding="utf-8")
             out = run_aidw(root, "kb", "collect", "us-9")
             self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
             text = (demand / "collect-us-9.md").read_text(encoding="utf-8")
             self.assertIn("## exploracao-rota.md", text)
             self.assertIn("rota X", text)
             self.assertNotIn("## Q1", text, "só a seção Base de conhecimento do relatório")
-            self.assertIn("Felipe, 2026-10-23", text)
+            self.assertIn("usuário, 2026-10-23", text)
             self.assertNotIn("velha", text, "a versão antiga do plano não entra")
             self.assertNotIn("review-us-9-r1.md", text, "relatório sem a seção não entra")
-            self.assertIn("decisão do Felipe", text)
+            self.assertIn("decisão do Tech Lead", text)
             self.assertNotEqual(run_aidw(root, "kb", "collect", "nao-existe").returncode, 0)
 
     def test_base_de_conhecimento(self) -> None:
@@ -1493,21 +1501,24 @@ class CodexInstallTest(unittest.TestCase):
             self.assertTrue((home / "agents" / "aidw-codificador.toml").is_file())
             orq = (skills / "aidw-go" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-go", orq)
-            self.assertIn("$aidw-sair", orq)
+            self.assertIn("$aidw-exit", orq)
             self.assertNotIn("EnterWorktree` com o id", orq, "no Codex não há EnterWorktree")
             self.assertNotIn("AskUserQuestion", orq)
             self.assertNotIn("perfil `aidw`", orq, "no Codex o AiDW não instala perfil")
             self.assertFalse((skills / "aidw-diff").exists(), "no Codex não há EnterWorktree: sem a skill diff")
             self.assertNotIn("## Modo interativo", orq)
             self.assertIn("allow_implicit_invocation: false", (skills / "aidw-go" / "agents" / "openai.yaml").read_text())
-            lev = (skills / "aidw-lev" / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("name: aidw-lev", lev)
+            lev = (skills / "aidw-survey" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-survey", lev)
             self.assertIn("`$aidw-go <id>`", lev)
             self.assertNotIn("# WORKFLOW", lev)
             self.assertNotIn("disable-model-invocation", lev)
             self.assertIn("allow_implicit_invocation: false",
-                          (skills / "aidw-lev" / "agents" / "openai.yaml").read_text())
-            self.assertIn("name: aidw-to-spec", (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8"))
+                          (skills / "aidw-survey" / "agents" / "openai.yaml").read_text())
+            self.assertIn("name: aidw-exit", (skills / "aidw-exit" / "SKILL.md").read_text(encoding="utf-8"))
+            to_spec = (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-to-spec", to_spec)
+            self.assertNotIn("user-invocable", to_spec, "chave do Claude; o Codex não esconde skill")
             done = (skills / "aidw-done" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-done", done)
             self.assertNotIn("disable-model-invocation", done, "chave do Claude; no Codex vale o openai.yaml")
@@ -1528,6 +1539,20 @@ class CodexInstallTest(unittest.TestCase):
             again = run_aidw(root, "install", "--provider", "codex")
             self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
             self.assertIn("0 arquivo(s) mudaram", again.stdout, "idempotente")
+
+            # skill renomeada (aidw-lev → aidw-survey): o arquivo antigo do manifesto sai, e a pasta junto
+            old_skill = skills / "aidw-lev"
+            (old_skill / "agents").mkdir(parents=True)
+            old_files = {old_skill / "SKILL.md": b"---\nname: aidw-lev\n---\n",
+                         old_skill / "agents" / "openai.yaml": b"policy:\n  allow_implicit_invocation: false\n"}
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for f, content in old_files.items():
+                f.write_bytes(content)
+                data["codex"]["files"][str(f)] = hashlib.sha256(content).hexdigest()
+            manifest_path.write_text(json.dumps(data), encoding="utf-8")
+            renamed = run_aidw(root, "install", "--provider", "codex")
+            self.assertEqual(renamed.returncode, 0, renamed.stdout + renamed.stderr)
+            self.assertFalse(old_skill.exists(), "a pasta da skill antiga não fica vazia")
 
             (home / "config.toml").write_text("[features]\nmulti_agent_v2 = true\n", encoding="utf-8")
             quiet = run_aidw(root, "install", "--provider", "codex")

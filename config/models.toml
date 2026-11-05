@@ -64,7 +64,7 @@ efforts = ["low", "medium", "high", "xhigh", "max"]
 # ~/.codex/models_cache.json. Em 2026-09-25 a conta tinha gpt-6-luna, gpt-5.6-terra,
 # gpt-5.6-luna e gpt-5.5 — o gpt-6-sol não estava liberado, então o tier top cai no gpt-6-luna.
 # Três degraus, como no Claude: top (Opus) gpt-6-sol/gpt-6-luna, mid (Sonnet) gpt-5.6-terra, fast (Haiku)
-# gpt-5.6-luna (Felipe, 2026-09-30).
+# gpt-5.6-luna (decisão, 2026-09-30).
 
 [models.gpt-6-sol]
 name = "GPT Sol"
