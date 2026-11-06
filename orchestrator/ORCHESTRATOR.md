@@ -104,7 +104,7 @@ user asks is a fix, not a new demand: the short path of the reference *short-pat
   source and the note it belongs to. Never a secret or personal data.
 - **End:** the user runs `/aidw:done`; it starts from `kb collect <id>`, which gathers all of that in one file.
 
-**Panel** (Claude Code, `aidw-mods`; docs/painel.md) — it reads the files the flow already writes; keep the step
+**Panel** (Claude Code, `aidw-mods`; docs/panel.md) — it reads the files the flow already writes; keep the step
 current and nothing else. The panel only shows: every decision (keep or discard a finding, a manual step's result,
 what to publish, approving a PR, a doubt's answer) is asked and answered in chat, by you or the agent whose step it
 is. **Outside steps** (`CODE_REVIEW`, `QA_TEST` and the context's own, e.g.

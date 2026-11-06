@@ -1364,7 +1364,21 @@ class ContextTest(unittest.TestCase):
             self.assertTrue(any("already recorded" in w for w in r["warnings"]), r)
             wt.aidw_json(root, *base, "--label", "other", "--tokens", "50")
             rows = [x for x in f.read_text(encoding="utf-8").splitlines() if x.startswith("| 2")]
-            self.assertEqual([x.split(" | ")[5] for x in rows], ["lev", "other"], "no repeated or glued row")
+            self.assertEqual([x.split(" | ")[4] for x in rows], ["lev", "other"], "no repeated or glued row")
+            self.assertNotIn("| Level |", f.read_text(encoding="utf-8"), "a new metrics.md has no Level column")
+            # an old metrics.md (with the Level column) keeps its layout, and the mod's row is still found
+            old = Path(tmp) / "us-10"
+            old.mkdir()
+            (old / "metrics.md").write_text(
+                "| Date | Agent | Level | Model | Effort | Label | State | Turns or tools | Duration | Input tokens "
+                "(with cache) | Output tokens | Cost (USD) | Plan limits |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+                encoding="utf-8")
+            old_base = ["record", "--agent", "explorer", "--demand", str(old), "--state", "exploration_complete"]
+            wt.aidw_json(root, *old_base, "--label", "lev", "--tokens", "700", "--tool-uses", "3", "--duration-ms", "9000")
+            code, r = wt.aidw_json(root, *old_base, "--label", "lev")
+            self.assertEqual((code, r["tokens_in"], r["turns"]), (0, 700, 3), r)
+            rows = [x for x in (old / "metrics.md").read_text(encoding="utf-8").splitlines() if x.startswith("| 2")]
+            self.assertEqual([x.split(" | ")[2] for x in rows], ["—"], "the old file keeps its Level column")
 
     def test_context_cycle(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:

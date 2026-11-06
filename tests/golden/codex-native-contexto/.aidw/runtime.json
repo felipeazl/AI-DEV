@@ -12,7 +12,7 @@
       "enabled": true,
       "model": "gpt-6-sol",
       "model_id": "gpt-6-sol",
-      "effort": "high",
+      "effort": "medium",
       "skills": [
         "to-spec",
         "verify-premise",

@@ -20,9 +20,10 @@ Usage:
     python aidw.py delegate --agent <role|name> --effort <e> --task <file> --demand <dir>
 
 One provider per installation ([provider].name): everything runs on Claude Code or everything runs on Codex.
-Claude Code is the main platform; on Codex, only the agents and the skills (docs/claude-e-codex.md).
-The chat opened at the AiDW root is the orchestrator; each agent runs headless, one process per
-task, with the agent's model and the effort the orchestrator chooses for that task.
+Claude Code is the main platform; on Codex, only the agents and the skills (docs/claude-and-codex.md).
+The orchestrator is the chat (`/aidw:go` in any folder, or a chat opened at the AiDW root); each agent is a native
+subagent with its model and effort pinned in its definition (`[delegation] mode = "headless"`: one process per task,
+through `delegate`).
 """
 from __future__ import annotations
 
@@ -233,7 +234,7 @@ def is_generated(text: str) -> bool:
 # skills  = available to the agent (listed in the prompt; it calls them with the Skill tool when needed)
 # preload = subset injected whole at the start of every run — only what it always uses.
 DEFAULT_AGENTS: dict[str, dict] = {
-    "orchestrator": {"enabled": True, "tier": "top", "effort": "high",
+    "orchestrator": {"enabled": True, "tier": "top", "effort": "medium",
                      "skills": ["to-spec", "verify-premise", "prepare-worktree"]},
     # Planner: the plan, its fix and the tickets, in a fresh context (the orchestrator's stays lean).
     "planner": {"enabled": True, "tier": "mid", "effort": "high",
@@ -1472,7 +1473,7 @@ def claude_agent_entry(role: str, meta: dict, prompt: str, ctx: dict | None, ser
 def agent_tool_policy(role: str, meta: dict, prompt: str, ctx: dict | None, servers: dict) -> dict:
     """MCPs the agent may use (None = no list: all) and blocked MCP tools. Claude enforces this through the
     subagent's `tools`/`disallowedTools` and the guard (hook of the `aidw` plugin) checks again. On Codex there is
-    no per-agent MCP limit nor guard: the install there is agents and skills only (docs/claude-e-codex.md)."""
+    no per-agent MCP limit nor guard: the install there is agents and skills only (docs/claude-and-codex.md)."""
     entry = claude_agent_entry(role, meta, prompt, ctx, servers)
     mcp = sorted({t[5:].split("__")[0] for t in entry.get("tools", []) if t.startswith("mcp__")})
     return {"mcp": mcp if entry.get("tools") else None,
@@ -1484,10 +1485,10 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     roles = [r for r, a in resolved.items() if r != ORCHESTRATOR and a["enabled"]]
     if not roles:
         return ""
-    claude_native = cfg["provider"]["name"] == "claude" and cfg["delegation"]["mode"] == "native"
+    native = cfg["delegation"]["mode"] == "native"
 
     def cell(a: dict, name: str, v: dict) -> str:
-        if claude_native:
+        if native:
             return f"`{ns}{name}`"
         e = v["effort"] or "—"
         return e if v["model"]["key"] == a["model"]["key"] else f"{e} + model `{v['model']['key']}` (`{model_tag(v['model'])}`)"
@@ -1496,12 +1497,13 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
     for r in roles:
         a = resolved[r]
         items = list(a.get("variants", {}).items())
-        default = (f"`{ns}{a['name']}` — " if claude_native else "") + model_label(a)
+        default = (f"`{ns}{a['name']}` — " if native else "") + model_label(a)
         others = "; ".join(f"{cell(a, n, v)} — {v['when']}" for n, v in items[1:]) or "—"
         rows.append(f"| `{ns}{a['name']}` | {default} | {others} |")
-    if claude_native:
-        intro = ("Each cell is the `subagent_type` to use: the agent's model with that effort already pinned in its "
-                 "definition (a `-<alias>-` in the name means another model, e.g. `explorer-sonnet-medium`).")
+    if native:
+        kind = "the `subagent_type` to use" if cfg["provider"]["name"] == "claude" else "the agent (role) to spawn"
+        intro = (f"Each cell is {kind}: the agent's model with that effort already pinned in its definition (a "
+                 "model in the name means another model, e.g. `explorer-sonnet-medium`).")
     else:
         intro = ("Each cell is the effort to pass (`—` = the model takes no effort: omit it); a cell with `+ model` "
                  "also names the model to pass.")
@@ -1584,40 +1586,43 @@ def delegation_section(cfg: dict, resolved: dict, global_mode: bool = False) -> 
             "## How to delegate", "",
             "The agents are **native Codex sub-agents** installed as roles (`~/.codex/agents/aidw-*.toml`): spawn "
             "them with `spawn_agent`.", "",
-            "- `agent_type`: the agent name from the Team table (e.g. `aidw-coder`) — the role carries the "
-            "agent's standing instructions.",
-            "- `fork_turns: \"none\"` (a full-history fork rejects `agent_type`, `model` and `reasoning_effort`).",
-            "- `model`: the agent's model from the Team table. `reasoning_effort`: the agent's default in *Agents "
-            "and effort*, or an exception when its reason applies — that is how you choose the effort.",
+            "- `agent_type`: the agent's default from *Agents and effort* (e.g. `aidw-coder`), or one of its "
+            "exceptions when its reason applies (e.g. `aidw-coder-medium`) — each role carries the agent's standing "
+            "instructions with its model and effort pinned. That is how you choose the effort: never pass `model` "
+            "or `reasoning_effort` (another model only when the user asks for it).",
+            "- `fork_turns: \"none\"` (a full-history fork rejects `agent_type`).",
             "- `task_name`: `<agent>-<label>` (e.g. `aidw-coder-t1-r1`), unique in the demand.",
-            "- `message`: `Task: <task file>. Demand folder: <demand dir>. Worktree: <path>. Effort "
-            "<effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
-            "- Sub-agents inherit your sandbox, rules and MCP servers; the `aidw` profile makes the worktree root "
-            "writable. Only the agents allowed to edit code may edit it (their definition says so).",
+            "- `message`: `Task: <task file>. Demand folder: <demand dir>. Worktree: <path>. Finish with the JSON "
+            "of your OUTPUT section.` plus the MCP choice.",
+            "- Sub-agents inherit your sandbox, rules and MCP servers. The writable folders are this session's folder "
+            "and its `--add-dir` folders (`python aidw.py open --provider codex --demand <id>` opens the session in the "
+            "demand's worktree and adds the AiDW root); writing anywhere else asks for the sandbox's approval. Only "
+            "the agents allowed to edit code may edit it (their definition says so).",
             "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the sub-agent "
             "session, appends `metrics.md` and prints the `header` and `summary` you must show:",
             "", "```", record_hint(codex=True, global_mode=True), "```", "",
-            explore_line(resolved, fallback=f"spawn `{CODEX_NS}{example}` with its lowest effort asking "
-                         "for `file:line` pointers, or read short excerpts yourself"),
+            explore_line(resolved, fallback=f"spawn `{CODEX_NS}{example}` (its lowest-effort exception, if any) "
+                         "asking for `file:line` pointers, or read short excerpts yourself"),
         ])
     lines = [
         "## How to delegate", "",
         "The agents are **native Codex sub-agents**: spawn them with `spawn_agent` (multi-agent).", "",
         "- `task_name`: `<agent>-<label>` (e.g. `coder-t1-r1`), unique in the demand.",
-        "- `model`: the agent's model from the Team table. `reasoning_effort`: the agent's default in *Agents "
-        "and effort*, or an exception when its reason applies — that is how you choose the effort.",
+        "- Agent type/role: the agent's default from *Agents and effort*, or one of its exceptions when its reason "
+        "applies — each role in `.codex/agents/` has its model and effort pinned. That is how you choose the "
+        "effort: never pass `model` or `reasoning_effort` (another model only when the user asks for it).",
         "- `message` (always this shape): `You are the AiDW agent <name>. Your standing instructions are "
         "in <definition file> — read that file first and follow it; ignore the orchestrator instructions "
-        "(AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Effort "
-        "<effort>. Finish with the JSON of your OUTPUT section.` plus the MCP choice.",
-        "- If your spawn tool also takes an agent type/role, pass the agent name too (roles are defined "
-        "in `.codex/agents/`).",
+        "(AGENTS.md) you may have inherited. Task: <task file>. Demand folder: <demand dir>. Finish "
+        "with the JSON of your OUTPUT section.` plus the MCP choice.",
+        "- If your spawn tool takes an agent type/role, pass that name (the cell of *Agents and effort*); "
+        "the definition file is the base agent's, the same for its exceptions.",
         "- Sub-agents inherit your sandbox, rules and MCP servers: the task must say which MCP to use, and "
         "only the agents allowed to edit code may edit it (their definition says so).",
         "- Wait for the sub-agent to finish. Then record it — this reads the real token usage of the "
         "sub-agent session, appends `metrics.md` and prints the `header` and `summary` you must show:",
         "", "```", record_hint(codex=True, global_mode=global_mode), "```", "",
-        f"- There is no exploration role: for broad code exploration spawn `{example}` with its lowest effort "
+        f"- There is no exploration role: for broad code exploration spawn `{example}` (its lowest-effort exception, if any) "
         "asking for `file:line` pointers, or read short excerpts yourself.",
         "- Your own skills: see the *Skills* section — read each `SKILL.md` and follow it when the "
         "workflow or a trigger says to use it.",
@@ -1817,15 +1822,25 @@ def render_claude_subagent(role: str, a: dict, meta: dict, prompt: str, effort: 
     return "\n".join(front) + "\n\n" + (note + "\n\n" if note else "") + prompt
 
 
-def render_codex_role(a: dict, meta: dict, prompt: str) -> str:
-    """Native Codex role (.codex/agents/<name>.toml). Applies when the spawn tool accepts a
-    role; otherwise the orchestrator passes the definition file in the message."""
+def render_codex_role(a: dict, meta: dict, prompt: str, name: str = "", model: dict | None = None,
+                      effort: str | None = None, ns: str = "") -> str:
+    """Native Codex role (.codex/agents/<name>.toml), with the model and effort pinned. One per variant (the
+    default and each exception of [effort.variants], like Claude's subagents): the orchestrator spawns the role by
+    name and never passes `model`/`reasoning_effort`."""
+    name = name or a["name"]
+    model = model or a["model"]
+    effort = a["effort"] if effort is None else effort
+    description = meta["description"]
+    if name != a["name"]:
+        guard = f"{PLUGIN_GUARD} " if description.startswith(PLUGIN_GUARD) else ""
+        description = (f"{guard}{a['display']} with {model['name']}, effort {effort or '—'}: same role as "
+                       f"{ns}{a['name']}. Only for the exception in the Agents and effort table.")
     lines = [f"# {GENERATED_MARK} apply — do not edit; change the sources and run `python aidw.py apply`.",
-             f"name = {toml_value(a['name'])}",
-             f"description = {toml_value(meta['description'])}",
-             f"model = {toml_value(a['model']['model_id'])}"]
-    if a["effort"]:
-        lines.append(f"model_reasoning_effort = {toml_value(a['effort'])}")
+             f"name = {toml_value(ns + name)}",
+             f"description = {toml_value(description)}",
+             f"model = {toml_value(model['model_id'])}"]
+    if effort:
+        lines.append(f"model_reasoning_effort = {toml_value(effort)}")
     lines.append("developer_instructions = " + toml_value(prompt))
     return "\n".join(lines) + "\n"
 
@@ -2242,8 +2257,9 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
                      *[f"Bash({' '.join(g)} *)" for g in git_ask]]
         deny_rules = [*cfg["policies"]["deny"], *ctx_perms.get("deny", [])]
         write_if_changed(CODEX_RULES, codex_rules(deny_rules, ask_rules), dry, rep)
-        roles = ({resolved[r]["name"]: render_codex_role(resolved[r], g["meta"], g["prompt"])
-                  for r, g in b["agents"].items()} if mode == "native" else {})
+        roles = ({name: render_codex_role(resolved[r], g["meta"], g["prompt"], name, v["model"], v["effort"])
+                  for r, g in b["agents"].items() for name, v in resolved[r]["variants"].items()}
+                 if mode == "native" else {})
         sync_generated_dir(CODEX_SUBAGENTS, roles, ".toml", dry, rep)
         sync_generated_dir(CLAUDE_SUBAGENTS, {}, ".md", dry, rep)
         sync_skill_links(CODEX_SKILLS, b["skills"], dry, rep)
@@ -2481,7 +2497,7 @@ def diff_skill(plugin: str, language: str = DEFAULT_LANGUAGE) -> str:
 def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     """Renders the local marketplace with the `aidw` plugin (active context content): {relative path: bytes}."""
     if cfg["provider"]["name"] != "claude":
-        rep.error("the global plugin install is Claude's; for Codex it comes in F6 of plan v3")
+        rep.error("the plugin install is Claude's; for Codex use `install --provider codex` (agents and skills)")
         return None
     if cfg["delegation"]["mode"] != "native":
         rep.error('the global install uses native subagents: use [delegation] mode = "native" '
@@ -3787,7 +3803,7 @@ CODEX_MULTI_AGENT_HINT = ("the AiDW orchestrator in Codex uses `spawn_agent`: tu
 
 def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     """{file: bytes} of the AiDW agents and skills, with `aidw-*` names: the Codex install is only that
-    (no rules, hooks or profile; see docs/claude-e-codex.md)."""
+    (no rules, hooks or profile; see docs/claude-and-codex.md)."""
     ccfg = json.loads(json.dumps(cfg))
     ccfg["provider"]["name"], ccfg["delegation"]["mode"] = "codex", "native"
     ref_dir = CODEX_SKILLS_HOME / f"{CODEX_NS}go" / "reference"
@@ -3800,9 +3816,11 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     resolved, ctx = b["resolved"], b["ctx"]
     files: dict[Path, bytes] = {}
     for role, g in b["agents"].items():
-        a = {**resolved[role], "name": CODEX_NS + resolved[role]["name"]}
+        a = resolved[role]
         meta = {**g["meta"], "description": f"{PLUGIN_GUARD} {g['meta']['description']}"}
-        files[CODEX_AGENTS_HOME / f"{a['name']}.toml"] = render_codex_role(a, meta, g["prompt"]).encode("utf-8")
+        for name, v in a["variants"].items():  # the default and each exception, model and effort pinned
+            files[CODEX_AGENTS_HOME / f"{CODEX_NS}{name}.toml"] = render_codex_role(
+                a, meta, g["prompt"], name, v["model"], v["effort"], ns=CODEX_NS).encode("utf-8")
     used = set(resolved[ORCHESTRATOR]["skills"]) | {n for a in resolved.values() if a["enabled"] for n in a["skills"]}
     used |= {n for n, d in b["skills"].items() if is_admin_skill(d / "SKILL.md")}
     for name in sorted(used & set(b["skills"])):
@@ -3886,7 +3904,7 @@ def install_codex(cfg: dict, catalog: dict, dry: bool, force: bool) -> bool:
     if not codex_multi_agent_enabled():
         rep.warn(CODEX_MULTI_AGENT_HINT)
     rep.info("in Codex, AiDW is only agents and skills: no rules, hooks, guard, profile or per-agent MCP "
-             "(docs/claude-e-codex.md)")
+             "(docs/claude-and-codex.md)")
     print(f"\nDone{' (nothing was changed: dry-run)' if dry else ''}. In Codex: `python aidw.py open --provider codex` "
           "and call $aidw-go <demand>.")
     return not rep.errors
@@ -4798,17 +4816,27 @@ def codex_limits() -> str:
     return "Codex limits ?"
 
 
+METRICS_LEVEL_RE = re.compile(r"^\|\s*(?:Date|Data)\s*\|.*\|\s*(?:Level|N[ií]vel)\s*\|", re.M | re.I)
+
+
+def metrics_has_level(text: str) -> bool:
+    """A metrics.md from before flow v3 has a Level column (`| Date | Agent | Level | …`); new files do not."""
+    return bool(METRICS_LEVEL_RE.search(text))
+
+
 def append_metrics(demand: Path, row: dict) -> None:
     f = demand_file(demand, "metrics.md")
-    head = ("| Date | Agent | Level | Model | Effort | Label | State | Turns or tools | Duration | Input tokens "
+    head = ("| Date | Agent | Model | Effort | Label | State | Turns or tools | Duration | Input tokens "
             "(with cache) | Output tokens | Cost (USD) | Plan limits |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+            "|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     cost = f"{row['cost_usd']:.4f}" if row["cost_usd"] is not None else "—"
 
     def num(v) -> str:
         return f"{v:,}" if isinstance(v, int) else "—"
 
-    line = (f"| {row['date']} | {row['agent']} | {row['level']} | {row['model']} | {row['effort'] or '—'} | "
+    # an old file keeps its Level column, so its rows stay aligned
+    level = "— | " if f.exists() and metrics_has_level(f.read_text(encoding="utf-8", errors="replace")) else ""
+    line = (f"| {row['date']} | {row['agent']} | {level}{row['model']} | {row['effort'] or '—'} | "
             f"{row['label']} | {row['state']} | {num(row['turns'])} | {row['duration_s']}s | "
             f"{num(row['tokens_in'])} | {num(row['tokens_out'])} | {cost} | {row['limits']} |\n")
     if not f.exists():
@@ -4827,12 +4855,15 @@ def recorded_by_mod(demand: Path, row: dict) -> dict | None:
     f = demand_file(demand, "metrics.md")
     if not f.exists():
         return None
-    rows = [r for r in f.read_text(encoding="utf-8").splitlines() if r.startswith("| 2")][-3:]
+    text = f.read_text(encoding="utf-8")
+    o = 1 if metrics_has_level(text) else 0  # the old Level column shifts the cells after Agent
+    rows = [r for r in text.splitlines() if r.startswith("| 2")][-3:]
     for r in reversed(rows):
         c = [x.strip() for x in r.strip().strip("|").split("|")]
-        if len(c) >= 10 and c[0] == row["date"] and c[1] == row["agent"] and c[5] == row["label"] and c[9] != "—":
+        if len(c) >= 9 + o and c[0] == row["date"] and c[1] == row["agent"] and c[4 + o] == row["label"] \
+                and c[8 + o] != "—":
             num = lambda v: int(v.replace(",", "")) if v.replace(",", "").isdigit() else None
-            return {"turns": num(c[7]), "duration_s": num(c[8].rstrip("s")) or 0, "tokens_in": num(c[9])}
+            return {"turns": num(c[6 + o]), "duration_s": num(c[7 + o].rstrip("s")) or 0, "tokens_in": num(c[8 + o])}
     return None
 
 
@@ -4994,7 +5025,7 @@ def record(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
         effort = a["effort"]
     if not model.get("efforts"):
         effort = ""
-    # the Level column stays in metrics.md for old demands; flow v3 has no levels
+    # flow v3 has no levels: `level` only fills the Level column of an old metrics.md
     row = {"date": date.today().isoformat(), "agent": a["name"], "level": args.level or "—", "model": model["model_id"],
            "effort": effort, "label": args.label, "state": args.state or "missing_state", "turns": None,
            "duration_s": round((args.duration_ms or 0) / 1000), "tokens_in": args.tokens,
@@ -5650,7 +5681,7 @@ def chat(cfg: dict, catalog: dict) -> int:
         return 1
     orch = b["resolved"][ORCHESTRATOR]
     if provider == "claude":
-        cmd = [shutil.which("claude")]  # model, effort and permissions come from .claude/settings.local.json
+        cmd = [shutil.which("claude")]  # permissions come from .claude/settings.local.json; model and effort are the chat's
     else:
         cmd = [shutil.which("codex"), "-C", str(ROOT), "-m", orch["model"]["model_id"],
                "-c", f"project_doc_max_bytes={CODEX_DOC_MAX_BYTES}", "-s", "workspace-write",
