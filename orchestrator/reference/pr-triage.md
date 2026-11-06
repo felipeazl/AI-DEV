@@ -1,0 +1,66 @@
+---
+when: write the triage of a PR review (workflow pr-review), every round, and record what was published and voted
+---
+
+# Triage of a PR review
+
+The triage of each round (`triage-<id>-r<N>.md`) is what you take to the final review **and what the AiDW Tests and
+Review panel shows** in the Comments tab: you decide on the comments here, not on the loose findings. Keep the
+sections, the columns and the words below as they are.
+
+- **Comment** (`C1`, `C2`…): what goes, or would go, to the PR. It joins the findings that say the same thing (`R1-01`,
+  `B1-02`, `S1-01`…), which stay in the *Source* column. The id does not change between rounds.
+- **Every round carries the whole table**, the comments of earlier rounds included, with their current status. The
+  panel reads only the triage of the last round.
+
+## Template
+
+```markdown
+# Triage — <id>, round <N> (PRs <n> and <m>)
+
+<Sources, premises checked and what changed since the previous round, as in a code triage.>
+
+## Comments
+
+| C | PR | Sev. | File:line | Source | Recommendation | Status |
+|---|---|---|---|---|---|---|
+| C1 | 8197 | IMPORTANTE | `src/Tela.cs:5183` | R1-01, B1-01 | publish | published (thread 23720), resolved in r2 |
+| C2 | 8197 | DUVIDA | general | R1-D1 | publish as a question | to decide |
+| C3 | 8208 | SUGESTAO | `src/Repo.cs:61` | R1-04, S1-02 | do not publish | not published (r1) |
+
+### C1 — <what the comment points out, in one line>
+> <the text that goes to the PR: in the context's language, up to ~5 lines, no greeting and no internal ids>
+
+### C2 — <…>
+> <…>
+
+## Outside the PRs
+
+- **S1-01 (Tech Lead):** <what it is and why it does not become a comment: old pattern, another system, someone else's decision>
+
+## Published
+
+- C1: PR 8197, thread 23720 (<who approved, date>).
+- Approve PR 8197: yes, approved (<who approved, date>). PR 8208: manual.
+```
+
+## The columns
+
+- **Sev.:** `CRITICO`, `IMPORTANTE`, `SUGESTAO` or `DUVIDA` (a question to the team); `PENDENCIA` for the general
+  comment of pending items for QA.
+- **File:line:** the path in the repository, in backticks; `general` for a comment with no file.
+- **Recommendation:** `publish`, `publish as a question`, `do not publish` or `optional`, and the reason after ` — `,
+  when it helps.
+- **Status:** `to decide`; `not published (rN)`, when the decision was not to publish; `published (thread <id>)`; and,
+  in a later round, `resolved in rN` or `still open in rN` after the published one. A new comment of a later round
+  takes the next free id.
+
+There is no vote nor vote scale in the triage. The only question besides the comments is, per PR, **"Approve the
+PR?"**: `manual` (the default: AiDW does not approve and the user decides in the tool), `yes` (AiDW approves) or `no`
+(AiDW does not approve). The panel asks; the triage does not suggest.
+
+## After the final review
+
+With the OK, publish exactly what was approved and approve only the PRs with `yes` (the context's reference says how
+in each tool). Then update the triage: the *Status* of each comment and the *Published* section, with the id of each
+thread and the approval of each PR. The panel counts as published what this table says.

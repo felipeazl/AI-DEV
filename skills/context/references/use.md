@@ -1,16 +1,16 @@
 # context use
 
-`aidw.py` fica em `{{root}}` (raiz do AiDW). Rode os comandos exatamente na forma `python "{{root}}/aidw.py" ...`, com as aspas: é a que as regras de permissão liberam.
+`aidw.py` lives in `{{root}}` (the AiDW root). Run the commands exactly as `python "{{root}}/aidw.py" ...`, with the quotes: that is the form the permission rules allow. Talk to the user in the AiDW UI language (`[ui] language`, shown by `python "{{root}}/aidw.py" show`).
 
-1. **Qual contexto:** o que o usuário pediu. Se ele não disse ou o nome não bate, rode
-   `python "{{root}}/aidw.py" context list` e pergunte com as opções (vazio = nenhum contexto).
-2. **Demanda aberta:** rode `python "{{root}}/aidw.py" demand list --active`. Se houver demanda ativa no contexto
-   atual, avise que ela fica pausada (as regras e os agentes mudam) e pergunte se quer trocar mesmo assim.
-3. **Validar:** `python "{{root}}/aidw.py" context check <nome>`. Com erro, mostre os erros e pare — não troque para
-   um contexto quebrado. Avisos: mostre e siga.
-4. **Trocar:** `python "{{root}}/aidw.py" context use <nome>`. Ele grava só a linha `active` do `aidw.config.toml`
-   (os comentários ficam), roda o `apply` e, se o AiDW estiver instalado, o `install`: o plugin `aidw` (mesmo nome,
-   mesmos comandos) passa a ter os agentes, sistemas e políticas do novo contexto, e as regras globais do contexto
-   antigo saem, as do novo entram.
-5. **Resultado:** diga o contexto ativo e que é preciso **abrir um chat novo** para
-   valer. Em caso de erro, mostre a mensagem do comando; não tente contornar.
+1. **Which context:** what the user asked for. If they did not say or the name does not match, run
+   `python "{{root}}/aidw.py" context list` and ask with the options (empty = no context).
+2. **Open demand:** run `python "{{root}}/aidw.py" demand list --active`. If there is an active demand in the current
+   context, warn that it will be paused (the rules and the agents change) and ask whether to switch anyway.
+3. **Validate:** `python "{{root}}/aidw.py" context check <name>`. On error, show the errors and stop — do not switch
+   to a broken context. Warnings: show them and continue.
+4. **Switch:** `python "{{root}}/aidw.py" context use <name>`. It writes only the `active` line of `aidw.config.toml`
+   (the comments stay), runs `apply` and, if the AiDW is installed, `install`: the `aidw` plugin (same name, same
+   commands) gets the new context's agents, systems and policies, and the old context's global rules leave while the
+   new one's come in.
+5. **Result:** say which context is active and that a **new chat** must be opened for it to take effect. On error,
+   show the command's message; do not try to work around it.

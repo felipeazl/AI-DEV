@@ -1,26 +1,26 @@
-# Catálogo de modelos do AiDW.
+# AiDW model catalog.
 #
-# O AiDW roda com UM provedor por instalação — todos os agentes são Claude ou todos são Codex
-# ([provider].name no aidw.config.toml). Cada modelo pertence a um provedor.
+# AiDW runs with ONE provider per installation — every agent is Claude or every agent is Codex
+# ([provider].name in aidw.config.toml). Each model belongs to one provider.
 #
-# Campos:
-#   name       nome legível
+# Fields:
+#   name       human-readable name
 #   provider   claude | codex
-#   model_id   ID passado ao CLI (`claude --model` / `codex -m`). No Claude é o apelido (opus, sonnet…),
-#              que o Claude Code resolve para o modelo mais novo da família que ele conhece; no Codex
-#              é o ID exato, porque o Codex não tem apelido.
-#   label      como o modelo aparece no cabeçalho, nas tabelas e no Runtime: a família, sem versão
-#   tiers      top | mid | fast — o wizard usa o tier para escolher o padrão de cada agente
-#              (Opus/Sonnet/Haiku no Claude; os equivalentes no Codex). Em cada tier vale o
-#              primeiro modelo do arquivo que estiver disponível para a conta.
-#   efforts    efforts aceitos; vazio = o modelo não aceita effort (o delegate não passa --effort)
-#   min_cli    versão mínima do CLI para o modelo (o `doctor` confere)
-#   alias      (Claude) apelido do frontmatter dos subagentes nativos: opus | sonnet | haiku | fable
+#   model_id   ID passed to the CLI (`claude --model` / `codex -m`). On Claude it is the alias (opus, sonnet…),
+#              which Claude Code resolves to the newest model of the family it knows; on Codex it is the
+#              exact ID, because Codex has no aliases.
+#   label      how the model shows in the header, the tables and the Runtime: the family, no version
+#   tiers      top | mid | fast — the wizard uses the tier to pick each agent's default
+#              (Opus/Sonnet/Haiku on Claude; the equivalents on Codex). Within a tier, the first model
+#              in this file that is available to the account wins.
+#   efforts    accepted efforts; empty = the model takes no effort (delegate does not pass --effort)
+#   min_cli    minimum CLI version for the model (checked by `doctor`)
+#   alias      (Claude) alias in the native subagents' frontmatter: opus | sonnet | haiku | fable
 #
-# O effort não pertence ao modelo: cada agente tem um effort padrão no aidw.config.toml e o
-# orquestrador escolhe o effort de cada tarefa (orchestrator/config/routing.toml, [effort]).
+# Effort does not belong to the model: each agent has a default effort in aidw.config.toml and the
+# orchestrator picks the effort of each task (orchestrator/config/routing.toml, [effort]).
 
-# --- Claude (Claude Code, login da assinatura) -----------------------------------------------
+# --- Claude (Claude Code, subscription login) ------------------------------------------------
 
 [models.opus]
 name = "Claude Opus"
@@ -59,12 +59,12 @@ alias = "fable"
 tiers = []
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
-# --- Codex (Codex CLI, login da conta ChatGPT) -----------------------------------------------
-# Só valem os modelos liberados para o plano da conta; o `doctor` confere em
-# ~/.codex/models_cache.json. Em 2026-09-25 a conta tinha gpt-6-luna, gpt-5.6-terra,
-# gpt-5.6-luna e gpt-5.5 — o gpt-6-sol não estava liberado, então o tier top cai no gpt-6-luna.
-# Três degraus, como no Claude: top (Opus) gpt-6-sol/gpt-6-luna, mid (Sonnet) gpt-5.6-terra, fast (Haiku)
-# gpt-5.6-luna (decisão, 2026-09-30).
+# --- Codex (Codex CLI, ChatGPT account login) ------------------------------------------------
+# Only the models enabled for the account's plan count; `doctor` checks them in
+# ~/.codex/models_cache.json. On 2026-09-25 the account had gpt-6-luna, gpt-5.6-terra,
+# gpt-5.6-luna and gpt-5.5 — gpt-6-sol was not enabled, so the top tier falls back to gpt-6-luna.
+# Three steps, as on Claude: top (Opus) gpt-6-sol/gpt-6-luna, mid (Sonnet) gpt-5.6-terra, fast (Haiku)
+# gpt-5.6-luna (decision, 2026-09-30).
 
 [models.gpt-6-sol]
 name = "GPT Sol"

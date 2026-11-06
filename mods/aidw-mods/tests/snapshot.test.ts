@@ -2,6 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { parseDelegations, usd } from '../hooks/aidw'
 import { buildSnapshot, nextStep, phaseOf, stateLabel } from '../hooks/snapshot'
+import { setLang } from '../hooks/i18n'
+
+// These tests keep the old Portuguese UI strings and artifacts (compatibility); the English ones are in i18n.test.ts.
+setLang('pt-BR')
 
 const snap = (demand: Record<string, unknown>, files: Record<string, string> = {}) =>
   buildSnapshot({ dir: 'C:/x/us-1', demand, files: Object.keys(files), texts: files })

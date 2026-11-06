@@ -1,0 +1,33 @@
+name: development
+description: Feature, improvement, bug, technical debt or urgent fix, from the card to the PR — plan approved by the user, implementation with review, the user's code review and tests.
+# Flow v3 (2026-10-23): one for every kind of demand that changes code. For a bug, the root cause is a question for the
+# explorer; for a refactor, the plan says "no behavior change" and the test script covers the regression.
+steps:
+  - id: understand      # summary-<id>.md: card, criteria and rules (the card's text), decisions, existing work
+    agent: orchestrator
+  - id: explore         # numbered questions: where the change goes, current behavior, contracts, real ids and data
+    agent: explorer
+  - id: plan            # simple, self-contained SDD plan, with the card's CA/RN and the deliveries E1…
+    agent: planner
+    skill: to-spec
+  - id: plan_approval   # the orchestrator reads it and the user approves; adjustment → planner (fix)
+    agent: orchestrator
+  - id: implement       # one coder per delivery; in parallel: board (documenter) and test script/data (qa)
+    agent: coder
+    for_each: delivery
+  - id: board           # attaches the plan and creates one Task per delivery (in parallel with implement)
+    agent: documenter
+  - id: test_plan       # test-script-<id>.md and the test data (in parallel with implement)
+    agent: qa
+  - id: review          # quality, bugs and security in one pass; the findings go to the user every round
+    agent: reviewer
+    skill: code-review
+  - id: user_review     # the user's code review
+    agent: orchestrator
+  - id: test            # the qa runs the automatic steps (API, E2E/browser); the user runs the manual ones with the orchestrator
+    agent: qa
+  - id: pr              # the documenter writes pr-<id>.md; with the OK, commit, push and PR
+    agent: documenter
+gates:
+  - before: pr
+    require: human_approval

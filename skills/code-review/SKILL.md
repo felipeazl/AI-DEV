@@ -31,7 +31,7 @@ One pass covers three categories. Few findings, all real: a false positive costs
      retries that duplicate a side effect.
    - **Data:** SQL without the key in `WHERE`, transaction boundaries, rounding, truncation, `FirstOrDefault` → null
      used as if present.
-3. **Security** (category `seguranca`) — only what the change touches: follow each untrusted input (endpoint, SOAP
+3. **Security** (category `security`) — only what the change touches: follow each untrusted input (endpoint, SOAP
    method, UI field, file, process argument) to the sinks it reaches. A finding needs an **attack path**: who
    (anonymous, authenticated user, another partner, local user), the input, and what they gain. Check injection (SQL
    by concatenation, command arguments, path traversal, XSS, unsafe deserialization), authentication (token
@@ -43,7 +43,7 @@ One pass covers three categories. Few findings, all real: a false positive costs
    retry/timer, data never shown) covered by a test? A missing one is `IMPORTANTE`. A test that only repeats what the
    end-to-end check plainly shows is a `SUGESTAO` to remove it. Never ask for tests just to cover every criterion: QA
    verifies those end to end.
-5. **Maintainability** (category `qualidade`) — naming, duplication, consistency with the team's standards and the
+5. **Maintainability** (category `quality`) — naming, duplication, consistency with the team's standards and the
    project's conventions.
 
 ## Rules
@@ -56,10 +56,10 @@ One pass covers three categories. Few findings, all real: a false positive costs
 - **Evidence for coverage claims:** do not write "covers every case" or "stops on any close" without naming the code
   path for each case, including exceptions.
 - **No speculation as fact:** uncertain findings go to `DOUBTS` with a concrete question.
-- **Pre-existing:** a problem the change did not introduce or worsen is marked "não é regressão desta mudança"; it is a
+- **Pre-existing:** a problem the change did not introduce or worsen is marked "not a regression of this change"; it is a
   finding only when the change touches it or makes it worse.
-- **Recommendation:** every finding says `manter` or `descartar` and why, in one line — the user and the orchestrator
-  decide each one with it. Recommend `descartar` honestly (low confidence, pre-existing and untouched, cost beyond the
+- **Recommendation:** every finding says `keep` or `discard` and why, in one line — the user and the orchestrator
+  decide each one with it. Recommend `discard` honestly (low confidence, pre-existing and untouched, cost beyond the
   benefit).
 
 ## Severity
@@ -76,9 +76,9 @@ One entry per finding, in the Reviewer OUTPUT defined in the Reviewer's agent de
 `findings`, `doubts`):
 
 ```json
-{"id": "R1-01", "severity": "CRITICO", "category": "qualidade | bug | seguranca", "status": "open", "file": "path",
+{"id": "R1-01", "severity": "CRITICO", "category": "quality | bug | security", "status": "open", "file": "path",
  "line": 120, "problem": "...", "why": "...", "fix": "...", "fix_in_scope": true, "confidence": "high | medium",
- "recommendation": "manter | descartar", "recommendation_why": "..."}
+ "recommendation": "keep | discard", "recommendation_why": "..."}
 ```
 
 Every round, write the full review (all findings with status, and the doubts) as Markdown to the path the task gives
@@ -90,10 +90,10 @@ probes and security categories you ran); risk notes; and a summary table by seve
 
 Either way, three things the AiDW panel reads (Claude Code):
 - The heading of each finding carries its category: `### R1-01 — IMPORTANTE — bug — <file>:<line>`.
-- A finding whose fix changes code carries `**Antes:**` and `**Depois:**`, each followed by a fenced code block with
+- A finding whose fix changes code carries `**Before:**` and `**After:**`, each followed by a fenced code block with
   the few lines that change, exact text (today's lines, then the same lines fixed).
-- `**Recomendação:** manter | descartar — <why, one line>` under each finding; a doubt lists its options as
-  `- (a) …`, `- (b) …` and ends with `**Recomendação:** <option and why, one line>`.
+- `**Recommendation:** keep | discard — <why, one line>` under each finding; a doubt lists its options as
+  `- (a) …`, `- (b) …` and ends with `**Recommendation:** <option and why, one line>`.
 
 **Round ≥ 2:** you get the previous review, the user's decisions (which findings were kept) and the diff of the fixes.
 Check each kept finding (`fixed` / `not_fixed`, with evidence), then look for regressions in the changed lines — a fix

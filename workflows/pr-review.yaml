@@ -1,14 +1,14 @@
 name: pr-review
-description: Revisão da PR de outra pessoa; sem plano nem correção (quem corrige é o autor). O usuário escolhe o que é publicado na PR.
+description: Review of someone else's PR; no plan or fix (the author fixes). The user chooses what is published on the PR.
 steps:
-  - id: understand      # resumo-<id>.md: card, critérios e, por PR, autor, descrição, destino e o que já foi comentado
+  - id: understand      # summary-<id>.md: card, criteria and, per PR, author, description, target and what was already commented
     agent: orchestrator
-  - id: prepare_pr      # `aidw.py worktree create --pr <n>` por PR (só leitura, PR mesclada no destino) e o build nele
+  - id: prepare_pr      # `aidw.py worktree create --pr <n>` per PR (read only, PR merged into the target) and the build in it
     agent: orchestrator
-  - id: review          # revisor no modo PR (qualidade, bugs e segurança): achados com o rascunho do comentário
+  - id: review          # reviewer in PR mode (quality, bugs and security): findings with the draft comment
     agent: reviewer
     skill: code-review
-  - id: final_review    # o usuário escolhe os comentários e se o AiDW aprova a PR (manual, sim, não); publicar é ação travada
+  - id: final_review    # the user chooses the comments and whether AiDW approves the PR (manual, yes, no); publishing is a locked action
     agent: orchestrator
 gates:
   - before: publish

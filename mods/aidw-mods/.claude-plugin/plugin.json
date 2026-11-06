@@ -1,20 +1,22 @@
 {
   "name": "aidw-mods",
   "version": "0.2.0",
-  "description": "AiDW (só Claude Code): no modo orquestrador, grava sozinho as métricas de cada delegação, mostra a demanda numa faixa acima do prompt e abre os painéis Geral, Métricas e Decisões",
-  "author": { "name": "AiDW" },
+  "description": "AiDW (Claude Code only): in orchestrator mode, records the metrics of each delegation by itself, shows the demand in a strip above the prompt and opens the General, Metrics and Tests and Review panels",
+  "author": {
+    "name": "AiDW"
+  },
   "types": "./types/index.d.ts",
   "userConfig": {
     "aidwRoot": {
       "type": "string",
-      "title": "Raiz do AiDW",
-      "description": "Pasta onde está o aidw.py (o install grava a desta máquina)",
+      "title": "AiDW root",
+      "description": "Folder that holds aidw.py (the install writes this machine's path)",
       "default": "C:/AiDW"
     },
     "python": {
       "type": "string",
       "title": "Python",
-      "description": "Comando do Python usado para rodar o aidw.py record",
+      "description": "Python command used to run aidw.py record",
       "default": "python"
     }
   }
