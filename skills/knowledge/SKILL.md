@@ -1,17 +1,17 @@
 ---
-name: conhecimento
-description: Consulta a base de conhecimento do contexto ativo — o que o AiDW já aprendeu sobre um sistema, contrato, conceito, decisão ou demanda — e responde com as notas e os links entre elas; também corrige ou completa uma nota quando o usuário pedir. Use quando o usuário perguntar o que se sabe sobre um projeto, sistema ou tema, ou chamar /conhecimento.
+name: knowledge
+description: Consulta a base de conhecimento do contexto ativo — o que o AiDW já aprendeu sobre um sistema, contrato, conceito, decisão ou demanda — e responde com as notas e os links entre elas; também corrige ou completa uma nota quando o usuário pedir. Use quando o usuário perguntar o que se sabe sobre um projeto, sistema ou tema, ou chamar /knowledge.
 aidw: admin
 ---
 
-# conhecimento
+# knowledge
 
 `aidw.py` fica em `{{root}}` (raiz do AiDW). Rode os comandos exatamente na forma `python "{{root}}/aidw.py" ...`, com as
 aspas: é a que as regras de permissão liberam. O pedido do usuário está na mensagem que chamou esta skill.
 
 ## Responder
 
-1. **Achar a nota:** `python "{{root}}/aidw.py" kb show <tema>` aceita a chave do sistema (`hope`), o nome da nota, um
+1. **Achar a nota:** `python "{{root}}/aidw.py" kb show <tema>` aceita a chave do sistema (`sistema-a`), o nome da nota, um
    alias ou o título. Sem nota com esse nome, ele sugere parecidas; para um assunto, use
    `python "{{root}}/aidw.py" kb search <palavras>` (sem acento nem caixa).
 2. **Seguir os links** só até onde a pergunta pede: o `kb show` lista os links da nota e quem a cita (as demandas que

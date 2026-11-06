@@ -9,14 +9,14 @@ terminou). O AiDW traz os dele no plugin **`aidw-mods`**, que o `install` instal
 ## Quando ficam ligados
 
 Os mods do AiDW ficam ligados **só no modo orquestrador**:
-- **Ligar:** `/aidw:go` ou `/aidw:lev` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse
+- **Ligar:** `/aidw:go` ou `/aidw:survey` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse
   registro a cada mensagem. Quem grava é a skill `go`, com `aidw.py session bind` (lê `CLAUDE_CODE_SESSION_ID`), e
   o hook do guard, onde o cliente manda o comando de barra a ele (o app sim, o terminal não).
 - **Qual demanda:** o registro guarda o contexto, o id e a pasta da demanda (`session bind --demand <id>`, e todo
   `demand set` numa sessão já registrada). O mod lê a pasta dali, sem deduzir a demanda do texto: vale para qualquer
   id, com card de qualquer plataforma ou livre (`feat-<slug>`, `fix-<slug>`…). Sem demanda no registro, vale a pasta
   do chat quando ele abriu na demanda ou num worktree dela.
-- **Desligar:** `/aidw:sair` ou `/aidw:done` tiram a sessão do registro, e o painel fecha.
+- **Desligar:** `/aidw:exit` ou `/aidw:done` tiram a sessão do registro, e o painel fecha.
 
 Fora do modo orquestrador eles não travam, não gravam, não filtram nem mostram nada.
 
@@ -28,7 +28,7 @@ em cartões, roteiro manual, levantamento), e a aba sem dados some. Um contexto 
 panel = false
 ```
 
-Desligado, os painéis não abrem, `/painel`, `/metricas` e `/testes-review` não são registrados e a faixa acima do prompt
+Desligado, os painéis não abrem, `/panel`, `/metrics` e `/review-tests` não são registrados e a faixa acima do prompt
 fica sem os botões (demanda, contexto, 7d e 5h, agentes rodando). Todo o resto (métricas, travas, avisos, contexto enxuto, filtro de
 segredos, notas no prompt, estado depois da compactação) vale em qualquer contexto.
 
@@ -68,7 +68,7 @@ Três linhas (painel v4):
 3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento; com o número do que espera decisão, em laranja), numa linha só,
    à direita, que abrem os painéis. As barras ficam na cor normal, amarelas a partir de 75% e vermelhas a partir de 90%; o 7d e o 5h,
 a partir de 75%, mostram a hora local em que a janela renova (com o dia, quando não é hoje). As janelas só aparecem em conta de assinatura. A faixa some em
-`DONE`. **`/faixa`** esconde e mostra.
+`DONE`. **`/strip`** esconde e mostra.
 
 **Ao vivo, sem esperar o fim do turno** (2026-11-04): o contexto anda a cada resposta do orquestrador (`turn.step`), e o
 contexto e as janelas 5h/7d também quando o engine os empurra (`session.measure`); a demanda é relida quando um `Write`
@@ -79,20 +79,20 @@ chat principal no `metricas-orquestrador.md` segue por turno.
 ## Painéis do AiDW
 
 Três painéis, cada um ao lado do chat, abertos só quando você pede: pelo botão na faixa ou pelo comando (painel v4,
-Alex, 2026-11-03). Com dois ou mais abertos, o app mostra as abas entre eles. O que cada um mostra, de onde vem cada
+decisão, 2026-11-03). Com dois ou mais abertos, o app mostra as abas entre eles. O que cada um mostra, de onde vem cada
 dado e o que os agentes gravam para isso está em **[painel.md](painel.md)**:
 
 | Painel | Comando | Desenvolvimento | Revisão de PR | Levantamento |
 |---|---|---|---|---|
-| Geral | `/painel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
-| Métricas | `/metricas` | consumo | consumo | consumo |
-| Testes e Review (Dúvidas no levantamento) | `/testes-review` | Revisão · Testes | Comentários | Dúvidas |
+| Geral | `/panel [aba]` | mapa e critérios e regras | mapa | mapa, card × código e estimativa |
+| Métricas | `/metrics` | consumo | consumo | consumo |
+| Testes e Review (Dúvidas no levantamento) | `/review-tests` | Revisão · Testes | Comentários | Dúvidas |
 
 A Geral e as Métricas são uma página só; em Testes e Review, aba sem dados fica oculta, e a linha de abas só aparece com duas ou mais. Testes e Review abre na primeira aba que espera
-você. `/painel <aba>` abre o painel da aba (`/painel revisao` abre Testes e Review). Os painéis só informam: toda decisão é no chat. No terminal, as teclas `1`, `2`… trocam
+você. `/panel <aba>` abre o painel da aba (`/panel revisao` abre Testes e Review). Os painéis só informam: toda decisão é no chat. No terminal, as teclas `1`, `2`… trocam
 de aba; no app, as abas são só clique. O diff fica com o app (*Alterações* na barra lateral e o painel de diff dele).
 
-Os painéis só informam (Alex, 2026-11-03): manter ou descartar um achado, o resultado de um passo do teste manual, o
+Os painéis só informam (decisão, 2026-11-03): manter ou descartar um achado, o resultado de um passo do teste manual, o
 que publicar e se o AiDW aprova uma PR, comentar no card e responder uma dúvida são decididos no chat, com o
 orquestrador e o agente da etapa.
 
@@ -131,7 +131,7 @@ Antes de um agente do AiDW rodar, o mod confere a chamada pela tabela *Agents an
 
 | Regra | Recusa quando |
 |---|---|
-| Modelo | a chamada passa `model` e o Alex não falou de modelo nas últimas mensagens |
+| Modelo | a chamada passa `model` e o usuário não falou de modelo nas últimas mensagens |
 | Formato | falta `Pasta da demanda:` no prompt |
 | Tabela | o `subagent_type` não é o padrão nem uma exceção do agente, ou o agente está desligado |
 | Insumo colado | o prompt passa de 6.000 caracteres (diff, plano e review vão por caminho) |
@@ -142,9 +142,9 @@ Não há trava de rodadas: a demanda itera até terminar (painel v4).
 
 ## Sem avisos próprios
 
-O mod não levanta toast nem notificação (painel v4, Alex, 2026-11-03): o app do Claude já avisa quando o turno
+O mod não levanta toast nem notificação (painel v4, decisão, 2026-11-03): o app do Claude já avisa quando o turno
 acaba. O agente em segundo plano que termina chega como nota na conversa (*Métricas sozinhas*), e o resultado de um
-`/painel` que não coube volta no próprio comando.
+`/panel` que não coube volta no próprio comando.
 
 ## Contexto enxuto
 
@@ -172,7 +172,7 @@ fim da demanda.
 
 O resultado de cada ferramenta do orquestrador e dos agentes passa pelo filtro antes de virar linha da conversa,
 inclusive o que volta com erro (uma connection string numa exceção): esse volta como erro, com o texto filtrado. O
-texto do modelo e o que você digita, o plugin de segurança da organização (`cc-plugin-sec-default`) cuida: ele fica
+texto do modelo e o que você digita, um plugin de segurança da organização, quando há um, cuida: ele fica
 acima dos plugins do usuário e não chama os de baixo nas linhas, por isso o mod não tem hook de `session.append`
 (2026-11-04). O filtro é idempotente: um texto já mascarado passa de novo igual.
 Ele mascara o valor e mostra só o nome e o tamanho, como pede a policy de segredos:
@@ -200,7 +200,7 @@ Quando a conversa do orquestrador é compactada, o mod relê a demanda do disco 
 
 O resumo vai junto da **sua primeira mensagem depois da compactação**, uma vez só. O mod percebe a compactação pela
 dele mesmo (a ociosa) ou pelo contexto que caiu para menos da metade, a partir de 40k tokens. Não vai pelo evento da
-compactação nem pelo `SessionStart`: o plugin de segurança da organização (`cc-plugin-sec-default`) passa os dois
+compactação nem pelo `SessionStart`: um plugin de segurança da organização, quando há um, passa os dois
 adiante sem chamar os plugins do usuário. Uma seção fixa no prompt de sistema mudaria a cada etapa e regravaria o
 cache da conversa inteira.
 

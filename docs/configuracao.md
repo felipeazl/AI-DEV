@@ -69,7 +69,7 @@ Um caminho curto evita o limite de 260 caracteres do Windows em projetos .NET e 
 
 ```toml
 [context]
-active = "meu-time"       # pasta em contexts/ ("" = nenhum). Troque com /aidw:contexto-usar
+active = "meu-time"       # pasta em contexts/ ("" = nenhum). Troque com /aidw:context use
 
 [mcp]
 enabled = ["playwright", "chrome-devtools", "figma", "context7"]   # do catálogo config/mcp.toml

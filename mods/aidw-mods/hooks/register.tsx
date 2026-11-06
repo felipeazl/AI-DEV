@@ -22,7 +22,7 @@ import type { Actions, BandNav, UI, View } from './views'
 
 // Estado da sessão (o que a tela lê fica em $.state; uma recarga do módulo não o perde).
 // Ligado só no modo orquestrador: a sessão está no state/sessions.json, que o guard do AiDW grava ao
-// `/aidw:go` e `/aidw:lev` e apaga no `/aidw:sair` e no `/aidw:done`.
+// `/aidw:go` e `/aidw:survey` e apaga no `/aidw:exit` e no `/aidw:done`.
 const active = atom({ plugin: 'aidw-mods', key: 'active' } as const, false)
 const snap = atom({ plugin: 'aidw-mods', key: 'snap' } as const, null)
 const running = atom({ plugin: 'aidw-mods', key: 'running' } as const, [])
@@ -210,7 +210,7 @@ function hidSecrets($: EngineInterface, hits: string[]) {
 
 /**
  * Depois de uma compactação, o estado da demanda volta junto da próxima mensagem sua. Não pelo session.compact nem
- * pelo SessionStart: o plugin de segurança da organização (cc-plugin-sec-default) passa os dois adiante sem chamar os
+ * pelo SessionStart: um plugin de segurança da organização, quando instalado, passa os dois adiante sem chamar os
  * plugins do usuário; o prompt.submit chega aqui. A compactação se vê pela do próprio mod ou pelo contexto que caiu
  * para menos da metade (a partir de COMPACTED_FROM tokens); uma seção fixa no prompt de sistema mudaria a cada etapa
  * e regravaria o cache da conversa inteira.
@@ -301,7 +301,7 @@ async function openPanel($: EngineInterface, view: View): Promise<string | null>
   return opened.isPlaced ? null : (opened.reason ?? 'sem espaço')
 }
 
-/** `/painel [aba]`, `/metricas`, `/testes-review`: abre o painel (e a aba pedida) e diz o que aconteceu. */
+/** `/panel [aba]`, `/metrics`, `/review-tests`: abre o painel (e a aba pedida) e diz o que aconteceu. */
 async function openFromCommand($: EngineInterface, arg: string): Promise<{ text: string }> {
   if (!(await panelOn($))) return { text: 'AiDW: o painel está desligado neste contexto (`[mods] panel = false` no context.toml; tire a linha para ligar).' }
   const s = await read($, snap)
@@ -512,12 +512,12 @@ export const register: Register = (on, options) => {
     await checkActive($)
     const panel = await panelOn($)
     for (const command of [
-      { name: 'faixa', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
+      { name: 'strip', description: 'Mostra ou esconde a faixa da demanda do AiDW' },
       ...(panel
         ? [
-            { name: 'painel', description: 'Abre o painel Geral da demanda do AiDW (ou o painel da aba pedida)', argumentHint: '[aba]' },
-            { name: 'metricas', description: 'Abre o painel de métricas da demanda do AiDW' },
-            { name: 'testes-review', description: 'Abre o painel Testes e Review (Dúvidas no levantamento): achados, roteiro, comentários de PR' },
+            { name: 'panel', description: 'Abre o painel Geral da demanda do AiDW (ou o painel da aba pedida)', argumentHint: '[aba]' },
+            { name: 'metrics', description: 'Abre o painel de métricas da demanda do AiDW' },
+            { name: 'review-tests', description: 'Abre o painel Testes e Review (Dúvidas no levantamento): achados, roteiro, comentários de PR' },
           ]
         : []),
     ]) {
@@ -545,15 +545,15 @@ export const register: Register = (on, options) => {
     return ran
   })
 
-  on('command.run', { command: 'faixa' }, async $ => {
+  on('command.run', { command: 'strip' }, async $ => {
     const now = !(await read($, hidden))
     await update($, hidden, () => now)
     return { text: now ? 'Faixa do AiDW escondida.' : 'Faixa do AiDW visível.' }
   })
 
-  on('command.run', { command: 'painel' }, ($, e) => openFromCommand($, e.args))
-  on('command.run', { command: 'metricas' }, $ => openFromCommand($, 'metricas'))
-  on('command.run', { command: 'testes-review' }, $ => openFromCommand($, 'decidir'))
+  on('command.run', { command: 'panel' }, ($, e) => openFromCommand($, e.args))
+  on('command.run', { command: 'metrics' }, $ => openFromCommand($, 'metricas'))
+  on('command.run', { command: 'review-tests' }, $ => openFromCommand($, 'decidir'))
 
   // Travas da delegação e registro da métrica.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
@@ -688,7 +688,7 @@ export const register: Register = (on, options) => {
   })
 
   // Filtro de segredos: o resultado de cada ferramenta (do orquestrador ou dos agentes) é filtrado antes de virar
-  // linha da conversa. Não há hook de session.append: o plugin de segurança da organização (cc-plugin-sec-default)
+  // linha da conversa. Não há hook de session.append: um plugin de segurança da organização, quando instalado,
   // roda antes e o pulava, e o app avisava disso a cada sessão (removido em 2026-11-04).
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
@@ -735,7 +735,7 @@ export const register: Register = (on, options) => {
     }
     if (!s) {
       const { Text } = ui
-      return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:lev.</Text>
+      return <Text dimColor>Nenhuma demanda nesta sessão. Chame /aidw:go ou /aidw:survey.</Text>
     }
     await read($, tick)
     const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter(x => x !== value) : [...list, value])

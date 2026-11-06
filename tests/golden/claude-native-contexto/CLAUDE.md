@@ -205,7 +205,7 @@ python aidw.py record --agent <name> [--effort <effort>] --label <label> --deman
 - With the `aidw-mods` plugin loaded (Claude Code only, on in orchestrator mode; docs/mods.md):
   - The record is automatic: the Agent result (or, for a background agent, a note when it finishes) carries `AiDW: delegação registrada…` with the `header` and `resumo` to show. Then do **not** run `record` for it; run it yourself only when that line is missing or says the mod could not record.
   - An Agent call that breaks the delegation rules (a `subagent_type` outside *Agents and effort*, `model` the user did not ask for, missing task/folder, a pasted input) comes back denied with `AiDW (trava da delegação)` and the reason: fix the call, never work around it.
-  - The AiDW panels (`/painel`, `/metricas`, `/testes-review`) only show the demand: every decision (findings, manual steps, what to publish, PR approval, doubts) is asked and answered in chat.
+  - The AiDW panels (`/panel`, `/metrics`, `/review-tests`) only show the demand: every decision (findings, manual steps, what to publish, PR approval, doubts) is asked and answered in chat.
 - Code exploration: the `explorador` agent (*Agents and effort*), not this chat and not a generic explorer — it knows *Systems* and the policies, writes `exploracao-<assunto>.md` in the demand folder (the plan and the tickets reuse it) and answers numbered questions with `file:line`. Ask only what the next step needs; one exploration per topic, reused, not repeated.
 
 ## Agents and effort

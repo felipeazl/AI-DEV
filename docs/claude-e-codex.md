@@ -13,7 +13,8 @@ o AiDW roda inteiro e é para ele que se escreve toda funcionalidade nova.
 | | Claude Code | Codex |
 |---|---|---|
 | O que o `install` instala | plugin `aidw` (agentes, skills, comandos, hooks), plugin `aidw-mods` e as regras do AiDW no `~/.claude/settings.json` | **só** agentes `aidw-*` (`~/.codex/agents`) e skills `aidw-*` (`~/.agents/skills`) |
-| Chamar o orquestrador | `/aidw:go`, `/aidw:lev`, `/aidw:sair`, `/aidw:done` | `$aidw-go`, `$aidw-lev`, `$aidw-sair`, `$aidw-done` |
+| Chamar o orquestrador | `/aidw:go`, `/aidw:survey`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-exit`, `$aidw-done` |
+| Comandos do usuário | só `go`, `survey`, `exit`, `done`, `diff`, `knowledge`, `context` no menu `/`; as skills de fluxo têm `user-invocable: false` | toda skill `$aidw-*` aparece (o Codex não esconde skill); `go`, `survey`, `exit` e `done` só quando chamadas (`agents/openai.yaml`) |
 | Agentes | `aidw:<agente>`, uma variante por modelo e effort | `aidw-<agente>`, modelo e effort em cada `spawn_agent` |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |
 | Workflows (feature, bugfix, refactor, hotfix, `pr-review`, `levantamento`), QA, revisão | ✅ | ✅ (pelas skills) |
@@ -114,7 +115,7 @@ Nada disso é versionado.
 
 | Arquivo | Gerado por | Conteúdo |
 |---|---|---|
-| `.aidw/marketplace/plugins/aidw/` | `install` | O plugin: agentes e variantes, skills, `orquestrar`/`sair`/`diff`, referências, hooks |
+| `.aidw/marketplace/plugins/aidw/` | `install` | O plugin: agentes e variantes, skills, `go`/`survey`/`exit`/`diff`, referências, hooks |
 | `.aidw/marketplace/plugins/aidw-mods/` | `install` | Os mods do Claude Code, copiados de `mods/aidw-mods` (sem os testes) com a raiz do AiDW desta máquina |
 | `.aidw/install-manifest.json` | `install` | O que o install acrescentou no Claude e no Codex (para o `uninstall` remover só isso) |
 | `~/.claude/settings.json` (merge) | `install` | Regras `deny`/`ask`/`allow`, pastas liberadas e `env`, só os itens do AiDW |

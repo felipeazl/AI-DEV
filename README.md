@@ -106,8 +106,8 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 
 ```text
 /aidw:go 1234                 ← id do card, link ou uma descrição do que fazer
-/aidw:go 1234 pr 7639         ← revisa a PR de outra pessoa (sem implementar)
-/aidw:lev 1234               ← levantamento: valida o card no código e estima (sem implementar)
+/aidw:go 1234 pr 5678         ← revisa a PR de outra pessoa (sem implementar)
+/aidw:survey 1234             ← levantamento: valida o card no código e estima (sem implementar)
 /aidw:go                      ← sem argumento: retoma a demanda desta pasta
 ```
 
@@ -122,16 +122,16 @@ PR), as ações travadas, as dúvidas reais e o que sair do plano. Não há modo
 | Claude | Codex | O que faz |
 |---|---|---|
 | `/aidw:go [demanda] [modo]` | `$aidw-go` | Assume o chat como orquestrador e conduz a demanda |
-| `/aidw:lev <card ou texto>` | `$aidw-lev` | Levantamento antes de implementar: valida cada ponto do card no código, mapeia o fluxo e estima esforço (horas), story points e complexidade, com as dúvidas |
-| `/aidw:sair` | `$aidw-sair` | Grava onde parou e devolve o chat ao modo normal |
+| `/aidw:survey <card ou texto>` | `$aidw-survey` | Levantamento antes de implementar: valida cada ponto do card no código, mapeia o fluxo e estima esforço (horas), story points e complexidade, com as dúvidas |
+| `/aidw:exit` | `$aidw-exit` | Grava onde parou e devolve o chat ao modo normal |
 | `/aidw:diff [repo\|sair]` | — | Leva o painel de diff para o próximo repositório da demanda (em círculo); `sair` volta para a pasta da demanda |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base de conhecimento que ela tocou; build e ambiente no `context.toml`) e faz commit e push do contexto |
-| `/aidw:conhecimento [tema]` | `$aidw-conhecimento` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
-| `/aidw:contexto-listar` · `contexto-usar <nome>` · `contexto-criar` | `$aidw-contexto-*` | Administram os contextos (seção 6) |
-| `/faixa` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
-| `/painel [aba]` | — | Abre o painel Geral da demanda, ou o da aba pedida ([painel](docs/painel.md)) |
-| `/metricas` | — | Abre o painel de métricas da demanda |
-| `/testes-review` | — | Abre o painel Testes e Review (Dúvidas no levantamento), só informativo |
+| `/aidw:knowledge [tema]` | `$aidw-knowledge` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda |
+| `/aidw:context list` · `context use <nome>` · `context create` | `$aidw-context` | Administram os contextos (seção 6) |
+| `/strip` | — | Esconde ou mostra a faixa da demanda acima do prompt ([mods](docs/mods.md)) |
+| `/panel [aba]` | — | Abre o painel Geral da demanda, ou o da aba pedida ([painel](docs/painel.md)) |
+| `/metrics` | — | Abre o painel de métricas da demanda |
+| `/review-tests` | — | Abre o painel Testes e Review (Dúvidas no levantamento), só informativo |
 
 ### Mods (só Claude Code)
 
@@ -139,9 +139,9 @@ No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
 
 - **Faixa acima do prompt:** a demanda, o contexto e as janelas de 7d e 5h do plano, com barras, os agentes rodando
   e os botões dos painéis.
-- **Painéis do AiDW** ([painel.md](docs/painel.md)), só quando você abre: **Geral** (`/painel`: título, mapa da
-  demanda com resumo, números e progresso, inclusive Code review e QA), **Métricas** (`/metricas`) e **Testes e Review**
-  (`/testes-review`: achados, roteiro e comentários de PR; **Dúvidas** no levantamento), só para consulta: toda decisão é no chat.
+- **Painéis do AiDW** ([painel.md](docs/painel.md)), só quando você abre: **Geral** (`/panel`: título, mapa da
+  demanda com resumo, números e progresso, inclusive Code review e QA), **Métricas** (`/metrics`) e **Testes e Review**
+  (`/review-tests`: achados, roteiro e comentários de PR; **Dúvidas** no levantamento), só para consulta: toda decisão é no chat.
   - **Desenvolver:** critérios, regras e cenários com a cobertura; revisão em cartões (antes e depois do código,
     recomendação do AiDW, decisão); teste manual passo a passo.
   - **Revisar PR:** achados com o comentário de cada um, o que publicar e "Aprovar a PR?" (manual, sim, não).
@@ -150,7 +150,7 @@ No modo orquestrador, o plugin `aidw-mods` trabalha junto com o chat:
 - **Travas da delegação:** a célula da tabela, o `model` sem pedido e o insumo colado são recusados.
 - **Proteções:** aviso ao modelo quando o orquestrador lê código no chat, filtro de segredos na conversa e o estado da demanda de volta depois de uma compactação.
 
-Eles ligam com `/aidw:go` ou `/aidw:lev` e desligam com `/aidw:sair` ou `/aidw:done`. Detalhes e como
+Eles ligam com `/aidw:go` ou `/aidw:survey` e desligam com `/aidw:exit` ou `/aidw:done`. Detalhes e como
 escrever um mod: [docs/mods.md](docs/mods.md).
 
 ### Conversar com o orquestrador
@@ -218,7 +218,7 @@ Referência completa de comandos: [docs/comandos.md](docs/comandos.md).
 Para revisar a PR de outra pessoa, o fluxo é mais curto: worktree só leitura da PR, revisão com o rascunho de cada
 comentário, e você escolhe o que é publicado e se o AiDW aprova a PR ([docs/fluxo.md](docs/fluxo.md#revisar-a-pr-de-outra-pessoa)).
 
-Para estimar um card antes de implementar, `/aidw:lev 1234`: um explorador valida cada ponto do card no código e
+Para estimar um card antes de implementar, `/aidw:survey 1234`: um explorador valida cada ponto do card no código e
 mapeia o fluxo, e o orquestrador estima horas, story points e complexidade e lista as dúvidas em linguagem simples
 ([docs/fluxo.md](docs/fluxo.md#levantamento-de-demanda)).
 
@@ -253,8 +253,8 @@ Skills são procedimentos em Markdown que um agente carrega quando a etapa pede.
 
 | Skill | Quem usa | Para quê |
 |---|---|---|
-| `orquestrar` · `sair` · `diff` · `done` | você | Entrar e sair do modo orquestrador, trocar o diff, fechar a tarefa |
-| `contexto-listar` · `contexto-usar` · `contexto-criar` | você | Administrar contextos |
+| `go` · `survey` · `exit` · `diff` · `done` · `knowledge` | você | Entrar e sair do modo orquestrador, levantamento, trocar o diff, fechar a tarefa, consultar a base |
+| `context` (`list` · `use` · `create`) | você | Administrar contextos |
 | `to-spec` | planejador | Pedido → plano spec-driven com as entregas, autossuficiente para o codificador |
 | `verificar-premissa` | orquestrador, revisor | Exige evidência antes de aceitar "não dá para corrigir aqui", "cobre todos os casos" |
 | `preparar-worktree` | orquestrador, codificador | Criar, conferir e remover o worktree da demanda |
@@ -281,10 +281,10 @@ deixa as entregas melhores sem mudar o nome de nada:
   do Obsidian), sem fato repetido; os agentes leem a nota do sistema antes do código e o `/aidw:done` a atualiza.
 
 ```text
-/aidw:contexto-criar          ← analisa os repositórios, faz no mínimo 10 perguntas e gera o contexto
-/aidw:contexto-usar <nome>    ← valida, ativa e regenera o plugin (abra um chat novo)
+/aidw:context create          ← analisa os repositórios, faz no mínimo 10 perguntas e gera o contexto
+/aidw:context use <nome>    ← valida, ativa e regenera o plugin (abra um chat novo)
 /aidw:done                    ← no fim de cada tarefa, o contexto aprende o que ela descobriu
-/aidw:conhecimento <tema>     ← o que a base já sabe sobre um sistema, contrato ou conceito
+/aidw:knowledge <tema>     ← o que a base já sabe sobre um sistema, contrato ou conceito
 ```
 
 Sem contexto, o AiDW funciona com as regras genéricas. Estrutura, `context.toml` campo a campo e boas práticas:

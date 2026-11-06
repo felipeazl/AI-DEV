@@ -44,7 +44,7 @@ Entender → Explorar → Plano → Sua aprovação
 
 Bug, melhoria, item técnico, dívida e correção urgente seguem o mesmo workflow (`desenvolvimento`): num bug, a
 causa-raiz é pergunta do explorador; numa dívida sem mudança de comportamento, o plano diz isso e o roteiro cobre a
-regressão. O contexto pode acrescentar etapas de fora (no acme, a **Validação de UX**, antes da PR).
+regressão. O contexto pode acrescentar etapas de fora (ex.: uma **Validação de UX**, antes da PR).
 
 ## Como o orquestrador decide o próximo passo
 
@@ -52,7 +52,7 @@ Cada agente termina com `"state": "<chave>"`, e `orchestrator/config/routing.tom
 (`plan_ready` → `PLAN_APPROVAL`, `review_findings` → `TRIAGE`, `tests_passed` → `PR`…). O orquestrador aplica a regra;
 os agentes não escolhem o próximo passo. Um `state` ausente é falha: ele pede só o JSON de novo.
 
-Não há limite de rodadas (painel v4, Alex, 2026-11-03): um laço (explorar ⇄ planejar, revisar ⇄ corrigir) roda até
+Não há limite de rodadas (painel v4, decisão, 2026-11-03): um laço (explorar ⇄ planejar, revisar ⇄ corrigir) roda até
 a etapa terminar, e cada rodada nova precisa de um motivo nomeado. Você decide os achados de toda rodada.
 
 ## Agentes e effort
@@ -107,7 +107,7 @@ decidir, a demanda vai para a sua revisão de código.
 O documentador escreve `pr-<id>.md`: a mensagem de commit (cita o pai e as Tasks), o título e a descrição da PR em
 linguagem simples, os work items e as pendências para a QA (ConfigManager, scripts `.sql`, o que versionar). O
 orquestrador confere que os ajustes de teste saíram, te mostra tudo com os comandos exatos e, com **um OK**, faz o
-commit, o push, abre a PR (no acme, pela skill `ado-abrir-pr`) e publica o comentário de pendências. A partir daí a
+commit, o push, abre a PR (pela skill do contexto, quando ele tem uma) e publica o comentário de pendências. A partir daí a
 demanda está com o time (`CODE_REVIEW`) e depois com a QA (`QA_TEST`); você avisa o orquestrador quando ela muda.
 
 **Depois da entrega** (um bug da QA, um pedido de mudança na PR, um ajuste seu): é o caminho curto, sem plano novo —
@@ -120,7 +120,7 @@ Workflow `pr-review`: o orquestrador revisa a PR que outra pessoa abriu, sem pla
 autor; você escolhe o que é publicado. O procedimento completo está na referência *pr-review* do orquestrador.
 
 ```text
-/aidw:go us-127508 pr 7639 7640     ← o card e as PRs (podem ser de repositórios diferentes)
+/aidw:go us-1234 pr 1234 5678       ← o card e as PRs (podem ser de repositórios diferentes)
 ```
 
 1. **Entender:** o `resumo-<id>.md` traz o card e, por PR, autor, descrição, destino, itens ligados e o que já foi
@@ -141,8 +141,8 @@ autor; você escolhe o que é publicado. O procedimento completo está na refer�
 Workflow `levantamento`: entender e estimar um card **antes** de implementar. Só leitura.
 
 ```text
-/aidw:lev 1234                  ← o card (id ou link)
-/aidw:lev "<texto da demanda>"   ← sem card: os pontos saem do texto
+/aidw:survey 1234                  ← o card (id ou link)
+/aidw:survey "<texto da demanda>"   ← sem card: os pontos saem do texto
 ```
 
 O orquestrador numera o que o card pede em `pontos-<id>.md`; o explorador, na exceção do levantamento (Sonnet high),
@@ -151,7 +151,7 @@ confirma cada ponto no código e mapeia o fluxo de ponta a ponta; o orquestrador
 O comentário no card só sai com o seu OK. Se o card for implementado depois (`/aidw:go <id>`), o fluxo começa
 pelo plano reaproveitando o levantamento.
 
-A skill `/aidw:lev` carrega um orquestrador enxuto (`orchestrator/LEVANTAMENTO.md`): só o explorador, sem os
+A skill `/aidw:survey` carrega um orquestrador enxuto (`orchestrator/LEVANTAMENTO.md`): só o explorador, sem os
 workflows de desenvolvimento, com o procedimento e a régua já dentro. Assim o orquestrador não lê referência nenhuma e
 cada chamada dele relê um contexto menor.
 
@@ -190,7 +190,7 @@ No Claude Code, o mod `aidw-mods` roda o `record` sozinho e soma o chat do orque
 
 ### Retomar
 
-`/aidw:sair` grava a etapa e o próximo passo (`paused`). Depois, `/aidw:go` sem argumento na pasta do worktree
+`/aidw:exit` grava a etapa e o próximo passo (`paused`). Depois, `/aidw:go` sem argumento na pasta do worktree
 ou do repositório acha a demanda e continua da etapa gravada. `python aidw.py open --demand <id>` faz o mesmo pelo
 terminal.
 
