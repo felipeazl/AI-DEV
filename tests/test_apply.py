@@ -1619,6 +1619,22 @@ class KnowledgeTest(unittest.TestCase):
             code, ctx = wt.aidw_json(root, "context", "check", "exemplo", "--json")
             self.assertTrue(any("upstream guia" in w and "AutoMapper forbidden" in w for w in ctx["warnings"]), ctx)
 
+            # a checkout with a remote: `context upstream` fetches and compares with the remote, not the checkout
+            clone = tmp / "guideline-clone"
+            subprocess.run(["git", "clone", "-q", str(guide), str(clone)], check=True, capture_output=True)
+            head = subprocess.run(["git", "-C", str(guide), "rev-parse", "HEAD"], capture_output=True,
+                                  text=True).stdout.strip()
+            toml.write_text(toml.read_text(encoding="utf-8").replace(f'repo = "{guide.as_posix()}"\nsynced = "{first}"',
+                            f'repo = "{clone.as_posix()}"\nsynced = "{head}"'), encoding="utf-8")
+            code, up = wt.aidw_json(root, "context", "upstream", "--json")
+            self.assertEqual((code, up["warnings"]), (0, []), "clone up to date")
+            subprocess.run(["git", "-C", str(guide), "commit", "-q", "--allow-empty", "-m", "New rule"], check=True)
+            code, up = wt.aidw_json(root, "context", "upstream", "--no-fetch", "--json")
+            self.assertEqual(up["warnings"], [], "without fetch the remote ref is the old one")
+            code, up = wt.aidw_json(root, "context", "upstream", "--json")
+            self.assertTrue(any("after" in w and "New rule" in w for w in up["warnings"]), up)
+            self.assertTrue(any("behind" in w and "pull" in w for w in up["warnings"]), up)
+
             wt.aidw_json(root, "demand", "set", "us-9", "--status", "done", "--json")
             demand_dir = root / "contexts" / "exemplo" / "demandas" / "us-9"
             (demand_dir / "learnings-us-9.md").write_text("- fact\n", encoding="utf-8")

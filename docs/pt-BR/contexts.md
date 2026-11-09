@@ -303,10 +303,13 @@ Quando o contexto resume um repositório de fora (ex.: o guia de código do time
 repo = "C:/Repos/Guideline"
 synced = "<hash>"                     # git -C <repo> log -1 --format=%H
 covers = ["reference/guia/", "shared/guia-time.md"]
+branch = "main"                       # opcional: compara com origin/<branch>; padrão: a branch rastreada do checkout
 ```
 
-O `context check` avisa quando o repositório tem commits depois do `synced`: as cópias podem ter ficado para trás.
-Reconfira o que o `covers` lista e atualize o `synced`.
+O `context upstream` faz o fetch de cada upstream e avisa quando o remoto tem commits depois do `synced` (as cópias
+ficaram para trás: reconfira o que o `covers` lista e atualize o `synced`) ou quando o checkout local está atrás do
+remoto (quem lê os arquivos dele lê regra velha: faça o pull). O orquestrador roda no início de todo workflow; o
+`doctor` e o `context check` também.
 
 ## Ativar, validar, listar
 

@@ -70,6 +70,7 @@ With no command, `aidw.py` runs `setup`. Commands that take `--json` print machi
 |---|---|
 | `context list` | Lists the contexts |
 | `context check <name>` | Validates a context as if it were active: full build, own Git repository, ignored by AiDW, exclusive state folder, knowledge base, upstream |
+| `context upstream [--no-fetch]` | Fetches the active context's upstreams and warns when the copies (`synced`) or the local checkout fell behind the remote; run at the start of every workflow |
 | `context use [<name>] [--skip-install]` | Activates it (empty name = none), runs `apply` and, if installed, `install` |
 | `context create <name> [--description d] [--mcp a,b] [--env A,B] [--language <tag>]` | Creates `contexts/<name>/` with the minimal structure and its own Git repository |
 

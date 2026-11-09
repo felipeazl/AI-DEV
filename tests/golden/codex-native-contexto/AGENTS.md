@@ -50,6 +50,14 @@ Pick the workflow by demand type (*Workflows* and the active context's map of ca
 is disabled (do them yourself, cheaply). `pr-review` and `survey` have their own sections below. Every step:
 `python "<ROOT>/aidw.py" demand set <id> --step <STEP>`.
 
+**Upstreams first** — at the start of every workflow (development, pr-review, survey), before the plan or the review
+reads any rule: `python "<ROOT>/aidw.py" context upstream` (it fetches each `[upstream.*]` of the context, e.g. the
+team's code guide). Silent when up to date. A warning goes to the user in the same message as your first question or
+summary, never as a separate stop: *the local checkout is behind* → propose the exact `pull` (a locked action); *the
+context's copies fell behind* → say which commits and offer to resync the copies (AiDW maintenance, outside the demand)
+before the plan. Until then, tell each agent that reads those rules to read them from the remote ref
+(`git show origin/<branch>:<file>`), not the checkout.
+
 1. **Understand** (`UNDERSTAND`) — read the card (the context's skill), its comments and linked items, and write
    `summary-<id>.md` in the demand folder: fields, acceptance criteria and business rules (the card's text), decisions
    with author and date, existing work (tasks, branch, PR) and what the user said about it. Existing work → ask once:

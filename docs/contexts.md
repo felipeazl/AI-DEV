@@ -301,10 +301,13 @@ When the context summarizes an outside repository (e.g. the team's code guide), 
 repo = "C:/Repos/Guideline"
 synced = "<hash>"                     # git -C <repo> log -1 --format=%H
 covers = ["reference/guide/", "shared/team-guide.md"]
+branch = "main"                       # optional: compared as origin/<branch>; default: the checkout's tracking branch
 ```
 
-`context check` warns when the repository has commits after `synced`: the copies may be behind. Recheck what `covers`
-lists and update `synced`.
+`context upstream` fetches each upstream and warns when the remote has commits after `synced` (the copies are behind:
+recheck what `covers` lists and update `synced`) or when the local checkout is behind the remote (agents reading its
+files read old rules: pull it). The orchestrator runs it at the start of every workflow; `doctor` and `context check`
+run it too.
 
 ## Activate, validate, list
 

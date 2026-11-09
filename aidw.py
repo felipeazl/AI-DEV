@@ -4251,26 +4251,70 @@ def context_check(cfg: dict, catalog: dict, name: str) -> dict:
     return {"ok": not errors, "errors": errors, "warnings": warnings, **{k: st.get(k) for k in ("description", "systems")}}
 
 
-def upstream_check(ctx: dict | None) -> list[str]:
-    """[upstream.<name>]: an outside repository the context summarizes (e.g. the team's code guide). Warns when it
-    has commits after `synced` — the copies in the context may have fallen behind."""
+def upstream_ref(repo: str, up: dict) -> str:
+    """The ref an upstream is compared against: `origin/<branch>` when the context names the branch, else the
+    tracking branch of the checkout (`@{u}`), else HEAD (a repository without a remote)."""
+    if up.get("branch"):
+        return f"origin/{up['branch']}"
+    tracking = git_out(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    return tracking or "HEAD"
+
+
+def upstream_check(ctx: dict | None, fetch: bool = False) -> list[str]:
+    """[upstream.<name>]: an outside repository the context summarizes (e.g. the team's code guide). Warns when the
+    remote has commits after `synced` (the copies in the context fell behind) and when the local checkout is behind
+    the remote (agents that read its files read old rules). `fetch` refreshes the remote ref first."""
     warnings = []
     for name, up in (ctx or {}).get("upstream", {}).items():
         repo, synced, covers = up.get("repo", ""), up.get("synced", ""), ", ".join(up.get("covers", [])) or "context"
         if not Path(repo).is_dir():
             warnings.append(f"upstream {name}: {repo} does not exist on this machine (cannot check {covers})")
             continue
+        if fetch:
+            try:
+                fetched = subprocess.run(["git", "-C", repo, "fetch", "--quiet"], capture_output=True, text=True,
+                                         encoding="utf-8", errors="replace", timeout=60)
+                if fetched.returncode:
+                    warnings.append(f"upstream {name}: `git fetch` failed in {repo} (network/VPN?) — compared with "
+                                    f"the last fetched state")
+            except subprocess.TimeoutExpired:
+                warnings.append(f"upstream {name}: `git fetch` timed out in {repo} — compared with the last fetched "
+                                f"state")
+        ref = upstream_ref(repo, up)
         if not synced:
             warnings.append(f"upstream {name}: `synced` is missing (the commit of {repo} that {covers} reflects)")
-            continue
-        log = git_proc(repo, "log", "--format=%h %ad %s", "--date=short", f"{synced}..HEAD")
-        if log.returncode:
-            warnings.append(f"upstream {name}: the `synced` commit {synced[:10]} does not exist in {repo} (pull?)")
-        elif log.stdout.strip():
-            new = log.stdout.strip().splitlines()
-            warnings.append(f"upstream {name}: {repo} has {len(new)} commit(s) after {synced[:10]} "
-                            f"(e.g. {'; '.join(new[:3])}) — recheck {covers} and update `synced`")
+        else:
+            log = git_proc(repo, "log", "--format=%h %ad %s", "--date=short", f"{synced}..{ref}")
+            if log.returncode:
+                warnings.append(f"upstream {name}: the `synced` commit {synced[:10]} does not exist in {repo} "
+                                f"(fetch?)")
+            elif log.stdout.strip():
+                new = log.stdout.strip().splitlines()
+                warnings.append(f"upstream {name}: {ref} has {len(new)} commit(s) after {synced[:10]} "
+                                f"(e.g. {'; '.join(new[:3])}) — recheck {covers} and update `synced`")
+        if ref != "HEAD":
+            behind = git_out(repo, "rev-list", "--count", f"HEAD..{ref}")
+            if behind and behind != "0":
+                warnings.append(f"upstream {name}: the local checkout of {repo} is {behind} commit(s) behind {ref} — "
+                                f"whoever reads its files reads old rules; pull it (`git -C {repo} pull --ff-only`)")
     return warnings
+
+
+def upstream_command(cfg: dict, args: argparse.Namespace) -> int:
+    """`context upstream`: fetches and checks the active context's upstreams (cheap; run at the start of a demand)."""
+    ctx = load_context(cfg, Report(quiet=True))
+    warnings = upstream_check(ctx, fetch=not args.no_fetch)
+    names = list((ctx or {}).get("upstream", {}))
+    if args.json:
+        print(json.dumps({"ok": not warnings, "upstreams": names, "warnings": warnings}, ensure_ascii=False, indent=2))
+        return 0
+    if not names:
+        print("The active context declares no [upstream.*].")
+    for w in warnings:
+        print(f"[warn]  {w}")
+    if names and not warnings:
+        print(f"[ok]    up to date: {', '.join(names)}")
+    return 0
 
 
 def set_active_context(name: str) -> None:
@@ -4286,6 +4330,8 @@ def set_active_context(name: str) -> None:
 
 def context_command(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
     action = args.ctx_action
+    if action == "upstream":
+        return upstream_command(cfg, args)
     if action == "list":
         items = context_list(cfg)
         if args.json:
@@ -5577,6 +5623,8 @@ def doctor(cfg: dict, catalog: dict) -> bool:
                 rep.ok(f"variable {var} defined")
             else:
                 rep.warn(f"variable {var} not defined (needed by context {ctx['name']})")
+        for w in upstream_check(ctx, fetch=True):
+            rep.warn(w)
     else:
         rep.info("no active work context")
 
@@ -5819,6 +5867,9 @@ def main() -> int:
     cx.add_parser("list", help="available contexts and which one is active")
     c_check = cx.add_parser("check", help="validates a context as if it were active")
     c_check.add_argument("name")
+    c_up = cx.add_parser("upstream", help="fetches the active context's upstreams and says whether the copies or the "
+                                          "local checkout fell behind")
+    c_up.add_argument("--no-fetch", action="store_true", help="compares with the last fetched state")
     c_use = cx.add_parser("use", help="activates a context (apply and, if installed, install)")
     c_use.add_argument("name", nargs="?", default="", help="context name (empty = none)")
     c_use.add_argument("--skip-install", action="store_true", help="does not reinstall the plugin")
