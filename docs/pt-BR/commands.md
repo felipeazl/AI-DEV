@@ -70,6 +70,7 @@ Opções do `demand set`:
 |---|---|
 | `context list` | Lista os contextos |
 | `context check <nome>` | Valida um contexto como se estivesse ativo: build completo, repositório Git próprio, ignorado pelo AiDW, pasta de estado exclusiva, base de conhecimento, upstream |
+| `context upstream [--no-fetch]` | Faz o fetch dos upstreams do contexto ativo e avisa quando as cópias (`synced`) ou o checkout local ficaram atrás do remoto; roda no início de todo workflow |
 | `context use [<nome>] [--skip-install]` | Ativa (nome vazio = nenhum), roda o `apply` e, se instalado, o `install` |
 | `context create <nome> [--description d] [--mcp a,b] [--env A,B] [--language <tag>]` | Cria `contexts/<nome>/` com a estrutura mínima e repositório Git próprio |
 
