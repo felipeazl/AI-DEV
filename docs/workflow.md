@@ -23,7 +23,7 @@ splits the roles without multiplying the steps:
 
 ```text
 Understand → Explore → Plan → Your approval
-        → Implement (in parallel: Tasks on the board, test script and data)
+        → Implement (in parallel: README and Tasks on the board, test script and data)
         → Review → you decide the findings → Fix ⇄ Re-review
         → Your code review → Tests (qa runs API and browser; you run the manual steps with the orchestrator)
         → PR (commit, push and PR with one OK) → Code review and QA (outside AiDW) → /aidw:done

@@ -15,7 +15,7 @@ steps:
   - id: implement       # one coder per delivery; in parallel: board (documenter) and test script/data (qa)
     agent: coder
     for_each: delivery
-  - id: board           # attaches the plan and creates one Task per delivery (in parallel with implement)
+  - id: board           # readme-<id>.md on the card and one Task per delivery (in parallel with implement)
     agent: documenter
   - id: test_plan       # test-script-<id>.md and the test data (in parallel with implement)
     agent: qa
@@ -26,7 +26,7 @@ steps:
     agent: orchestrator
   - id: test            # the qa runs the automatic steps (API, E2E/browser); the user runs the manual ones with the orchestrator
     agent: qa
-  - id: pr              # the documenter writes pr-<id>.md; with the OK, commit, push and PR
+  - id: pr              # the documenter updates readme-<id>.md and writes pr-<id>.md; with the OK, commit, push, PR and the README swapped on the card
     agent: documenter
 gates:
   - before: pr

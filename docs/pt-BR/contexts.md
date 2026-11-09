@@ -79,6 +79,18 @@ branch_prefix = "feature/"                   # branch <prefixo><número>-<slug>;
 link = ["packages", "node_modules"]          # pastas que o git não versiona, ligadas por junction (este é o padrão)
 ```
 
+### Ambientes
+
+```toml
+[environments]
+order = ["DEV", "QA", "HML", "PROD"]   # do mais longe ao mais perto de produção
+test = "DEV"                           # onde o qa testa por padrão
+test_fallback = "QA"                   # só para o passo que o padrão não prova; o usuário aprova, só para aquela demanda
+explore = ["DEV", "QA"]                # o explorador consulta todos; se divergirem: mais dados, depois mais perto de produção
+```
+
+Todo agente recebe essas linhas no seu *Runtime*. Em quais ambientes uma escrita pode mexer continua sendo das políticas.
+
 ### Permissões
 
 ```toml

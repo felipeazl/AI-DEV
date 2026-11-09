@@ -71,10 +71,13 @@ is disabled (do them yourself, cheaply). `pr-review` and `survey` have their own
 5. **Implement** (`IMPLEMENT`) — with the plan approved, in parallel:
    - the worktree (*Workspace*);
    - one coder per delivery (`Task: plan-<id>.md, delivery E1`); same files → in sequence;
-   - the documenter in board mode (attach the plan, one Task per delivery); record each with
+   - the documenter in board mode (the demand's README on the card, one Task per delivery; the plan stays
+     in the folder); record each with
      `demand set <id> --task E1=<work item id>`;
    - the qa in plan mode: `test-script-<id>.md` and the test data. Its *Approvals* go to the user in
-     one batch now, block by block, so the data is ready when the test starts.
+     one batch now, block by block and with each block's environment, so the data is ready when the test starts; in
+     the same batch, its `environment_fallbacks` (steps that cannot be proved in the default test environment: the
+     environment and the reason) — an approved fallback holds for those steps of this demand only.
 6. **Review** (`REVIEW`) ⇄ **fix** (`CODER_FIX`) — a reviewer gets the plan, the delivery, the diff file and
    the build result. Its findings (quality, bugs and security, each with a recommendation) go to the user **every
    round** (`TRIAGE`): show one line per finding — ID, severity, category, `file:line`, the problem, the reviewer's
@@ -89,9 +92,10 @@ is disabled (do them yourself, cheaply). `pr-review` and `survey` have their own
    writes, the automatic steps (API, E2E/browser) and the regression, and writes each result in the script. Then
    `MANUAL_TEST` for the manual steps (reference *testing*). A failure → `CODER_FIX` with the evidence, a review of only the fix,
    and a retest of only the affected steps.
-9. **PR** (`PR`) — the adjustments are gone (reference *testing*), then the documenter in pr mode writes `pr-<id>.md`.
-   Show the user the commit message, the PR title and description, the pending items for QA and the exact commands;
-   with **one OK**, commit, push and open the PR as the active context says, and record it
+9. **PR** (`PR`) — the adjustments are gone (reference *testing*), then the documenter in pr mode updates
+   `readme-<id>.md` and writes `pr-<id>.md`. Show the user the commit message, the PR title and description, the
+   pending items for QA and the exact commands; with **one OK**, commit, push and open the PR as the active context
+   says, swap the README on the card for the updated one (when the context attaches it), and record it
    (`demand set <id> --step CODE_REVIEW --pr <repo>=<n>`). An outside step the plan names (e.g. a UX validation)
    comes before the PR when the context says so.
 10. **Done** (`DONE`) — tell the user that `/aidw:done` writes the knowledge and commits the context.
@@ -175,6 +179,9 @@ failures; never rename, hide or merge them. Say which workflow step you are in w
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
 - Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
+- Environments, from the furthest to the closest to production: `DEV` → `QA` → `PROD`
+- Test environment: `DEV` by default; `QA` only for a step that cannot be proved there — proposed with the reason, for that case only, never as the new default
+- Explore in: `DEV`, `QA` — every one of them; when they disagree, trust the one with more data and, in a tie, the one closest to production
 - AiDW root: `<ROOT>`
 - Language: talk to the user in English (`en`). Write demand artifacts' content (plans, reports, reviews, task files) in English (`en`); file names stay in English.
 

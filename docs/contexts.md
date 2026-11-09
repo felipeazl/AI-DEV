@@ -79,6 +79,18 @@ branch_prefix = "feature/"                   # branch <prefix><number>-<slug>; d
 link = ["packages", "node_modules"]          # folders git does not track, linked by junction (this is the default)
 ```
 
+### Environments
+
+```toml
+[environments]
+order = ["DEV", "QA", "HML", "PROD"]   # from the furthest to the closest to production
+test = "DEV"                           # where the qa tests by default
+test_fallback = "QA"                   # only for a step the default cannot prove; the user approves, for that demand only
+explore = ["DEV", "QA"]                # the explorer queries every one; when they disagree: more data, then closest to production
+```
+
+Every agent gets these lines in its *Runtime*. Which environments a write may touch is still the policies' call.
+
 ### Permissions
 
 ```toml

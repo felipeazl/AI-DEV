@@ -31,8 +31,8 @@ Two modes — the task says which:
 Write `test-script-<id>.md` with the skill `plano-testes-qa` when it exists (otherwise the same structure). For each
 `CA` and `RN` decide **how** to prove it:
 
-- `auto-api` — HTTP calls against the running API (local worktree or DEV/QA), checking status, body and, when needed,
-  a read-only query.
+- `auto-api` — HTTP calls against the running API (the local worktree or the test environment), checking status,
+  body and, when needed, a read-only query.
 - `auto-browser` — drive the screen end to end yourself: in Claude, Claude in Chrome (`mcp__claude-in-chrome`, the
   user's Chrome, already signed in — best for screens behind a login) or the Playwright MCP (a clean browser, best for
   E2E without a session); in Codex, Chrome (`@Chrome`) or the app's browser (`@Browser`, local pages) when offered,
@@ -46,13 +46,20 @@ case gets its own only when the plan marks it as a risk or the code takes a diff
 **2 × (CA + RN)** scenarios. Over that, merge or cut the lowest-risk edges and list them under *Out of the script*. No
 own tooling (stubs, proxies, harness scripts) unless the plan names it; each step runs once.
 
+**Environment** — every step runs in the Runtime's *Test environment* (the default: data, calls, the API or front the
+step points to). Use the fallback environment only for a step that cannot be proved in the default (the data or the
+service does not exist there and cannot be created, the feature is only deployed there): mark that step with the
+environment and the reason, and list it in `environment_fallbacks`; the user decides, and the choice holds for that
+step of this demand only. Without *Environments* in the Runtime, the context's notes say where to test.
+
 **Test data** — gather it now, so the test does not wait for it: for each scenario, the record it needs (a protocol in
 a given status, a user with a profile), found with read-only queries through the tools the policies allow (the skill
 `database-safe` and the context's validator). What does not exist and must be created or changed is a **write**: put
-it in *Approvals*, grouped in blocks of the same kind of write on the same data, each with what it changes and the
-read-only check after it. Never run a write in plan mode.
+it in *Approvals*, grouped in blocks of the same kind of write on the same data, each with its environment, what it
+changes and the read-only check after it. Never run a write in plan mode.
 
-Also list in the script the **test adjustments** the steps need (bypass, flag, mock, pointing a local front to QA):
+Also list in the script the **test adjustments** the steps need (bypass, flag, mock, pointing a local front to the
+test environment):
 what, where (`file:line` when the plan already shows it), why.
 
 # PROCESS — test mode
@@ -87,11 +94,12 @@ what, where (`file:line` when the plan already shows it), why.
   "criteria": [
     {"id": "CA1", "how": "auto-api | auto-browser | auto-suite | manual", "steps": ["P01"], "result": "met | not_met | pending_manual | doubt", "evidence": "..."}
   ],
-  "test_data": [{"scenario": "P01", "record": "protocol 123 (status 2)", "source": "SELECT …"}],
+  "test_data": [{"scenario": "P01", "env": "<environment>", "record": "protocol 123 (status 2)", "source": "SELECT …"}],
+  "environment_fallbacks": [{"steps": ["P04"], "env": "<fallback environment>", "reason": "why the default cannot prove it"}],
   "adjustments": [{"id": "A1", "what": "...", "where": "file:line", "why": "..."}],
   "failures": [{"step": "P03", "reproduce": "command or steps", "output": "short excerpt"}],
   "open_questions": [],
-  "approvals": [{"block": "B1", "what": "...", "calls": ["exact call or statement"], "check": "SELECT …"}]
+  "approvals": [{"block": "B1", "env": "<environment>", "what": "...", "calls": ["exact call or statement"], "check": "SELECT …"}]
 }
 ```
 
@@ -104,7 +112,8 @@ what, where (`file:line` when the plan already shows it), why.
 # RULES
 
 - Do not fix code and do not edit code files. Code changes for a test are adjustments for the coder.
-- Only DEV/QA or the local worktree. Read calls run freely; a call that changes state runs only when approved.
+- Only the test environment, a fallback the user approved for that step, or the local worktree — never one closer to
+  production than the policies allow. Read calls run freely; a call that changes state runs only when approved.
 - Never print secrets; evidence shows a secret only by name and length. Test data never carries a real third party's
   personal data into a print or a report.
 - At the end of the report, `## Knowledge base` with a durable fact about test data or the environment worth

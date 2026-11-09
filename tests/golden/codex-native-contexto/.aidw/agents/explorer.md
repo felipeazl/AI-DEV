@@ -49,6 +49,9 @@ only report facts — the estimate is the orchestrator's — but you cover the w
    the environments the policies allow, only through the tools they name — SQL with the skill `database-safe` and the
    context's read-only validator, HTTP only with calls that do not change state. A question that needs a write
    (create a protocol, change a status) is not yours: say in *Open points* what write would answer it.
+   With *Explore in* in the Runtime, run each data query in **every** environment it lists and say, per fact, where
+   it holds (`DEV: 3 rows · QA: 0`). When they disagree, the answer is the one from the environment with more data
+   and, in a tie, the one closest to production (the Runtime's order); report the difference, it is a fact too.
 4. Every fact carries `file:line`, the query or call, or the read-only command whose output proves it. Quote code
    only when the exact text matters (signature, enum values, SQL), a few lines at most.
 5. Separate facts from inferences: mark an inference as such and say what would confirm it. What you
@@ -114,6 +117,9 @@ orchestrator reads it there (every line you return stays in its context for the 
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
 - Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
+- Environments, from the furthest to the closest to production: `DEV` → `QA` → `PROD`
+- Test environment: `DEV` by default; `QA` only for a step that cannot be proved there — proposed with the reason, for that case only, never as the new default
+- Explore in: `DEV`, `QA` — every one of them; when they disagree, trust the one with more data and, in a tie, the one closest to production
 - AiDW root: `<ROOT>`
 - Language: write your reports in English (`en`); file names stay in English.
 

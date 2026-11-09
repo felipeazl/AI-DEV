@@ -1300,6 +1300,16 @@ class ContextTest(unittest.TestCase):
                 {"step": "NO_NAME", "before": "QA_TEST", "when": "b"}]}}, rep)
             self.assertEqual(len(rep.errors), 4, rep.errors)
 
+            # [environments]: every name must be in order; the Runtime lines follow what is declared
+            rep = aidw.Report(quiet=True)
+            envs = {"order": ["DEV", "QA", "PROD"], "test": "DEV", "test_fallback": "HML", "explore": ["DEV", "X"]}
+            aidw.check_environments({"name": "x", "environments": envs}, rep)
+            self.assertEqual(len(rep.errors), 2, rep.errors)
+            self.assertEqual(aidw.environment_lines({"environments": {}}), [])
+            lines = aidw.environment_lines({"environments": {"order": ["DEV", "QA"], "test": "DEV"}})
+            self.assertEqual(len(lines), 2, lines)
+            self.assertNotIn("only for a step", lines[1], "no fallback declared, none offered")
+
             # the PR vote scale is gone: a context that still declares [[mods.votes]] gets a warning, not an error
             rep = aidw.Report(quiet=True)
             aidw.check_votes({"name": "x", "mods": {"votes": [{"value": "10", "label": "Approve"}]}}, rep)
