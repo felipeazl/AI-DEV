@@ -17,6 +17,12 @@ dir = "conhecimento"
 [env]
 MCP_TIMEOUT = "60000"
 
+[environments]
+order = ["DEV", "QA", "PROD"]
+test = "DEV"
+test_fallback = "QA"
+explore = ["DEV", "QA"]
+
 [mcp.servidor-exemplo]
 add = "claude mcp add --scope user servidor-exemplo -- npx -y servidor-exemplo"
 add_codex = "codex mcp add servidor-exemplo -- npx -y servidor-exemplo"

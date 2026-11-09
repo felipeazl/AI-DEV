@@ -163,7 +163,7 @@ Etapa por etapa: [docs/pt-BR/workflow.md](docs/pt-BR/workflow.md).
 | `coder` | Implementa uma entrega por vez: código, testes, build | Sonnet · high | medium (correção pequena, ajuste de teste) |
 | `reviewer` | Revisa o diff contra o plano: qualidade, bugs, segurança | Sonnet · high | medium (re-revisão), low (correção trivial) |
 | `qa` | Roteiro e massa em paralelo com o código; depois, o teste | Sonnet · medium | high (refazer uma vez) |
-| `documenter` | As Tasks no board e o texto da PR | Haiku | — |
+| `documenter` | O README da demanda e as Tasks no board, e o texto da PR | Haiku | — |
 
 - Os padrões ficam em `DEFAULT_AGENTS` no `aidw.py` (o **tier** de modelo e o effort de cada papel) e no
   `config/models.toml` (qual modelo é cada tier); as exceções, em `[effort.variants]` do

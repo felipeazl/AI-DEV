@@ -106,6 +106,9 @@ Finish with a single JSON block:
 - State dir: `<ROOT>/contexts/exemplo/demandas`
 - Context: `exemplo` — Contexto de exemplo para os testes
 - Knowledge base: `<ROOT>/contexts/exemplo/conhecimento` (index: `index.md`) — `python "<ROOT>/aidw.py" kb show <system|note>` prints a note with its links and backlinks; `python "<ROOT>/aidw.py" kb search <words>` finds notes
+- Environments, from the furthest to the closest to production: `DEV` → `QA` → `PROD`
+- Test environment: `DEV` by default; `QA` only for a step that cannot be proved there — proposed with the reason, for that case only, never as the new default
+- Explore in: `DEV`, `QA` — every one of them; when they disagree, trust the one with more data and, in a tie, the one closest to production
 - AiDW root: `<ROOT>`
 - Language: write your reports in English (`en`); file names stay in English.
 

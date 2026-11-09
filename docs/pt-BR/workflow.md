@@ -22,7 +22,7 @@ etapas:
 
 ```text
 Entender → Explorar → Plano → Sua aprovação
-        → Implementar (em paralelo: as Tasks no board, o roteiro de testes e a massa)
+        → Implementar (em paralelo: o README e as Tasks no board, o roteiro de testes e a massa)
         → Revisão → você decide os achados → Correção ⇄ Re-revisão
         → Sua revisão de código → Testes (o qa roda API e navegador; os passos manuais você roda com o orquestrador)
         → PR (commit, push e PR com um OK) → Code review e QA (fora do AiDW) → /aidw:done

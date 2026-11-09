@@ -595,7 +595,39 @@ def load_context(cfg: dict, rep: Report) -> dict | None:
         for repo in sysdef.get("repos", []):
             if not Path(repo).is_dir():
                 rep.warn(f"context {name}: repository of system {key!r} does not exist: {repo}")
+    check_environments(ctx, rep)
     return ctx
+
+
+def check_environments(ctx: dict, rep: Report) -> None:
+    """[environments]: test, test_fallback and every explore entry must be one of `order`."""
+    envs = ctx.get("environments", {})
+    order = envs.get("order", [])
+    for field in ("test", "test_fallback"):
+        if envs.get(field) and envs[field] not in order:
+            rep.error(f"context {ctx['name']}: [environments] {field} = {envs[field]!r} is not in order {order}")
+    for env in envs.get("explore", []):
+        if env not in order:
+            rep.error(f"context {ctx['name']}: [environments] explore names {env!r}, which is not in order {order}")
+
+
+def environment_lines(ctx: dict | None) -> list[str]:
+    """The context's environments ([environments]) as Runtime lines: the order towards production, where tests run,
+    the fallback and where the explorer reads. Nothing when the context declares none."""
+    envs = ctx.get("environments", {}) if ctx else {}
+    order = envs.get("order", [])
+    if not order:
+        return []
+    code = lambda names: ", ".join(f"`{n}`" for n in names)
+    lines = [f"- Environments, from the furthest to the closest to production: {' → '.join(f'`{n}`' for n in order)}"]
+    if envs.get("test"):
+        fallback = (f"; `{envs['test_fallback']}` only for a step that cannot be proved there — proposed with the "
+                    f"reason, for that case only, never as the new default" if envs.get("test_fallback") else "")
+        lines.append(f"- Test environment: `{envs['test']}` by default{fallback}")
+    if envs.get("explore"):
+        lines.append(f"- Explore in: {code(envs['explore'])} — every one of them; when they disagree, trust the one "
+                     f"with more data and, in a tie, the one closest to production")
+    return lines
 
 
 def context_missing(cfg: dict) -> bool:
@@ -1223,6 +1255,7 @@ def runtime_lines(cfg: dict, ctx: dict | None, orchestrator: bool = False) -> li
         *([f"- Knowledge base: `{kb_dir(ctx).as_posix()}` (index: `index.md`) — "
            f"`{aidw_command(True)} kb show <system|note>` prints a note with its links and backlinks; "
            f"`{aidw_command(True)} kb search <words>` finds notes"] if kb_dir(ctx) else []),
+        *environment_lines(ctx),
         *([] if not orchestrator or cfg["provider"]["name"] == "codex" else
           ["- Session folders (add them to the session in the desktop app, *Workspace*): "
            + ", ".join(f"`{d.as_posix()}`" for d in session_dirs(ctx))]),

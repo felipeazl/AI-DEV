@@ -62,9 +62,11 @@ the author comes with a draft comment; it never comments, approves or completes 
 2. **Test** (`test` mode, after your code review): checks the script against the final diff, runs the approved writes
    and the automatic steps and marks ✅/❌ with evidence. Manual steps are left for you and the orchestrator.
 
-**Documenter** — after the plan approval, attaches the plan to the card and creates one Task per delivery; after the
-tests, writes `pr-<id>.md` (commit message, title, description, work items, pending items for QA). The orchestrator
-commits, pushes and opens the PR with your OK.
+**Documenter** — after the plan approval, writes the demand's README (`readme-<id>.md`: what the card delivers, in
+plain words, without the plan's technical detail or your decisions), attaches it to the card and creates one Task per
+delivery; the plan stays in the demand folder as the agents' spec. After the tests, it updates the README with what was
+done and tested and writes `pr-<id>.md` (commit message, title, description, work items, pending items for QA). The
+orchestrator commits, pushes, opens the PR and swaps the README on the card with your OK.
 
 ## Models and effort
 

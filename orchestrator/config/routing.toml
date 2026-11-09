@@ -19,7 +19,7 @@ plan_has_open_questions = "HUMAN_APPROVAL"      # a real doubt or more than one 
 plan_ready = "PLAN_APPROVAL"                    # the orchestrator reads the plan and the user approves; adjustment → PLAN_FIX
 
 # Implementation (coder). With the plan approved, the orchestrator starts in parallel the coder, the qa (test script
-# and data) and the documenter (Tasks on the board).
+# and data) and the documenter (README and Tasks on the board).
 implementation_complete = "REVIEW"
 implementation_failed = "CODER_FIX"
 implementation_has_open_questions = "HUMAN_APPROVAL"  # the plan does not fit the code; check it first
@@ -38,7 +38,7 @@ manual_test_required = "MANUAL_TEST"            # automatic steps OK; the user r
 tests_failed = "CODER_FIX"                      # review of only the fix and retest of only the affected steps
 
 # Board, PR and end (documenter)
-task_complete = "RETURN"                        # Tasks created on the board
+task_complete = "RETURN"                        # README attached and Tasks created on the board
 pr_ready = "PR"                                 # pr-<id>.md ready: with the user's OK, commit, push and PR
 pr_review_done = "FINAL_REVIEW"                 # someone else's PR: the user chooses what to publish
 final_review_approved = "DONE"

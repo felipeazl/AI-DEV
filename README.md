@@ -163,7 +163,7 @@ Step by step: [docs/workflow.md](docs/workflow.md).
 | `coder` | Implements one delivery at a time: code, tests, build | Sonnet · high | medium (small fix, test adjustment) |
 | `reviewer` | Reviews the diff against the plan: quality, bugs, security | Sonnet · high | medium (re-review), low (trivial fix) |
 | `qa` | Test script and data in parallel with the code; then the tests | Sonnet · medium | high (redo once) |
-| `documenter` | Tasks on the board and the PR text | Haiku | — |
+| `documenter` | The demand README and the Tasks on the board, and the PR text | Haiku | — |
 
 - The defaults live in `DEFAULT_AGENTS` in `aidw.py` (each role's model **tier** and effort) and in
   `config/models.toml` (which model is each tier); the exceptions live in `[effort.variants]` of

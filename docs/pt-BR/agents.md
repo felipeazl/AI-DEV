@@ -62,9 +62,11 @@ vale contar ao autor vem com o rascunho do comentário; ele nunca comenta, aprov
 2. **Teste** (modo `test`, depois da sua revisão de código): confere o roteiro contra o diff final, roda as escritas
    aprovadas e os passos automáticos e marca ✅/❌ com a evidência. Os passos manuais ficam para você e o orquestrador.
 
-**Documenter** — depois da aprovação do plano, anexa o plano ao card e cria uma Task por entrega; depois dos testes,
-escreve o `pr-<id>.md` (mensagem de commit, título, descrição, work items, pendências para a QA). Quem faz o commit, o
-push e abre a PR é o orquestrador, com o seu OK.
+**Documenter** — depois da aprovação do plano, escreve o README da demanda (`readme-<id>.md`: o que o card entrega, em
+palavras simples, sem o detalhe técnico do plano nem as suas decisões), anexa ao card e cria uma Task por entrega; o
+plano fica na pasta da demanda como a spec dos agentes. Depois dos testes, atualiza o README com o que foi feito e
+testado e escreve o `pr-<id>.md` (mensagem de commit, título, descrição, work items, pendências para a QA). Quem faz o
+commit, o push, abre a PR e troca o README no card é o orquestrador, com o seu OK.
 
 ## Modelos e effort
 
