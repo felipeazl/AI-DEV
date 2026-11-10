@@ -311,6 +311,12 @@ function fenced(body: string, label: RegExp): string {
   return m ? (m[1] ?? '').replace(/\n$/, '') : ''
 }
 
+const FIXED = R('{fixed}')
+/** A finding status that says it was fixed or closed ("corrigido", "fechado", "fixed in r2"), never "não corrigido". */
+export function isFixedStatus(status: string): boolean {
+  return FIXED.test(status) && !/(^|\s)(n[aã]o|not)[\s_]/i.test(status)
+}
+
 const PENDING = R('{triagePending}')
 const DISCARD = R('^\\W*{triageDiscard}')
 const KEEP = R('^\\W*{triageKeep}')

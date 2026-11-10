@@ -127,7 +127,9 @@ gravadas pelo orquestrador **quando você avisa** no chat.
 ## Testes e Review (Dúvidas no levantamento)
 
 Só para consulta: os achados da revisão, o teste manual e os comentários de PR; no levantamento, as dúvidas. O número no
-botão da faixa soma o que ainda espera decisão em cada aba.
+botão da faixa soma o que ainda espera você em cada aba: achados sem decisão que a rodada seguinte não deu como
+corrigidos ou fechados, e os passos do roteiro (automáticos e manuais) que ainda não passaram (sem `Result` ou `❌`),
+só nas etapas de teste (`TEST`, `TEST_ADJUST`, `MANUAL_TEST`): antes delas nada roda, depois o teste está fechado.
 
 ### Revisão (desenvolvimento)
 

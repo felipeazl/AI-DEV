@@ -5,7 +5,7 @@ import type { Elements, ThemeKey } from 'claude-code'
 
 import type { Delegation, DemandKind, Doubt, Finding, PrComment, OrchestratorStep, ReviewFilter, RunningAgent, Snapshot, Usage } from '../types'
 import { agentModel, agentsLayout, agentTokens, compact } from './aidw'
-import { kindLabel } from './artifacts'
+import { isFixedStatus, kindLabel } from './artifacts'
 import { t, tk } from './i18n'
 import type { Key } from './i18n'
 import { stateLabel } from './snapshot'
@@ -516,7 +516,11 @@ function tabCount(v: Counted, tab: string): number {
       return file ? roundFindings(s, file).filter(f => f.decision === 'pending' && !isFixed(f)).length : 0
     }
     case 'manual':
-      return s.manual.filter(m => !m.removed && !m.result && !PREP.test(m.section)).length
+      // the steps not passed yet (no result or ❌), automatic and manual, only during the test: before it nothing runs,
+      // after it the test is closed
+      return TEST_STEPS.has(s.step)
+        ? s.manual.filter(m => !m.removed && m.result !== '✅' && !PREP.test(m.section)).length
+        : 0
     case 'comments':
       return s.prTriage ? s.prTriage.comments.filter(c => !c.published && !c.declined).length : prList(s).filter(f => !f.published).length
     case 'questions':
@@ -841,9 +845,11 @@ export function reviewRounds(s: Snapshot): { file: string; label: string }[] {
     .map(([file, r]) => ({ file, label: `${r.name} r${r.round}` }))
 }
 
-const isFixed = (f: Finding) => /corrig|fixed|resolv/.test(f.status)
+const isFixed = (f: Finding) => isFixedStatus(f.status)
 /** A preparation section of the test script (`## Preparação`, `## Preparation`). */
 const PREP = /prepar/i
+/** The steps in which the test script is being run (the Tests count only counts there). */
+const TEST_STEPS = new Set(['TEST', 'TEST_ADJUST', 'MANUAL_TEST'])
 
 
 /** The finding category: the title's (flow v3) or the source (the older bugs and security passes). */
