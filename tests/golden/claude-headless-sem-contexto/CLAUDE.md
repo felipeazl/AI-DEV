@@ -38,7 +38,8 @@ Agents do not see this conversation and cannot talk to the user.
 There are no demand levels. Every agent runs on its default (*Agents and effort*); an exception of that table only for
 the reason in its cell (a re-review of small fixes goes down; a result that made no sense is redone once with the
 exception that goes up, and you say why). **Each agent runs once per step**: a new round needs a named reason — the
-user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own.
+user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own:
+only the exceptions of that table change it (e.g. a delivery the plan marks `Complex: yes` goes to the stronger coder).
 An `environment_blocked` result is not an agent failure: fix the environment yourself when you can, otherwise take it
 to the user.
 
@@ -193,11 +194,11 @@ failures; never rename, hide or merge them. Say which workflow step you are in w
 | Agent (`--agent`) | Display name | Role | Model | Default effort | Definition | Status |
 |---|---|---|---|---|---|---|
 | `planner` | Planner | planner | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/planner.md` | enabled |
-| `explorer` | Explorer | explorer | Claude Haiku (`claude-haiku`) | — | `<ROOT>/.aidw/agents/explorer.md` | enabled |
+| `explorer` | Explorer | explorer | Claude Haiku (`claude-haiku`) | low | `<ROOT>/.aidw/agents/explorer.md` | enabled |
 | `coder` | Coder | coder | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/coder.md` | enabled |
 | `reviewer` | Reviewer | reviewer | Claude Sonnet (`claude-sonnet`) | high | `<ROOT>/.aidw/agents/reviewer.md` | enabled |
 | `qa` | QA | qa | Claude Sonnet (`claude-sonnet`) | medium | `<ROOT>/.aidw/agents/qa.md` | enabled |
-| `documenter` | Documenter | documenter | Claude Haiku (`claude-haiku`) | — | `<ROOT>/.aidw/agents/documenter.md` | enabled |
+| `documenter` | Documenter | documenter | Claude Haiku (`claude-haiku`) | medium | `<ROOT>/.aidw/agents/documenter.md` | enabled |
 
 ## How to delegate
 
@@ -223,13 +224,13 @@ There are no demand levels: every task runs on the agent's default. Each cell is
 | Agent | Default | Exceptions (only for the reason given) |
 |---|---|---|
 | `planner` | Claude Sonnet (`claude-sonnet`, effort high) | medium — plan adjustment the user asked for at approval |
-| `explorer` | Claude Haiku (`claude-haiku`) | medium + model `sonnet` (`claude-sonnet`) — redo once when the default's result made no sense (say why); high + model `sonnet` (`claude-sonnet`) — survey: the end-to-end flow map is the deliverable |
-| `coder` | Claude Sonnet (`claude-sonnet`, effort high) | medium — small fix (kept finding, failed test, user adjustment) or temporary test adjustment |
+| `explorer` | Claude Haiku (`claude-haiku`, effort low) | medium + model `sonnet` (`claude-sonnet`) — redo once when the default's result made no sense (say why); high + model `sonnet` (`claude-sonnet`) — survey: the end-to-end flow map is the deliverable |
+| `coder` | Claude Sonnet (`claude-sonnet`, effort high) | medium — small fix (kept finding, failed test, user adjustment) or temporary test adjustment; medium + model `opus` (`claude-opus`) — delivery the plan marks as complex (migration, concurrency, performance, contract between systems), or a fix that failed twice (say which) |
 | `reviewer` | Claude Sonnet (`claude-sonnet`, effort high) | medium — re-review of only the fixes; low — re-review of a trivial fix (text, one line, rename) |
 | `qa` | Claude Sonnet (`claude-sonnet`, effort medium) | high — redo once when the result made no sense (say why) |
-| `documenter` | Claude Haiku (`claude-haiku`) | — |
+| `documenter` | Claude Haiku (`claude-haiku`, effort medium) | — |
 
-Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs **once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that failed, a result that made no sense). Another model (Opus) only when the user asks.
+Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs **once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that failed, a result that made no sense). Another model only through an exception of this table or when the user asks.
 
 ## Workflows
 

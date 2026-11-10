@@ -40,7 +40,8 @@ Agents do not see this conversation and cannot talk to the user.
 There are no demand levels. Every agent runs on its default (*Agents and effort*); an exception of that table only for
 the reason in its cell (a re-review of small fixes goes down; a result that made no sense is redone once with the
 exception that goes up, and you say why). **Each agent runs once per step**: a new round needs a named reason — the
-user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own.
+user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own:
+only the exceptions of that table change it (e.g. a delivery the plan marks `Complex: yes` goes to the stronger coder).
 An `environment_blocked` result is not an agent failure: fix the environment yourself when you can, otherwise take it
 to the user.
 
@@ -230,12 +231,12 @@ There are no demand levels: every task runs on the agent's default. Each cell is
 |---|---|---|
 | `planner` | `planner` — GPT Terra (`gpt-terra`, effort high) | `planner-medium` — plan adjustment the user asked for at approval |
 | `explorer` | `explorer` — GPT Luna (`gpt-luna`, effort low) | `explorer-gpt-5-6-terra-medium` — redo once when the default's result made no sense (say why); `explorer-gpt-5-6-terra-high` — survey: the end-to-end flow map is the deliverable |
-| `coder` | `coder` — GPT Terra (`gpt-terra`, effort high) | `coder-medium` — small fix (kept finding, failed test, user adjustment) or temporary test adjustment |
+| `coder` | `coder` — GPT Terra (`gpt-terra`, effort high) | `coder-medium` — small fix (kept finding, failed test, user adjustment) or temporary test adjustment; `coder-gpt-6-sol-medium` — delivery the plan marks as complex (migration, concurrency, performance, contract between systems), or a fix that failed twice (say which) |
 | `reviewer` | `reviewer` — GPT Terra (`gpt-terra`, effort high) | `reviewer-medium` — re-review of only the fixes; `reviewer-low` — re-review of a trivial fix (text, one line, rename) |
 | `qa` | `qa` — GPT Terra (`gpt-terra`, effort medium) | `qa-high` — redo once when the result made no sense (say why) |
 | `documenter` | `documenter` — GPT Luna (`gpt-luna`, effort medium) | — |
 
-Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs **once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that failed, a result that made no sense). Another model (Opus) only when the user asks.
+Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs **once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that failed, a result that made no sense). Another model only through an exception of this table or when the user asks.
 
 ## Workflows
 
