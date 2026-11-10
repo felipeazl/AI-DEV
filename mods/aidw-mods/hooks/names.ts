@@ -80,8 +80,8 @@ export const TERM = {
   suggestedFix: '(?:Suggested fix|Corre[çc][aã]o sugerida)',
   commentDraft: '(?:Comment draft|Draft comment|Rascunho do coment[aá]rio)',
   prCommentDraft: '(?:PR comment draft|Draft PR comment|Rascunho do coment[aá]rio de PR)',
-  findingStatus: '(?:corrigido|n[aã]o corrigido|resolvido|aberto|fixed|not_fixed|not fixed|resolved|open|mantido|kept|refutado|refuted)',
-  fixed: '(?:corrig|fixed|resolv)',
+  findingStatus: '(?:corrigido|n[aã]o corrigido|resolvido|aberto|fixed|not_fixed|not fixed|resolved|open|mantido|kept|refutado|refuted|fechado|closed)',
+  fixed: '(?:corrig|fixed|resolv|fechad|closed)',
   category: '(?:quality|qualidade|bugs?|security|seguran[cç]a)',
   // severities (stored values stay CRITICO/IMPORTANTE/SUGESTAO/ELOGIO)
   sevCritical: '(?:CR[IÍ]TICO|CRITICAL)',

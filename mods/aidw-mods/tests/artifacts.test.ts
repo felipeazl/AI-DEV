@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
+  isFixedStatus,
   kindOf,
   parseCriteria,
   parseDoubts,
@@ -207,4 +208,15 @@ describe('revisão do fluxo v3: uma passada com categoria', () => {
     ])
     expect(f[0]?.recommendation).toContain('manter')
   })
+})
+
+test('status de achado corrigido ou fechado', () => {
+  expect(isFixedStatus('fechado')).toBe(true)
+  expect(isFixedStatus('corrigido na r2')).toBe(true)
+  expect(isFixedStatus('closed')).toBe(true)
+  expect(isFixedStatus('não corrigido')).toBe(false)
+  expect(isFixedStatus('not_fixed')).toBe(false)
+  expect(isFixedStatus('aberto')).toBe(false)
+  const [f] = parseFindings('### R3-01 — fechado — `retry-dialog.ts:21-38`\nok\n', 2, 'review', 'review-x-r2.md')
+  expect(f?.status).toBe('fechado')
 })

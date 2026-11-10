@@ -128,7 +128,9 @@ steps are written by the orchestrator **when you tell it** in the chat.
 ## Tests and Review (Questions in a survey)
 
 Read-only: the review findings, the manual test and the PR comments; in a survey, the questions. The number on the
-strip button adds up what still waits for a decision in each tab.
+strip button adds up what still waits for you in each tab: findings with no decision that the next round did not
+report as fixed or closed, and the test steps (automatic and manual) not passed yet (no `Result` or `❌`), only
+during the test steps (`TEST`, `TEST_ADJUST`, `MANUAL_TEST`): before them nothing runs, after them the test is closed.
 
 ### Review (development)
 

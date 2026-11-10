@@ -30,7 +30,7 @@ import {
   waitingFor,
 } from './artifacts'
 import type { DemandFile, ExternalStep } from './artifacts'
-import { isPlanFile } from './artifacts'
+import { isFixedStatus, isPlanFile } from './artifacts'
 import { t, tk } from './i18n'
 import { FILE_NAME, FILE_PREFIX, fam, pick, re as R } from './names'
 
@@ -159,8 +159,8 @@ export function buildSnapshot(input: SnapshotInput): Snapshot {
     if (!f.where) f.where = earlier?.where ?? ''
   }
   for (const f of findings) {
-    if (/corrig|fixed|resolv/.test(f.status)) continue
-    const later = findings.find(g => family(g) === family(f) && g.id === f.id && g.round > f.round && /corrig|fixed|resolv/.test(g.status))
+    if (isFixedStatus(f.status)) continue
+    const later = findings.find(g => family(g) === family(f) && g.id === f.id && g.round > f.round && isFixedStatus(g.status))
     if (later) f.status = t('finding.fixedIn', { round: later.round })
   }
   findings.sort((a, b) => a.round - b.round || a.id.localeCompare(b.id))
@@ -328,7 +328,7 @@ export function stateLabel(state: string): string {
 
 /** A short note about the demand, put back in the context after a compaction (in the chat language). */
 export function stateNote(s: Snapshot): string {
-  const open = s.findings.filter(f => f.round === s.round && /CRITICO|IMPORTANTE/.test(f.severity ?? '') && !/corrig|resolv|fixed/.test(f.status))
+  const open = s.findings.filter(f => f.round === s.round && /CRITICO|IMPORTANTE/.test(f.severity ?? '') && !isFixedStatus(f.status))
   return [
     t('note.title', { id: s.id }),
     t('note.use', { kind: s.kind, step: s.step, waiting: s.waiting ? t('note.waiting', { what: s.waiting }) : '' }),
