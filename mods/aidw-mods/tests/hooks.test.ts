@@ -393,8 +393,19 @@ test('fora do modo orquestrador, o mod não trava, não grava nem mostra nada', 
   const ran = await $.tool.call(delegation({ subagent_type: 'aidw:codificador-high' }))
   expect(why(ran)).toBe('')
   expect(f.runs).toEqual([])
-  await expect($.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND }))
-    .rejects.toThrow(/no implementation for ui.render/)
+  // the band hands the render to `next`: nothing of the AiDW is drawn (the harness's own default may draw, or throw
+  // "no implementation for ui.render" in older Claude Code versions)
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+    .catch((err: Error) => {
+      expect(err.message).toMatch(/no implementation for ui.render/)
+      return null
+    })
+  if (band) {
+    expect(await band.find({ type: 'Text', text: /^us-1$/ })).toBeUndefined()
+    expect(await band.find({ type: 'Text', text: /contexto/ })).toBeUndefined()
+    expect(await band.find({ key: 'open-general' })).toBeUndefined()
+    await band.unmount()
+  }
 })
 
 test('um Agent fora do AiDW passa direto', async ($, on) => {
