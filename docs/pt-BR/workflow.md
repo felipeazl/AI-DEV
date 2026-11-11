@@ -141,6 +141,24 @@ reaproveitando o levantamento.
 O `/aidw:survey` carrega um orquestrador enxuto (`orchestrator/SURVEY.md`): só o explorer, sem os workflows de
 desenvolvimento, com o procedimento e a régua já dentro, para cada turno do orquestrador reler um contexto menor.
 
+## Correção, pergunta, investigação, card e revisão da base
+
+Comandos para o que não é uma demanda nova a implementar. Todos menos o `fix` carregam um orquestrador enxuto
+(`orchestrator/<MODO>.md`, como o do levantamento): só os agentes que o modo usa, sem os workflows de desenvolvimento.
+As demandas deles vão `UNDERSTAND` → `EXPLORE` → `ANSWER` e ficam em `ANSWER` enquanto você lê, pergunta mais ou
+decide; o `/aidw:done` fecha.
+
+| Comando | Demanda | Agentes | Resultado |
+|---|---|---|---|
+| `/aidw:fix us-1234 bug 5678` | a que já existe | o fluxo completo, pelo caminho curto | a correção, a revisão só da correção e o reteste dos passos afetados; sem plano nem Task nova |
+| `/aidw:ask <pergunta>` | `ask-<slug>` | explorador | `answer-<id>.md`: a resposta curta e a evidência (`arquivo:linha`, consulta); uma nota da base pode responder sem delegar |
+| `/aidw:investigate <evidência>` | `inv-<slug>` (ou `bug-<n>`) | explorador, documentador | `investigation-<id>.md`: a causa provada (ou a próxima hipótese), o impacto e as opções; depois você escolhe: Bug, dívida técnica, corrigir agora ou nada |
+| `/aidw:card <ideia>` | `card-<slug>` | explorador (quando o texto afirma algo do código), documentador | `workitem-<id>.md`: o rascunho e os campos; criado no board só com o seu OK |
+| `/aidw:kb-review [escopo]` | `kb-review-<data>` | explorador | `kb-review-<id>.md`: por nota, o que vale, o que mudou e o que sumiu; as notas mudam com o seu OK, depois `kb index` e `kb check` |
+
+Só leitura em código e ambientes; uma escrita que qualquer um deles precisasse volta como proposta, como dizem as
+policies.
+
 ## Quando você é chamado
 
 1. **Pontos fixos:** a aprovação do plano, os achados de cada rodada de revisão, a sua revisão de código, os passos

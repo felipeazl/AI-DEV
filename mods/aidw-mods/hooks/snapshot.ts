@@ -304,6 +304,7 @@ export function nextStep(s: Snapshot): { you: boolean; text: string } {
   if (s.status === 'paused') return { you: true, text: t('next.paused', { id: s.id }) }
   if (s.step === 'DONE' || s.status === 'done') return { you: false, text: t('next.done') }
   if (YOUR_STEPS.has(s.step)) return { you: true, text: tk(`next.${s.step}`) }
+  if (s.step === 'ANSWER') return { you: true, text: tk(`next.ANSWER.${s.kind}`, t('next.ANSWER')) }
   if (s.step === 'FINAL_REVIEW') {
     return { you: true, text: t(s.kind === 'pr-review' ? 'next.FINAL_REVIEW.pr' : s.kind === 'survey' ? 'next.FINAL_REVIEW.survey' : 'next.FINAL_REVIEW.dev') }
   }

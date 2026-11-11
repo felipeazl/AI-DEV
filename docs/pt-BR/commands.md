@@ -6,6 +6,11 @@
 |---|---|---|
 | `/aidw:go [demanda]` | `$aidw-go` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo. `pr <n>` depois da demanda revisa a PR de outra pessoa. Só roda quando você chama |
 | `/aidw:survey <card ou texto>` | `$aidw-survey` | Levantamento antes de implementar (workflow `survey`, só leitura): valida cada ponto do card no código, mapeia o fluxo e grava `survey-<id>.md` com horas, story points, complexidade e dúvidas ([workflow.md](workflow.md#levantamento-survey)) |
+| `/aidw:fix <demanda> <o quê>` | `$aidw-fix` | Correção depois da entrega numa demanda que já tem código (caminho curto): `bug <n>` (um Bug que a QA devolveu), `pr` (os comentários na PR da demanda) ou o texto do ajuste; a correção, a revisão só da correção e o reteste dos passos afetados, sem plano nem Task nova |
+| `/aidw:ask <pergunta>` | `$aidw-ask` | Uma pergunta sobre o código, um contrato ou o ambiente, fora de uma demanda: o explorador responde com `arquivo:linha` em `answer-<id>.md` (demanda `ask-<slug>`); só leitura |
+| `/aidw:investigate <erro, log ou registro>` | `$aidw-investigate` | Investiga um problema antes de haver card: o explorador prova a causa-raiz, o `investigation-<id>.md` traz o diagnóstico e as opções e, se for defeito, o documentador redige o Bug ou a dívida técnica (demanda `inv-<slug>`); criar só com o seu OK |
+| `/aidw:card <ideia ou problema>` | `$aidw-card` | Redige uma User Story ou uma dívida técnica com base no código (`workitem-<id>.md`, demanda `card-<slug>`); criada no board só com o seu OK dos campos |
+| `/aidw:kb-review [sistema, nota ou número]` | `$aidw-kb-review` | Revisa a base de conhecimento contra o código: `kb check`, as notas mais antigas (ou as pedidas), cada fato confirmado ou corrigido com `arquivo:linha`; as notas só mudam com o seu OK (demanda `kb-review-<data>`) |
 | `/aidw:exit` | `$aidw-exit` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
 | `/aidw:diff [repo\|exit]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demands-and-worktrees.md](demands-and-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base que ela tocou; build e ambiente no `context.toml`), valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
@@ -18,7 +23,7 @@
 | `/metrics` | — | Abre o painel Métricas |
 | `/review-tests` | — | Abre o painel Testes e Review (Dúvidas no levantamento); só informativo |
 
-`/aidw:go`, `/aidw:survey`, `/aidw:exit` e `/aidw:done` só rodam quando você chama. As skills que os agentes usam ficam
+`/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit` e `/aidw:done` só rodam quando você chama. As skills que os agentes usam ficam
 fora do menu `/` no Claude (`user-invocable: false`); o Codex mostra toda skill `$aidw-*`.
 
 ## Linha de comando (`python aidw.py …`)

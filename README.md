@@ -96,6 +96,9 @@ Open a Claude Code chat, preferably in the repository folder, and call:
 /aidw:go 1234 pr 5678         ← review someone else's PR (no implementation)
 /aidw:survey 1234             ← survey: validate the card in the code and estimate (no implementation)
 /aidw:go                      ← no argument: resume this folder's demand
+/aidw:fix us-1234 bug 5678    ← a bug the QA returned: the short path on the demand
+/aidw:ask how does X work?    ← a question about the code, answered with file:line
+/aidw:investigate <error>     ← root cause of a problem and, if it is a defect, the Bug drafted
 ```
 
 The orchestrator detects the project, opens the demand (or **resumes from the recorded step**), creates the worktree,
@@ -108,6 +111,11 @@ findings, your code review, manual steps, PR), locked actions, real doubts and a
 |---|---|---|
 | `/aidw:go [demand]` | `$aidw-go` | Takes over the chat as the orchestrator and drives the demand |
 | `/aidw:survey <card or text>` | `$aidw-survey` | Survey before implementing: validates each point of the card in the code, maps the flow, estimates effort, story points and complexity |
+| `/aidw:fix <demand> <what>` | `$aidw-fix` | Fix after delivery (short path): a bug the QA returned, the PR's comments or an adjustment |
+| `/aidw:ask <question>` | `$aidw-ask` | A question about the code or the environment, answered with `file:line`; read-only |
+| `/aidw:investigate <evidence>` | `$aidw-investigate` | Root cause of an error, log or stuck record and, if it is a defect, the Bug or debt drafted |
+| `/aidw:card <idea>` | `$aidw-card` | Drafts a User Story or technical debt grounded in the code; created with your OK |
+| `/aidw:kb-review [scope]` | `$aidw-kb-review` | Rechecks the knowledge base against the code; notes change with your OK |
 | `/aidw:exit` | `$aidw-exit` | Records where it stopped and returns the chat to normal |
 | `/aidw:diff [repo\|exit]` | — | Moves the diff panel to the demand's next repository; `exit` returns to the demand folder |
 | `/aidw:done` | `$aidw-done` | Closes the task: writes what it learned into the context and commits the context |
@@ -177,7 +185,7 @@ Change model and effort: [docs/agents.md](docs/agents.md#change-model-and-effort
 ### Skills
 
 `to-spec` (planner), `code-review` (reviewer), `verify-premise`, `prepare-worktree`, `database-safe`, plus the commands
-`go`, `survey`, `exit`, `diff`, `done`, `knowledge`, `context`. See [docs/skills.md](docs/skills.md).
+`go`, `survey`, `fix`, `ask`, `investigate`, `card`, `kb-review`, `exit`, `diff`, `done`, `knowledge`, `context`. See [docs/skills.md](docs/skills.md).
 
 ### Contexts
 

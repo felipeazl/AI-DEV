@@ -141,6 +141,22 @@ starts at `EXPLORE`, reusing the survey.
 `/aidw:survey` loads a lean orchestrator (`orchestrator/SURVEY.md`): only the explorer, no development workflows, with
 the procedure and the scale inline, so every orchestrator turn rereads a smaller context.
 
+## Fix, question, investigation, card and knowledge review
+
+Commands for what is not a new demand to implement. All but `fix` load a lean orchestrator (`orchestrator/<MODE>.md`,
+like the survey's): only the agents the mode uses, no development workflows. Their demands go `UNDERSTAND` → `EXPLORE`
+→ `ANSWER` and stay in `ANSWER` while you read, ask more or decide; `/aidw:done` closes them.
+
+| Command | Demand | Agents | Result |
+|---|---|---|---|
+| `/aidw:fix us-1234 bug 5678` | the existing one | the full flow, on the short path | the fix, a review of only the fix and a retest of the affected steps; no new plan or Task |
+| `/aidw:ask <question>` | `ask-<slug>` | explorer | `answer-<id>.md`: the short answer and the evidence (`file:line`, query); a note of the base may answer it without delegating |
+| `/aidw:investigate <evidence>` | `inv-<slug>` (or `bug-<n>`) | explorer, documenter | `investigation-<id>.md`: the cause proven (or the next hypothesis), the impact and the options; then you choose: Bug, technical debt, fix now or nothing |
+| `/aidw:card <idea>` | `card-<slug>` | explorer (when the text must state code), documenter | `workitem-<id>.md`: the draft and the fields; created on the board only with your OK |
+| `/aidw:kb-review [scope]` | `kb-review-<date>` | explorer | `kb-review-<id>.md`: per note what holds, what changed and what is gone; the notes change with your OK, then `kb index` and `kb check` |
+
+Read-only for code and environments; a write any of them would need comes back as a proposal, as the policies say.
+
 ## When you are called
 
 1. **Fixed points:** plan approval, the findings of each review round, your code review, the manual test steps and the

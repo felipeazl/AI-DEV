@@ -29,6 +29,17 @@ describe('tipo de uso e linha do tempo', () => {
     expect(kindOf({ repos: [{ pr: '7' }] }, ['plano-1.md'])).toBe('development')
   })
 
+  test('os modos enxutos vêm do prefixo do id e param em ANSWER', async () => {
+    expect(kindOf({ id: 'ask-token-expira' }, ['answer-ask-token-expira.md'])).toBe('ask')
+    expect(kindOf({ id: 'inv-hope-timeout' }, [])).toBe('investigate')
+    expect(kindOf({ id: 'card-retry-liveness' }, [])).toBe('card')
+    expect(kindOf({ id: 'kb-review-2026-11-11' }, [])).toBe('kb-review')
+    expect(kindOf({ id: 'us-1' }, ['plano-1.md'])).toBe('development')
+    const t = timeline('investigate', { step: 'ANSWER', history: [{ step: 'EXPLORE', at: '' }, { step: 'ANSWER', at: '' }] })
+    expect(t.map(x => x.state)).toEqual(['done', 'done', 'current', 'pending'])
+    expect(t[2]!.name).toBe('Resposta')
+  })
+
   test('levantamento concluído e implementação iniciada vira desenvolvimento antes do plano', async () => {
     const files = ['levantamento-m-1.md', 'pontos-m-1.md']
     const h = (...steps: string[]) => ({ history: steps.map(step => ({ step, at: '' })) })

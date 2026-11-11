@@ -1139,8 +1139,21 @@ class SessionModeTest(unittest.TestCase):
             hook({**lv, "hook_event_name": "UserPromptSubmit", "prompt": "/aidw:survey us-8"})
             out = json.loads(hook({**lv, "hook_event_name": "SessionStart", "source": "compact"}))
             ctx_survey = out["hookSpecificOutput"]["additionalContext"]
-            self.assertIn("aidw/skills/go/SKILL.md", ctx_survey, "go understands the survey request")
+            self.assertIn("aidw/skills/survey/SKILL.md", ctx_survey, "a survey resumes with its own lean skill")
             self.assertIn('"survey us-8"', ctx_survey)
+            # the other orchestrator skills enter the mode and resume with their own skill
+            for n, (prompt, skill) in enumerate((("/aidw:ask how does the token expire?", "aidw/skills/ask/"),
+                                                 ("/aidw:fix bug 123", "aidw/skills/fix/"),
+                                                 ("/aidw:kb-review liveness", "aidw/skills/kb-review/"),
+                                                 ("$aidw-investigate timeout no Hope", "aidw-investigate/"))):
+                sx = {"session_id": f"m{n}", "cwd": str(tmp)}
+                hook({**sx, "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+                out = json.loads(hook({**sx, "hook_event_name": "SessionStart", "source": "compact"}))
+                self.assertIn(skill + "SKILL.md", out["hookSpecificOutput"]["additionalContext"], prompt)
+            hook({"session_id": "m9", "cwd": str(tmp), "hook_event_name": "UserPromptSubmit",
+                  "prompt": "/aidw:cardapio"})
+            self.assertEqual(hook({"session_id": "m9", "hook_event_name": "SessionStart", "source": "compact"}), "",
+                             "a skill whose name only starts like a mode's is not one")
             code, d = wt.aidw_json(root, "demand", "set", "us-8", "--step", "ESTIMATE", "--json")
             self.assertEqual((code, d["step"]), (0, "ESTIMATE"), d)
 
@@ -1161,6 +1174,13 @@ class SessionModeTest(unittest.TestCase):
                 self.assertEqual((code, sessions()["t1"]["demand"]), (0, "us-8"), d)
             out = json.loads(hook({"session_id": "t1", "hook_event_name": "SessionStart", "source": "compact"}))
             self.assertIn("on demand us-8", out["hookSpecificOutput"]["additionalContext"])
+            with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t3"}):
+                wt.aidw_json(root, "session", "bind", "--json")
+                code, d = wt.aidw_json(root, "demand", "set", "inv-hope-timeout", "--step", "ANSWER", "--json")
+                self.assertEqual((code, d["step"]), (0, "ANSWER"), d)
+            out = json.loads(hook({"session_id": "t3", "hook_event_name": "SessionStart", "source": "compact"}))
+            self.assertIn("aidw/skills/investigate/SKILL.md", out["hookSpecificOutput"]["additionalContext"],
+                          "bound without the hook (terminal): the demand's prefix gives the skill")
             with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "t2"}):
                 wt.aidw_json(root, "demand", "set", "us-8", "--step", "DONE", "--json")
             self.assertNotIn("t2", sessions(), "demand set outside orchestrator mode does not bind the session")
@@ -1233,6 +1253,25 @@ class SessionModeTest(unittest.TestCase):
                          "*survey* `"):
                 self.assertNotIn(gone, survey)
             self.assertLess(len(survey), len(orq), "smaller than the go skill, even with the procedure inside")
+            # the other lean modes: their own prompt, only the roles they delegate to, no workflows
+            lean = {"ask": ("`ask-<slug>`", "answer-<id>.md", ()),
+                    "investigate": ("`inv-<slug>`", "investigation-<id>.md", ("`aidw:documenter`",)),
+                    "card": ("`card-<slug>`", "workitem-<id>.md", ("`aidw:documenter`",)),
+                    "kb-review": ("`kb-review-<YYYY-MM-DD>`", "kb-review-<id>.md", ())}
+            for mode, (demand_id, artifact, roles) in lean.items():
+                text = files[f"plugins/aidw/skills/{mode}/SKILL.md"].decode("utf-8")
+                self.assertIn(f"name: {mode}", text)
+                self.assertIn("disable-model-invocation: true", text)
+                for part in (demand_id, artifact, "`UNDERSTAND` → `EXPLORE`", "`ANSWER`", "`aidw:explorer`", *roles):
+                    self.assertIn(part, text, mode)
+                for gone in ("# WORKFLOW", "## Workflows", "`aidw:coder`", "`aidw:reviewer`", "EnterWorktree"):
+                    self.assertNotIn(gone, text, mode)
+                self.assertLess(len(text), len(orq), mode)
+            self.assertNotIn("`aidw:documenter`", files["plugins/aidw/skills/ask/SKILL.md"].decode("utf-8"))
+            fix = files["plugins/aidw/skills/fix/SKILL.md"].decode("utf-8")
+            for part in ("name: fix", "**Fix (short path):**", "*short-path*", "# WORKFLOW", "`aidw:coder`",
+                         "suggest `/aidw:go <id>`"):
+                self.assertIn(part, fix)
             self.assertIn("plugins/aidw/reference/survey.md", files)
             for ref in ("short-path", "testing", "pr-triage", "pr-review"):
                 self.assertIn(f"plugins/aidw/reference/{ref}.md", files)
