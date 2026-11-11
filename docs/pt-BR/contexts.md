@@ -277,6 +277,7 @@ identificadores e sinônimos que a busca pesa como o título) e moram na pasta d
 | `componentes/` | `componente` | biblioteca ou projeto compartilhado |
 | `integracoes/` | `integracao` | contrato entre dois lados: endpoint, SOAP, enum, evento, configuração compartilhada, serviço externo |
 | `conceitos/` | `conceito` | termo do domínio; `evitar:` lista os termos que não se usam (vira o glossário do índice) |
+| `normas/` | `norma` | lei, norma ou padrão que o domínio segue: versão vigente, o que exige, qual sistema cumpre |
 | `ambiente/` | `ambiente` | como operar: hosts, autenticação, banco, receitas |
 | `decisoes/` | `decisao` | decisão durável, com autor e data |
 | `demandas/` | `demanda` | demanda fechada — desenvolvimento, revisão de PR ou levantamento |

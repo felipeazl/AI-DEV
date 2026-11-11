@@ -26,6 +26,7 @@ go into the base: they go to `shared/` or `policies/`.
 | `componentes/` | `componente` | library, project or package shared between systems |
 | `integracoes/` | `integracao` | contract between two sides: endpoint, message, enum, event, shared configuration, external service |
 | `conceitos/` | `conceito` | domain term (what it is, business rules, the right term) |
+| `normas/` | `norma` | law, regulation or standard the domain must follow (one document per note): version in force, what it requires, which system complies |
 | `ambiente/` | `ambiente` | how to operate: hosts per environment, authentication, database, recipes, tools |
 | `decisoes/` | `decisao` | durable business or architecture decision, with author and date |
 | `demandas/` | `demanda` | closed demand (development, PR review, survey) |
@@ -51,7 +52,7 @@ Short text, with [[links]] to what already has a note.
 - **`resumo`:** required. **`fontes`:** required, except in `conceito` and `demanda` (`path:line`, document,
   demand or person with date). **`atualizado`:** the date of the last check. **`sistemas`:** keys of
   `context.toml`. **`evitar`** (conceito): terms not to use — they become the glossary. **`aliases`:** other names.
-  **`palavras-chave`** (sistema, componente, integracao, ambiente): identifiers, config keys, routes, tables and
+  **`palavras-chave`** (sistema, componente, integracao, norma, ambiente): identifiers, config keys, routes, tables and
   synonyms someone would type to find the note (5 to 15, exactly as in the code); they weigh in `kb search`.
 
 ## What goes in and what does not
