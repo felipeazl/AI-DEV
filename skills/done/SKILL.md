@@ -93,6 +93,17 @@ facts go to the notes they belong to (the review already edited them; check only
 - **Keywords:** when a new fact brings an identifier someone will search for (class, config key, route, table, enum),
   add it to the note's `palavras-chave`; when splitting a large note, each part takes its own.
 
+### 2.2 Calibration of the survey
+
+When the collect has the section *Effort (calibration of the survey)* (a demand that was surveyed and then
+developed), add **one row** to the *Calibration* table of the context's estimation rubric (the reference
+*regua-estimativa*, or the context's rubric of another name; none → skip): the survey's estimate, the card's story
+points at the planning when the summary or the card has them, the real numbers of the collect (days to the PR,
+agents' and orchestrator's hours, rounds), what happened after the PR, and one line on what explained the difference.
+Only the collect's numbers and what this conversation said — never ask the user to fill in hours. A row of this demand
+that is already there is updated, not repeated. When the rows show the same drift for several similar cards, say so in
+the report (a proposal to adjust the rubric's ranges or factor), without changing them yourself.
+
 ## 3. Record and validate
 
 1. Edit the context's files. In `context.toml`, keep the comments and the style of the neighboring entries.

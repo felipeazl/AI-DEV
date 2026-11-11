@@ -58,17 +58,31 @@ end with `file:line`, the size signals and the open questions the code does not 
 Use the active context's rubric when the *Reference* list has *regua-estimativa*; it prevails over the default
 below.
 
-**Default rubric** — story points in Fibonacci; effort in hours.
+**Default rubric** — story points in Fibonacci, chosen by **scope and risk**; the time is the time of development
+**with AiDW** (agentic), never hours of manual coding. Converting manual hours into points inflates a large card: the
+agents compress the coding, not what depends on people.
 
-| SP | When | Hours (dev + test + review) |
+| SP | Scope and risk | With AiDW: to the PR |
 |---|---|---|
-| 1 | Text or configuration adjustment, one file, no new rule | up to 4 h |
-| 2 | Targeted change with a simple rule, 1–2 files, one system | 4–8 h |
-| 3 | New business rule in one system, a few files, direct test | 8–16 h |
-| 5 | Several touch points in one system, or a simple contract with another | 16–24 h |
-| 8 | Two or more systems, a contract between them, database, or fragile legacy | 24–40 h |
-| 13 | Several systems and contracts, data migration, high uncertainty | 40–64 h |
+| 1 | Text or configuration adjustment, one file, no new rule | a few hours |
+| 2 | Targeted change with a simple rule, 1–2 files, one system | up to 1 day |
+| 3 | New business rule in one system, a few files, direct test | ~1 day |
+| 5 | Several touch points in one system, or a simple contract with another | 1–2 days |
+| 8 | Two or more systems, a contract between them, database, or fragile legacy | 2–3 days |
+| 13 | Several systems and contracts, data migration, high uncertainty | 3–5 days |
 | > 13 | Too big for one card | propose the split |
+
+"To the PR": working days from the plan to the open PR, with the user driving AiDW (plan, reviews, manual tests); the
+team's code review and QA come after and do not count. Initial ranges: the context's rubric and its *Calibration*
+table refine them.
+
+**Time with AiDW, in two parts:**
+- **What AiDW speeds up** — understanding the code, coding, automated tests, review fixes, the PR text: think of the
+  work as if it were manual and apply a factor of **×0.25 to ×0.4**; **×0.5 to ×1** when the gain is reduced (legacy
+  that is only validated by running it, a screen that must match the design, an environment that does not run
+  locally, a rule only a person knows, a very large and coupled file).
+- **What does not** — manual tests, packages and deploys, approvals of each write to an environment, ~1 h per review
+  round of the user (plan, findings, code) and what the context's rubric adds. No factor.
 
 **Complexity** (independent of size: a small card can be of high complexity):
 - **Low** — straightforward logic, one system, current behavior clear.
@@ -81,14 +95,19 @@ below.
 Apply the rubric to the report's **size signals**, never to the impression the card gives:
 
 1. **Complexity** with the reason in one line (the signals that weighed).
-2. **Effort in hours per front:** analysis/plan adjustment, development per system, tests (automatic and manual,
-   with the environment they need), review and fixes, and what the context adds (SQL script, package for QA,
-   coordinated deploy). Give a **range** (minimum–maximum), not a single number.
-3. **Story points:** the rubric value that matches the total range; between two, the larger when confidence is low.
-4. **Confidence** (high, medium or low) and **what would change it**: usually the open questions. Say which questions,
+2. **Time with AiDW per front:** the accelerated blocks (analysis/plan adjustment, development per system,
+   automated tests, review fixes) with their factor, and the fixed ones (manual tests with the environment they need,
+   the user's review rounds, what the context adds: SQL script, package for QA, coordinated deploy). Give a **range**
+   (minimum–maximum) in hours and in days to the PR, not a single number. The team's QA is not in the dev time.
+3. **Story points:** the rubric line whose scope matches the report (systems, contracts, database, legacy). The time
+   moves it up **one level** at most, and only when it goes past that level's range; between two, the larger when
+   confidence is low. Never add up hours per item to get the points.
+4. **Calibration:** before estimating, read the context rubric's *Calibration* table (when there is one): if similar
+   cards came out always below or above, adjust the factor and the ranges and say so.
+5. **Confidence** (high, medium or low) and **what would change it**: usually the open questions. Say which questions,
    answered one way or the other, raise or lower the estimate.
-5. **Above 13 SP:** propose the split into smaller cards, each with its estimate and what it delivers on its own.
-6. **Risks:** what can blow the estimate (legacy without tests, QA environment, another team, test data).
+6. **Above 13 SP:** propose the split into smaller cards, each with its estimate and what it delivers on its own.
+7. **Risks:** what can blow the estimate (legacy without tests, QA environment, another team, test data).
 
 ## 5. The open questions
 
@@ -141,11 +160,11 @@ In the demand folder:
 <systems, repositories and touch points; contracts between systems; database; screens>
 
 ## Estimate
-| Block | Dev (h) |
+| Block | With AiDW (h) |
 |---|---|
-| <work block> | <min>–<max> |
-| **Total dev** | **<min>–<max> h** |
-| Integrated QA | <min>–<max> h |
+| <accelerated block> (×<factor>) | <min>–<max> |
+| <fixed block: manual tests, review rounds, package, SQL…> | <min>–<max> |
+| **Total dev** | **<min>–<max> h · ~<min>–<max> days to the PR** |
 
 - **Story points:** <SP> — <why, by the rubric>
 - **Complexity:** <level> — <the signals that weighed>
@@ -178,7 +197,7 @@ these tables and markers: keep the headings, the columns and the labels `**Risks
 2. **Offer** to publish on the card a comment with the estimate and the open questions, short and in the active
    context's standard. Publishing is a locked action: only with the user's explicit OK, with the text they approved.
    Never change the card's state or fields (story points included) unless they ask.
-3. `demand set <id> --step FINAL_REVIEW --status active --note "survey: <SP> SP, <min>–<max> h"`. The demand
+3. `demand set <id> --step FINAL_REVIEW --status active --note "survey: <SP> SP, <min>–<max> h with AiDW"`. The demand
    stays in that step while there are open questions; `DONE` only by `/aidw:done` or when `/aidw:go` takes it into
    implementation (decision, 03/11).
 
