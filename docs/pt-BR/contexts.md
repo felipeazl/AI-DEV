@@ -183,6 +183,7 @@ include = ["shared/guia-time.md", "agents/coder.md"]       # entra SEMPRE no pro
 skills = ["anexar-arquivo"]                                # skills do contexto liberadas para ele
 preload = []                                               # skills do contexto pré-carregadas
 disallowed_tools = ["mcp__board__comment"]                 # ferramentas bloqueadas para ele
+systems = "full"                                           # quanto de [systems] ele recebe: full | short | none
 reference = [                                              # lidas SÓ quando o tema aparece
     { path = "reference/templates.md", when = "criar Repository/Service/Controller do zero" },
     { path = "reference/banco.md", when = "criar ou alterar tabela ou script SQL" },
@@ -215,11 +216,14 @@ Escreva o `when` como um gatilho concreto ("criar ou alterar endpoint"), não um
 
 ## Políticas
 
-Um `.md` em `policies/` vale para o orquestrador e para todos os agentes. Com frontmatter `orchestrator_when`, o
-orquestrador lê a política só naquele momento (os agentes continuam recebendo inteira):
+Um `.md` em `policies/` vale para o orquestrador e para todos os agentes. Com `roles` no frontmatter, vai só para
+esses papéis (`orchestrator`, `explorer`, `planner`, `coder`, `reviewer`, `qa`, `documenter`): cada agente paga cada
+política que recebe em toda execução, então dê a política só a quem age sobre ela. Com `orchestrator_when`, o
+orquestrador lê a política só naquele momento (os agentes de `roles` continuam recebendo inteira):
 
 ```markdown
 ---
+roles: documenter, orchestrator
 orchestrator_when: a etapa PR (commit, push e o comentário de pendências)
 ---
 
@@ -227,7 +231,12 @@ orchestrator_when: a etapa PR (commit, push e o comentário de pendências)
 ...
 ```
 
-As políticas do contexto **somam** às do núcleo (`orchestrator/policies/`: git, banco, produção, segredos, permissões).
+As políticas do contexto **somam** às do núcleo (`orchestrator/policies/`: git, banco, produção, segredos, permissões;
+git vai para o codificador e o orquestrador, banco e produção para o explorador, o codificador, o qa e o orquestrador).
+
+`systems` (em `[agents.<papel>]`): `full` é a tabela [systems] inteira, com build, teste e notas; `short` é uma linha por
+sistema (repos, depende de, nota de conhecimento); `none` tira a seção. O padrão é `full` no explorador, no planejador
+e no codificador e `short` nos demais.
 Uma política diz o que fazer; a permissão do CLI garante. Para uma regra que não pode falhar, use as duas.
 
 ## Criar um contexto

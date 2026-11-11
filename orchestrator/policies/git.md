@@ -1,3 +1,7 @@
+---
+roles: coder, orchestrator
+---
+
 # Git policy
 
 - Never force push (`--force`, `-f`, `--force-with-lease`).

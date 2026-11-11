@@ -263,6 +263,35 @@ class OrchestratorReferenceTest(unittest.TestCase):
             tiers = {t: aidw.tier_model(cat, "codex", t) for t in ("top", "mid", "fast")}
             self.assertEqual(len(set(tiers.values())), 3, f"three tiers on Codex: {tiers}")
 
+    def test_policies_and_systems_by_role(self) -> None:
+        """Prompts by role (2026-11-11): a policy with `roles` in its frontmatter goes only to those roles (none =
+        every role, the orchestrator included); the full *Systems* only for explorer, planner and coder, the short
+        table for the others, and the context may change it per role."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            pol = root / "contexts" / "exemplo" / "policies"
+            pol.mkdir(parents=True, exist_ok=True)
+            (pol / "so-orquestrador.md").write_text("---\nroles: [orchestrator]\n---\n\n# Policy only-orch\n",
+                                                   encoding="utf-8")
+            aidw = load_aidw(root)
+            rep = aidw.Report(quiet=True)
+            b = aidw.build(aidw.load_config(), aidw.load_catalog(), rep)
+            self.assertEqual(rep.errors, [])
+            prompts = {r: g["prompt"] for r, g in b["agents"].items()}
+            self.assertIn("# Git policy", prompts["coder"])
+            self.assertNotIn("# Git policy", prompts["reviewer"], "git only for coder and orchestrator")
+            self.assertIn("# Secrets policy", prompts["documenter"], "no `roles` = every role")
+            for role, prompt in prompts.items():
+                self.assertNotIn("# Policy only-orch", prompt, role)
+            self.assertIn("# Policy only-orch", b["orchestrator_md"])
+            self.assertIn("# Git policy", b["orchestrator_md"])
+            self.assertIn("Max retries", prompts["coder"])
+            self.assertNotIn("Max retries", prompts["reviewer"])
+        self.assertEqual(aidw.systems_mode(None, "coder"), "full")
+        self.assertEqual(aidw.systems_mode(None, "reviewer"), "short")
+        self.assertEqual(aidw.systems_mode({"agents": {"qa": {"systems": "full"}}}, "qa"), "full")
+        self.assertEqual(aidw.systems_mode({"agents": {"coder": {"systems": "none"}}}, "coder"), "none")
+
     def test_config_with_removed_agents(self) -> None:
         """A config from before flow v3 with [agents.api-db] and [agents.bug-hunter]: a warning, not an error, and
         they are not generated."""

@@ -181,6 +181,7 @@ include = ["shared/team-guide.md", "agents/coder.md"]      # ALWAYS in the agent
 skills = ["attach-file"]                                   # context skills available to it
 preload = []                                               # context skills preloaded
 disallowed_tools = ["mcp__board__comment"]                 # tools blocked for it
+systems = "full"                                           # how much of [systems] it gets: full | short | none
 reference = [                                              # read ONLY when the topic comes up
     { path = "reference/templates.md", when = "creating a Repository/Service/Controller from scratch" },
     { path = "reference/database.md", when = "creating or changing a table or SQL script" },
@@ -213,11 +214,14 @@ Write `when` as a concrete trigger ("creating or changing an endpoint"), not a s
 
 ## Policies
 
-A `.md` in `policies/` applies to the orchestrator and every agent. With an `orchestrator_when` frontmatter, the
-orchestrator reads that policy only at that moment (the agents still get it whole):
+A `.md` in `policies/` applies to the orchestrator and every agent. With `roles` in the frontmatter, it goes only to
+those roles (`orchestrator`, `explorer`, `planner`, `coder`, `reviewer`, `qa`, `documenter`): every agent pays for each
+policy it gets on every run, so give a policy only to whoever acts on it. With `orchestrator_when`, the orchestrator
+reads that policy only at that moment (the agents in `roles` still get it whole):
 
 ```markdown
 ---
+roles: documenter, orchestrator
 orchestrator_when: the PR step (commit, push and the pending-items comment)
 ---
 
@@ -226,7 +230,12 @@ orchestrator_when: the PR step (commit, push and the pending-items comment)
 ```
 
 The context's policies **add** to the core ones (`orchestrator/policies/`: git, database, production, secrets,
-permissions). A policy says what to do; the CLI permission enforces it. For a rule that must not fail, use both.
+permissions; git goes to the coder and the orchestrator, database and production to the explorer, coder, qa and the
+orchestrator).
+
+`systems` (in `[agents.<role>]`): `full` is the whole [systems] table with build, test and notes; `short` is one line
+per system (repos, depends on, knowledge note); `none` leaves it out. The default is `full` for the explorer, planner
+and coder and `short` for the others. A policy says what to do; the CLI permission enforces it. For a rule that must not fail, use both.
 
 ## Create a context
 

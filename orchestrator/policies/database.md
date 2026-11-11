@@ -1,3 +1,7 @@
+---
+roles: explorer, coder, qa, orchestrator
+---
+
 # Database policy
 
 - Production is read-only by default.

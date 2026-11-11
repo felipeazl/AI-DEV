@@ -1,3 +1,7 @@
+---
+roles: explorer, coder, qa, orchestrator
+---
+
 # Production policy
 
 - No deploys, restarts, config changes or data changes in production without human approval.
