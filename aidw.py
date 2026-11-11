@@ -4440,13 +4440,14 @@ def context_command(cfg: dict, catalog: dict, args: argparse.Namespace) -> int:
 
 # type → folder where the note lives (the order is the index's)
 KB_TYPES = {"sistema": "sistemas", "componente": "componentes", "integracao": "integracoes", "conceito": "conceitos",
-            "ambiente": "ambiente", "decisao": "decisoes", "demanda": "demandas"}
+            "norma": "normas", "ambiente": "ambiente", "decisao": "decisoes", "demanda": "demandas"}
 KB_TITLES = {"sistema": "Systems", "componente": "Components", "integracao": "Integrations and contracts",
-             "conceito": "Domain concepts", "ambiente": "Environment and operations", "decisao": "Decisions",
+             "conceito": "Domain concepts", "norma": "Regulations and standards",
+             "ambiente": "Environment and operations", "decisao": "Decisions",
              "demanda": "Demands"}
 KB_SPECIAL = {"index", "readme"}                     # the generated index and the conventions: outside the note rules
 KB_NEEDS_SOURCE = set(KB_TYPES) - {"conceito", "demanda"}
-KB_NEEDS_KEYWORDS = {"sistema", "componente", "integracao", "ambiente"}  # technical notes: searched by identifier
+KB_NEEDS_KEYWORDS = {"sistema", "componente", "integracao", "norma", "ambiente"}  # technical notes: searched by identifier
 KB_MAX_LINES = 150       # above this, whoever reads the note pays a lot: split it
 KB_STALE_DAYS = 180      # note not checked for longer than this: recheck in the code (demand and decision don't age)
 WIKILINK_RE = re.compile(r"!?\[\[([^\]|#^]+)(?:[#^][^\]|]*)?(?:\|[^\]]*)?\]\]")
@@ -4459,7 +4460,7 @@ KB_CPF_RE = re.compile(r"\b(?!000\.000\.000)\d{3}\.\d{3}\.\d{3}-\d{2}\b")
 
 
 KB_COLORS = {"sistema": 5012441, "componente": 2860442, "integracao": 15241530, "conceito": 10185944,
-             "ambiente": 8034890, "decisao": 14242639, "demanda": 13214247}
+             "norma": 12088115, "ambiente": 8034890, "decisao": 14242639, "demanda": 13214247}
 
 
 def obsidian_config(kb_rel: str, ignore: list[str]) -> dict[str, dict]:

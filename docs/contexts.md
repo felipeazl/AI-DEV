@@ -275,6 +275,7 @@ identifiers and synonyms search weighs like the title) and live in their type's 
 | `componentes/` | `componente` | shared library or project |
 | `integracoes/` | `integracao` | contract between two sides: endpoint, SOAP, enum, event, shared config, external service |
 | `conceitos/` | `conceito` | domain term; `evitar:` lists terms not to use (becomes the index glossary) |
+| `normas/` | `norma` | law, regulation or standard the domain follows: version in force, what it requires, which system complies |
 | `ambiente/` | `ambiente` | how to operate: hosts, authentication, database, recipes |
 | `decisoes/` | `decisao` | a durable decision, with author and date |
 | `demandas/` | `demanda` | a closed demand — development, PR review or survey |
