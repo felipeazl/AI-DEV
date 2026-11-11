@@ -693,11 +693,32 @@ def orchestrator_policy_refs(ctx: dict | None) -> list[tuple[Path, str]]:
     return [(f, w) for f in policy_files(ctx) if (w := read_frontmatter(f)[0].get("orchestrator_when"))]
 
 
-def policy_files(ctx: dict | None) -> list[Path]:
+def policy_files(ctx: dict | None, role: str | None = None) -> list[Path]:
+    """The policies; with `role`, only those whose frontmatter `roles` names it (no `roles` = every role)."""
     files = sorted(POLICIES_DIR.glob("*.md"))
     if ctx and (ctx["dir"] / "policies").is_dir():
         files += sorted((ctx["dir"] / "policies").glob("*.md"))
-    return files
+    if role is None:
+        return files
+    return [f for f in files if role in policy_roles(f, role)]
+
+
+def policy_roles(path: Path, default: str) -> list[str]:
+    roles = read_frontmatter(path)[0].get("roles")
+    if not roles:
+        return [default]
+    return csv_field(roles.strip("[]")) if isinstance(roles, str) else list(roles)
+
+
+# How much of the context's *Systems* each role gets, unless the context says otherwise
+# (`[agents.<role>] systems = "full" | "short" | "none"`): who explores, plans or builds needs the build and test
+# commands and the notes; the others only locate the system and its knowledge note.
+SYSTEMS_BY_ROLE = {"explorer": "full", "planner": "full", "coder": "full"}
+
+
+def systems_mode(ctx: dict | None, role: str) -> str:
+    mode = (ctx or {}).get("agents", {}).get(role, {}).get("systems") or SYSTEMS_BY_ROLE.get(role, "short")
+    return mode if mode in ("full", "short", "none") else "full"
 
 
 def resolve(cfg: dict, catalog: dict, ctx: dict | None, skills: dict, rep: Report) -> dict[str, dict]:
@@ -1453,8 +1474,9 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
     meta, body = read_frontmatter(source)
     provider = cfg["provider"]["name"]
     orch = tpl.names[ORCHESTRATOR]
-    sources = [source, *policy_files(ctx), *context_files(ctx, role)]
+    sources = [source, *policy_files(ctx, role), *context_files(ctx, role)]
     cmd = "install" if ns else "apply"
+    mode = systems_mode(ctx, role)
     parts = [
         f"<!-- {GENERATED_MARK} {cmd} from: {', '.join(rel(s) for s in sources)}.\n"
         f"     Do not edit: change the sources and run `python aidw.py {cmd}`. -->",
@@ -1465,17 +1487,17 @@ def render_agent(role: str, a: dict, cfg: dict, ctx: dict | None, tpl: Templater
                    "go back to the orchestrator in your final JSON.",
                    f"- Model: {a['model']['name']} (`{model_tag(a['model'])}`). The orchestrator chose "
                    "the effort of this task.",
-                   "- Max retries: 3 attempts at the same failing step (a build, a test); then stop and report "
-                   "the failure `state` of your OUTPUT",
+                   *(["- Max retries: 3 attempts at the same failing step (a build, a test); then stop and report "
+                      "the failure `state` of your OUTPUT"] if role in ("coder", "qa") else []),
                    "- Your final message is the JSON block of your OUTPUT and nothing else: the orchestrator "
                    "only receives that; the details go in the report or the files the JSON names.",
                    *runtime_lines(cfg, ctx)]),
         skills_section(a["skills"], skills, provider, a["preload"], ns),
         mcp_agent_section(servers, role),
-        systems_section(ctx, detailed=True),
+        systems_section(ctx, detailed=mode == "full") if mode != "none" else "",
         reference_section(ctx, role),
         "# POLICIES",
-        *[tpl.include(p) for p in policy_files(ctx)],
+        *[tpl.include(p) for p in policy_files(ctx, role)],
     ]
     parts = [x for x in parts if x]
     if context_files(ctx, role):
@@ -1811,7 +1833,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         systems_section(ctx, detailed=False),
         orchestrator_reference_section(listed, ref_dir),
         "# Policies",
-        *[tpl.include(p) for p in policy_files(ctx) if p not in {r["source"] for r in refs.values()}],
+        *[tpl.include(p) for p in policy_files(ctx, ORCHESTRATOR) if p not in {r["source"] for r in refs.values()}],
     ]
     parts = [x for x in parts if x]
     if context_files(ctx, ORCHESTRATOR):
