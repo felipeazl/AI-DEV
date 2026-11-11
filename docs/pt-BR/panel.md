@@ -50,7 +50,7 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
 | Métricas | **Métricas** · `/metrics` | consumo | consumo | consumo |
 | Testes e Review | **Testes e Review** · `/review-tests` | abas Revisão · Testes | Comentários | vira **Dúvidas** |
 
-O uso (desenvolvimento, revisão de PR, levantamento) vem dos arquivos da demanda. Uma demanda que fechou o levantamento e
+O uso (desenvolvimento, revisão de PR, levantamento) vem dos arquivos da demanda; os modos enxutos (pergunta, investigação, card novo, revisão da base), do prefixo do id da demanda (`ask-`, `inv-`, `card-`, `kb-review-`). Uma demanda que fechou o levantamento e
 seguiu já aparece como desenvolvimento, mesmo antes de o plano ser gravado.
 
 - **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Testes e Review" ou "AiDW · Dúvidas");
@@ -73,6 +73,7 @@ O progresso tem dois grupos: **AiDW** e **Time e QA**.
 | Desenvolvimento | Entendimento · Plano · Sua aprovação · Implementação · Revisão · Sua revisão · Testes · PR | as do contexto (ex.: Validação UX) · Code review · Testes QA · Concluída |
 | Revisão de PR | Entendimento · Preparação · Revisão · Revisão final · Concluída | — |
 | Levantamento | Entendimento · Exploração · Estimativa · Revisão final · Concluída | — |
+| Pergunta, Investigação, Card novo, Revisão da base | Entendimento · Exploração · Resposta · Concluída | — |
 
 As etapas de fora que o contexto acrescenta (`[[workflows.external_steps]]`) entram só na demanda que passa por elas
 (`demand set --extra-step`). As etapas do fluxo antigo caem na fase equivalente.

@@ -1,4 +1,4 @@
-export type DemandKind = 'development' | 'pr-review' | 'survey'
+export type DemandKind = 'development' | 'pr-review' | 'survey' | 'ask' | 'investigate' | 'card' | 'kb-review'
 
 export type TimelineItem = { name: string; state: 'done' | 'current' | 'pending'; visits: number }
 

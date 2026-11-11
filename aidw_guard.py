@@ -30,8 +30,10 @@ SESSIONS = ROOT / "state" / "sessions.json"
 RUNTIME = ROOT / ".aidw" / "runtime.json"
 MARKETPLACE = ROOT / ".aidw" / "marketplace"
 CODEX_SKILLS = Path(os.environ.get("AIDW_CODEX_SKILLS_DIR") or Path.home() / ".agents" / "skills")
-# Claude: /aidw:go · Codex: $aidw-go (survey also enters the mode); exit and done end the mode
-MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(go|survey|exit|done)\b(.*)", re.S)
+# Claude: /aidw:go · Codex: $aidw-go (the other orchestrator skills also enter the mode); exit and done end the mode
+MODE_SKILLS = ("go", "survey", "fix", "ask", "investigate", "card", "kb-review")
+MODE_RE = re.compile(r"^\s*(?:/(aidw[\w-]*):|\$(aidw)-)(" + "|".join(MODE_SKILLS) + r"|exit|done)(?![\w-])(.*)",
+                     re.S)
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$", re.M)
 # `git [-C <dir>] [-c k=v] commit`; group 1 holds the options before the subcommand
 GIT_COMMIT_RE = re.compile(r"\bgit((?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|\S+))*)\s+commit\b")
@@ -203,10 +205,10 @@ def user_prompt_submit(data: dict) -> None:
         return None
 
     def change(sessions: dict) -> None:
-        if m.group(3) in ("go", "survey"):  # the go skill understands "survey <id>"; the demand comes from `session bind`
+        if m.group(3) in MODE_SKILLS:  # the demand comes from `session bind`; `mode` is the skill to resume with
             argument = ("survey " if m.group(3) == "survey" else "") + m.group(4).strip()
             sessions[session] = {"plugin": m.group(1) or m.group(2), "provider": "claude" if m.group(1) else "codex",
-                                 "argument": argument.strip()[:200], "cwd": data.get("cwd"),
+                                 "mode": m.group(3), "argument": argument.strip()[:200], "cwd": data.get("cwd"),
                                  "since": datetime.datetime.now().isoformat(timespec="seconds")}
         else:
             sessions.pop(session, None)
@@ -215,13 +217,23 @@ def user_prompt_submit(data: dict) -> None:
     return None
 
 
+def mode_of_demand(demand: str) -> str:
+    """The skill a session bound without `mode` resumes with (the terminal's `session bind`, which the hook does not
+    see): the lean modes have their own demand prefix; anything else is `go`."""
+    for prefix, mode in (("ask-", "ask"), ("inv-", "investigate"), ("card-", "card"), ("kb-review-", "kb-review")):
+        if demand.startswith(prefix):
+            return mode
+    return "go"
+
+
 def session_start(data: dict) -> dict | None:
     entry = read_json(SESSIONS, {}).get(data.get("session_id") or "")
     if not entry:
         return None
     codex = entry.get("provider") == "codex"
-    skill = (CODEX_SKILLS / "aidw-go" / "SKILL.md" if codex else
-             MARKETPLACE / "plugins" / entry["plugin"] / "skills" / "go" / "SKILL.md")
+    mode = entry.get("mode") if entry.get("mode") in MODE_SKILLS else mode_of_demand(entry.get("demand") or "")
+    skill = (CODEX_SKILLS / f"aidw-{mode}" / "SKILL.md" if codex else
+             MARKETPLACE / "plugins" / entry["plugin"] / "skills" / mode / "SKILL.md")
     leave = "$aidw-exit" if codex else f"/{entry['plugin']}:exit"
     arg = f' (the user\'s literal request: "{entry["argument"]}")' if entry.get("argument") else ""
     if entry.get("demand"):

@@ -81,6 +81,9 @@ Every closed demand gets `demandas/<id>.md` — development, PR review or survey
 format of the base's `README.md`: what the card asked (one line), what changed and where (`[[system]]`, main files),
 the decisions, what was learned with the link to the note that received each fact, the PR. PR review: what the PR did,
 the findings that matter for the system and whether the PR was approved. Survey: the estimate and the open doubts.
+Investigation (`inv-*`): the symptom, the cause (proven or not) and the item drafted or created. Card (`card-*`): the
+item created and its source. A question (`ask-*`) and a knowledge review (`kb-review-*`) get **no** demand note: their
+facts go to the notes they belong to (the review already edited them; check only that `kb check` is clean).
 
 - **Link, don't copy:** the demand's note points to the notes it touched; each updated note gets the source
   (`fontes:` with the demand id) and `atualizado:` with the date. A new fact goes in one note only; the others cite

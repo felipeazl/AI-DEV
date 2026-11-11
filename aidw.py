@@ -56,6 +56,66 @@ SURVEY_MD = ROOT / "orchestrator" / "SURVEY.md"  # the survey-only orchestrator 
 # included whole in the survey prompt (old names too: a context may still ship its estimation scale as
 # `regua-estimativa`)
 SURVEY_REFS = ("survey", "levantamento", "estimation-scale", "regua-estimativa")
+# The lean orchestrator modes: one command (skill) each, with a short prompt of its own (`md`), only the roles it
+# delegates to and no workflows. `survey` keeps its own skill text (orchestrator_skill); the others share the generic
+# one, with `title`, `description` and `intro`. Their demands record the steps UNDERSTAND → EXPLORE → ANSWER and
+# are closed by `/aidw:done`, like a survey.
+LEAN_MODES: dict[str, dict] = {
+    "survey": {"md": SURVEY_MD, "roles": ("explorer",), "inline": SURVEY_REFS},
+    "ask": {
+        "md": ROOT / "orchestrator" / "ASK.md", "roles": ("explorer",), "inline": (),
+        "title": "AiDW ask",
+        "description": "A question about the code or the environment, outside a demand: the explorer answers with "
+                       "`file:line` and evidence, and what is worth keeping can go to the knowledge base. Read-only.",
+        "intro": "**Ask:** this call is a question about the code, a contract or the environment (\"how does X work\", "
+                 "\"who calls Y\", \"where is Z decided\"). The request is the question; with none, ask for it. "
+                 "Read-only: no worktree, plan, code or write to an environment. The demand is `ask-<slug>`, a short "
+                 "slug of the question (if it already exists, `-2`).",
+    },
+    "investigate": {
+        "md": ROOT / "orchestrator" / "INVESTIGATE.md", "roles": ("explorer", "documenter"), "inline": (),
+        "title": "AiDW investigate",
+        "description": "Investigates an error, a log or a stuck record before there is a card: the explorer finds the "
+                       "root cause with evidence (code, read query, log) and, if it is a defect, the documenter drafts "
+                       "the Bug or the technical debt. Read-only; creating the work item only with the user's OK.",
+        "intro": "**Investigate:** this call is the investigation of a problem — an error message, a stack trace, a "
+                 "log excerpt, a record (protocol, request) in a wrong state, \"X stopped working\". The request is "
+                 "that evidence; with none, ask for it (and in which environment it happened). Read-only: no "
+                 "worktree, plan, code or write to an environment. The demand is `inv-<slug>`, a short slug of the "
+                 "problem; when the request names an existing Bug card, its id (`bug-<n>`), so that `{go} <id>` "
+                 "reuses the investigation.",
+    },
+    "card": {
+        "md": ROOT / "orchestrator" / "CARD.md", "roles": ("explorer", "documenter"), "inline": (),
+        "title": "AiDW card",
+        "description": "Drafts a User Story or a technical debt from an idea, a problem found in the code or a "
+                       "conversation: grounded in the code by the explorer when it helps, written by the documenter, "
+                       "created on the board only with the user's OK of the fields.",
+        "intro": "**Card:** this call drafts a new work item — a User Story or a technical debt — from the request (an "
+                 "idea, a problem found in the code, a conversation). With no request, ask what the item is about. "
+                 "No worktree, plan or code. The demand is `card-<slug>`, a short slug of the subject.",
+    },
+    "kb-review": {
+        "md": ROOT / "orchestrator" / "KB_REVIEW.md", "roles": ("explorer",), "inline": (),
+        "title": "AiDW knowledge review",
+        "description": "Reviews the knowledge base against the code: `kb check`, the notes not checked for the "
+                       "longest time (or those of a system), each fact confirmed or corrected by the explorer with "
+                       "`file:line`, and the notes updated with the user's OK.",
+        "intro": "**Knowledge review:** this call rechecks the context's knowledge base against the code. The request "
+                 "may name a system or a note (only those), a number of notes, or nothing (the oldest ones). No "
+                 "worktree, plan or code; the notes change only with the user's OK. The demand is "
+                 "`kb-review-<YYYY-MM-DD>` (today; if it already exists, `-2`).",
+    },
+}
+# `fix`: the full orchestrator, started on the short path (reference *short-path*) of an existing demand.
+FIX_INTRO = ("**Fix (short path):** this call is a fix after delivery, on a demand that already exists — a bug the "
+             "QA team returned, a change the team's code review asked for on the PR, or a small adjustment the user "
+             "asks. Read the reference *short-path* now, before anything else, and follow it: no new plan and no new "
+             "Task. The request is `<demand> <what>`: `bug <n>` (or a Bug card link), `pr` (the comments on the "
+             "demand's open PR) or the adjustment's text; when the demand is missing, it is the folder's or this "
+             "session's. This replaces the resume of step 3: start the short path from the demand's current state "
+             "(its worktree, branch and PR). A demand that does not exist, or never had code (no worktree, no "
+             "branch): it is not a fix — say so and suggest `{go} <id>`.")
 ORCH_REF_DIR = ROOT / "orchestrator" / "reference"   # read on demand by the orchestrator
 POLICIES_DIR = ROOT / "orchestrator" / "policies"
 KB_README_TEMPLATE = ROOT / "orchestrator" / "templates" / "knowledge-README.md"  # `context create`
@@ -137,7 +197,8 @@ DELEGATION_MODES = ("native", "headless")
 
 ACTIONS = {"EXPLORE", "PLAN", "PLAN_APPROVAL", "PLAN_FIX", "IMPLEMENT", "TEST_PLAN", "REVIEW", "TRIAGE", "CODER_FIX",
            "USER_REVIEW", "TEST", "TEST_ADJUST", "MANUAL_TEST", "PR", "ESTIMATE", "FINAL_REVIEW", "DONE",
-           "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST"}
+           "HUMAN_APPROVAL", "RETURN", "CODE_REVIEW", "QA_TEST",
+           "ANSWER"}  # the lean modes (ask, investigate, card, kb-review): the answer is with the user
 # Steps of the old flow: `demand set` still accepts them, so a demand opened before flow v3 can finish in the
 # plugin it started in (the panel puts them in the equivalent phase).
 LEGACY_STEPS = {"SPEC", "PLAN_REVIEW", "TICKETS", "PREPARE_REVIEW", "ORCHESTRATOR_TEST", "DOCS"}
@@ -1776,16 +1837,19 @@ def orchestrator_reference_section(refs: dict[str, dict], ref_dir: Path = GEN_RE
 
 def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templater, servers: dict,
                         skills: dict, routing: dict, refs: dict[str, dict] | None = None, ns: str = "",
-                        ref_dir: Path = GEN_REF_DIR, survey: bool = False) -> str:
-    """The CLAUDE.md/AGENTS.md (and the go skill); with `survey`, the lean prompt of the survey skill: only the
-    explorer, no workflows, with the procedure and the estimation scale inline (nothing to read on demand)."""
+                        ref_dir: Path = GEN_REF_DIR, mode: str = "") -> str:
+    """The CLAUDE.md/AGENTS.md (and the go skill); with a `mode` of LEAN_MODES, the lean prompt of that skill (e.g.
+    `survey`): only the roles it delegates to, no workflows, with its references inline (survey: the procedure and
+    the estimation scale) and nothing else to read on demand but the policies."""
     orch = resolved[ORCHESTRATOR]
     refs = refs or {}
-    if survey:
-        resolved = {r: a for r, a in resolved.items() if r in (ORCHESTRATOR, "explorer")}
-        servers = {k: v for k, v in servers.items() if not v.get("agents") or "explorer" in v["agents"]}
+    lean = LEAN_MODES.get(mode)
+    if lean:
+        roles = lean["roles"]
+        resolved = {r: a for r, a in resolved.items() if r == ORCHESTRATOR or r in roles}
+        servers = {k: v for k, v in servers.items() if not v.get("agents") or any(r in v["agents"] for r in roles)}
         policies = set(policy_files(ctx))
-        inline = [refs[n]["body"] for n in SURVEY_REFS if n in refs]
+        inline = [refs[n]["body"] for n in lean["inline"] if n in refs]
         listed = {n: r for n, r in refs.items() if r["source"] in policies}
     else:
         inline, listed = [], refs
@@ -1809,12 +1873,12 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
     cmd = "install" if ns else "apply"
     parts = [
         f"<!-- {GENERATED_MARK} {cmd} — "
-        f"{('skill survey' if survey else 'skill go') if ns else source_file + ' (orchestrator)'}; "
-        f"do not edit. Sources: orchestrator/{SURVEY_MD.name if survey else ORCHESTRATOR_MD.name}, "
+        f"{'skill ' + (mode if lean else 'go') if ns else source_file + ' (orchestrator)'}; "
+        f"do not edit. Sources: orchestrator/{lean['md'].name if lean else ORCHESTRATOR_MD.name}, "
         "orchestrator/policies/ and the active context; run "
         f"`python aidw.py {cmd}` after changing them. -->",
         CODEX_SUBAGENT_GUARD if codex_native else "",
-        tpl.include(SURVEY_MD if survey else ORCHESTRATOR_MD),
+        tpl.include(lean["md"] if lean else ORCHESTRATOR_MD),
         *inline,
         "\n".join(["## Runtime", "",
                    f"- You are `{orch['name']}` — {orch['display']} (role `orchestrator`), the main chat.",
@@ -1827,7 +1891,7 @@ def render_orchestrator(resolved: dict, cfg: dict, ctx: dict | None, tpl: Templa
         "\n".join(["## Team", "", *team]),
         delegation_section(cfg, resolved, global_mode=bool(ns)),
         effort_table(resolved, routing, cfg, ns),
-        "" if survey else workflows_section(ctx),
+        "" if lean else workflows_section(ctx),
         skills_section(orch["skills"], skills, provider, ns=ns),
         mcp_orchestrator_section(servers, resolved),
         systems_section(ctx, detailed=False),
@@ -2212,11 +2276,13 @@ def build(cfg: dict, catalog: dict, rep: Report, ns: str = "", ref_dir: Path = G
             agents[role] = {"meta": meta, "prompt": prompt}
     refs = orchestrator_references(ctx, tpl)
     orchestrator_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir)
-    survey_md = render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir, survey=True)
+    modes_md = {m: render_orchestrator(resolved, cfg, ctx, tpl, servers, skills, routing, refs, ns, ref_dir, mode=m)
+                for m in LEAN_MODES}
     if rep.errors:
         return None
     return {"ctx": ctx, "skills": skills, "resolved": resolved, "routing": routing, "servers": servers,
-            "agents": agents, "orchestrator_md": orchestrator_md, "survey_md": survey_md, "orchestrator_refs": refs}
+            "agents": agents, "orchestrator_md": orchestrator_md, "survey_md": modes_md["survey"],
+            "modes_md": modes_md, "orchestrator_refs": refs}
 
 
 def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
@@ -2383,7 +2449,8 @@ def guard_skill(text: str) -> str:
     and resolves `{{root}}` (the skill runs in any folder and calls aidw.py by absolute path). A skill without
     `aidw: admin` is a tool for the agents and the orchestrator, not a command: it gets `user-invocable: false`
     (hidden from the `/` menu; the model still calls it through the Skill tool). The user's commands are the
-    `aidw: admin` skills and the generated ones (`go`, `survey`, `exit`, `diff`)."""
+    `aidw: admin` skills and the generated ones (`go`, `survey`, `fix`, `ask`, `investigate`, `card`, `kb-review`,
+    `exit`, `diff`)."""
     lines = text.split("\n")
     if not lines or lines[0].strip() != "---":
         return text
@@ -2404,14 +2471,20 @@ def guard_skill(text: str) -> str:
 
 
 def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skill_path: Path,
-                       provider: str = "claude", survey: bool = False) -> str:
-    """`go`, or `survey`: the survey-only orchestrator (lean `orchestrator_md`)."""
+                       provider: str = "claude", survey: bool = False, mode: str = "") -> str:
+    """`go`; `survey`, the survey-only orchestrator (lean `orchestrator_md`); `fix`, the full orchestrator started
+    on the short path; or another lean mode of LEAN_MODES (`ask`, `investigate`, `card`, `kb-review`)."""
     aidw = aidw_command(True)
     codex = provider == "codex"
     leave = "$aidw-exit" if codex else f"/{plugin}:exit"
-    name = "survey" if survey else "go"
+    survey = survey or mode == "survey"
+    lean = LEAN_MODES[mode] if mode in LEAN_MODES and not survey else None
+    fix = mode == "fix"
+    name = "survey" if survey else mode or "go"
+    go_cmd = "$aidw-go" if codex else f"/{plugin}:go"
+    done_cmd = "$aidw-done" if codex else f"/{plugin}:done"
     request = "the text of the message that called this skill." if codex else "$ARGUMENTS"
-    workspace = "" if survey else ("6. **Code:** the demand's worktree (section *Workspace*). Codex has no "
+    workspace = "" if survey or lean else ("6. **Code:** the demand's worktree (section *Workspace*). Codex has no "
                  "`EnterWorktree`: every task takes the worktree's absolute path. `worktree create` writes to the "
                  "repository's `.git`, which the Codex sandbox leaves read-only: ask for approval (escalation) for "
                  "that command and for any write outside the session folder (in Codex, AiDW installs no profile or "
@@ -2429,7 +2502,11 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
                  "at a time: `/"
                  f"{plugin}:diff` switches to the next, `/{plugin}:diff <repo>` goes to one and `/{plugin}:diff exit` "
                  "returns to the demand folder.")
-    description = (f"{PLUGIN_GUARD} Survey of a demand before implementing it: the AiDW orchestrator reads the "
+    description = (f"{PLUGIN_GUARD} {lean['description']}" if lean else
+                   f"{PLUGIN_GUARD} Fix after delivery on a demand that already has code (short path): a bug the QA "
+                   "team returned, a change asked on the PR or a small adjustment — the fix, a review of only the fix "
+                   "and a retest of the affected steps, with no new plan or Task." if fix else
+                   f"{PLUGIN_GUARD} Survey of a demand before implementing it: the AiDW orchestrator reads the "
                    "card, an explorer validates each point in the code and maps the flow, and the result is the "
                    "effort estimate, story points and complexity, with the open questions. Read-only." if survey else
                    f"{PLUGIN_GUARD} Takes over this session as the AiDW orchestrator and runs a demand "
@@ -2442,13 +2519,16 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
         "An existing demand: if it is in progress (has a plan), do the survey without changing its `step` or "
         "`status`; if it already has `survey-<id>.md`, redo it against the current card, reusing the exploration "
         "where nothing changed. Once done, orchestrator mode ends with it; to implement, the user calls "
-        f"`{'$aidw-go' if codex else '/' + plugin + ':go'} <id>`.", ""] if survey else []
+        f"`{'$aidw-go' if codex else '/' + plugin + ':go'} <id>`.", ""] if survey else (
+        [lean["intro"].format(go=go_cmd, done=done_cmd), ""] if lean else
+        [FIX_INTRO.format(go=go_cmd), ""] if fix else [])
     return "\n".join([
         "---", f"name: {CODEX_NS + name if codex else name}",
         f"description: {json.dumps(description, ensure_ascii=False)}",
         *([] if codex else ["disable-model-invocation: true"]), "---", "",
         f"<!-- {GENERATED_MARK} install; do not edit: change the sources and run `python aidw.py install`. -->", "",
-        "# AiDW survey" if survey else "# AiDW orchestrator mode", "",
+        "# AiDW survey" if survey else f"# {lean['title']}" if lean else
+        "# AiDW fix (short path)" if fix else "# AiDW orchestrator mode", "",
         f"From this message on you are the AiDW orchestrator in this session, until the user calls "
         f"`{leave}`, closes the task with `{'$aidw-done' if codex else '/' + plugin + ':done'}` or asks to stop. "
         "User request (may be empty): " + request, "",
@@ -2460,13 +2540,20 @@ def orchestrator_skill(plugin: str, ctx: dict | None, orchestrator_md: str, skil
            f"; and `{aidw} session bind`, which turns on orchestrator mode in this session (status band, metrics "
            "and the mods' locks) in any client. Once the demand is chosen, `session bind --demand <id>` "
            "(`demand set` already binds the demand it writes)."),
+        ("2. **Which demand:** the id this call gives (above). An active demand of this mode that matches the "
+         "request (`demand list --active`) is resumed instead of opening another." if lean else
         "2. **Which demand:** the one in the request, if it names one (e.g. `1234` → `us-1234`, `bug-5678`); "
         "otherwise the folder's (`demand`, when the chat is in a worktree); otherwise the only active one in this "
         "repository. More than one candidate, or none and no request: ask the user, with the options. **Demand "
         "without a card** (a free-form improvement, a text request): the id is `<type>-<slug>`, the conventional "
         "commits type (`feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`) and a short slug of the "
-        "request, e.g. `feat-panel-v5`, `fix-terminal-registry`; if it already exists, `-2`.",
-        *(["3. **Resume:** if the demand already has `survey-<id>.md`, read only it and what changed on the card; "
+        "request, e.g. `feat-panel-v5`, `fix-terminal-registry`; if it already exists, `-2`."),
+        *(["3. **Resume:** if the demand already has `demand.json`, do not start over: read only what its folder "
+           "already has (the summary, the newest report, `learnings-<id>.md`) and continue from the recorded step; "
+           "what an exploration already answered does not go back to the explorer.",
+           f"4. **New:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<title>\"` and follow "
+           "the steps (*STEPS*)."] if lean else
+          ["3. **Resume:** if the demand already has `survey-<id>.md`, read only it and what changed on the card; "
            "what the exploration already answered does not go back to the explorer.",
            f"4. **New:** `{aidw} demand set <id> --status active --step UNDERSTAND --title \"<title>\"` and follow "
            "the steps (*STEPS*)."] if survey else [
@@ -2598,6 +2685,13 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     put(f"{base}/skills/survey/SKILL.md",
         orchestrator_skill(plugin, ctx, b["survey_md"], plugin_dir / "skills" / "survey" / "SKILL.md",
                            survey=True))
+    put(f"{base}/skills/fix/SKILL.md",
+        orchestrator_skill(plugin, ctx, b["orchestrator_md"], plugin_dir / "skills" / "fix" / "SKILL.md", mode="fix"))
+    for mode in LEAN_MODES:
+        if mode != "survey":
+            put(f"{base}/skills/{mode}/SKILL.md",
+                orchestrator_skill(plugin, ctx, b["modes_md"][mode], plugin_dir / "skills" / mode / "SKILL.md",
+                                   mode=mode))
     put(f"{base}/skills/exit/SKILL.md", exit_skill(plugin, language=ui_language(cfg)))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin, language=ui_language(cfg)))
     for name, r in b["orchestrator_refs"].items():
@@ -3899,6 +3993,12 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     files[survey / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, b["survey_md"], survey / "SKILL.md",
                                                     provider="codex", survey=True).encode("utf-8")
     files[survey / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    for mode in ("fix", *(m for m in LEAN_MODES if m != "survey")):
+        folder = CODEX_SKILLS_HOME / f"{CODEX_NS}{mode}"
+        md = b["orchestrator_md"] if mode == "fix" else b["modes_md"][mode]
+        files[folder / "SKILL.md"] = orchestrator_skill(plugin_name(), ctx, md, folder / "SKILL.md", provider="codex",
+                                                        mode=mode).encode("utf-8")
+        files[folder / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     for name, r in b["orchestrator_refs"].items():
         files[ref_dir / f"{name}.md"] = r["content"].encode("utf-8")
     leave = CODEX_SKILLS_HOME / f"{CODEX_NS}exit"

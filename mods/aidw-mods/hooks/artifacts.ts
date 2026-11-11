@@ -41,8 +41,14 @@ export type DemandFile = { id?: string; title?: string; step?: string; status?: 
   /** Steps outside the context the demand goes through (`demand set --extra-step`). */
   extra_steps?: string[] }
 
-/** Development, PR review or survey — demand.json does not record the workflow; the files tell. */
+/** The lean modes (`/aidw:ask`, `investigate`, `card`, `kb-review`) open their demand with their own id prefix. */
+const LEAN_PREFIX: [string, DemandKind][] = [['ask-', 'ask'], ['inv-', 'investigate'], ['card-', 'card'],
+  ['kb-review-', 'kb-review']]
+
+/** Development, PR review, survey or a lean mode — demand.json does not record the workflow; the id and files tell. */
 export function kindOf(demand: DemandFile, files: string[]): DemandKind {
+  const lean = LEAN_PREFIX.find(([prefix]) => (demand.id ?? '').startsWith(prefix))?.[1]
+  if (lean) return lean
   const plan = files.some(isPlanFile)
   if ((demand.repos ?? []).some(r => r.pr) || files.some(f => /^diff-pr\d+-/.test(f))) return plan ? 'development' : 'pr-review'
   if (!plan && !implementingAfterEstimate(demand.history ?? []) &&
@@ -67,6 +73,14 @@ export function kindLabel(kind: DemandKind): string {
 
 /** Phase and stage names are i18n keys (`phase.*`); a context's external step brings its own name. */
 type Phase = { name: string; steps: string[] }
+
+/** The lean modes: understand, explore, the answer with the user (it stays there until `/aidw:done`). */
+const LEAN_PHASES: Phase[] = [
+  { name: 'phase.understanding', steps: ['UNDERSTAND'] },
+  { name: 'phase.exploration', steps: ['EXPLORE'] },
+  { name: 'phase.answer', steps: ['ANSWER'] },
+  { name: 'phase.done', steps: ['DONE'] },
+]
 
 const PHASES: Record<DemandKind, Phase[]> = {
   // flow v3 (2026-10-23); older steps sit in the equivalent phase, for demands opened before it
@@ -95,6 +109,10 @@ const PHASES: Record<DemandKind, Phase[]> = {
     { name: 'phase.finalReview', steps: ['FINAL_REVIEW'] },
     { name: 'phase.done', steps: ['DONE'] },
   ],
+  ask: LEAN_PHASES,
+  investigate: LEAN_PHASES,
+  card: LEAN_PHASES,
+  'kb-review': LEAN_PHASES,
 }
 
 /** A phase/stage name in the UI language (an external step's own name passes through). */
@@ -139,6 +157,10 @@ const STAGES: Record<DemandKind, Stage[]> = {
   ],
   'pr-review': PHASES['pr-review'].map(p => ({ ...p, group: 'aidw' as const })),
   survey: PHASES.survey.map(p => ({ ...p, group: 'aidw' as const })),
+  ask: LEAN_PHASES.map(p => ({ ...p, group: 'aidw' as const })),
+  investigate: LEAN_PHASES.map(p => ({ ...p, group: 'aidw' as const })),
+  card: LEAN_PHASES.map(p => ({ ...p, group: 'aidw' as const })),
+  'kb-review': LEAN_PHASES.map(p => ({ ...p, group: 'aidw' as const })),
 }
 
 /**

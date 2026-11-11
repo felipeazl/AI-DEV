@@ -50,7 +50,7 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
 | Metrics | **Metrics** · `/metrics` | usage | usage | usage |
 | Tests and Review | **Tests and Review** · `/review-tests` | tabs Review · Tests | Comments | becomes **Questions** |
 
-The use (development, PR review, survey) comes from the demand's files. A demand that finished its survey and moved on
+The use (development, PR review, survey) comes from the demand's files; the lean modes (question, investigation, new card, knowledge review), from the demand id's prefix (`ask-`, `inv-`, `card-`, `kb-review-`). A demand that finished its survey and moved on
 already shows as development, even before the plan is written.
 
 - **Each panel is its own pane** ("AiDW · General", "AiDW · Metrics", "AiDW · Tests and Review" or "AiDW · Questions");
@@ -73,6 +73,7 @@ The progress has two groups: **AiDW** and **Team and QA**.
 | Development | Understanding · Plan · Your approval · Implementation · Review · Your review · Tests · PR | the context's (e.g. UX validation) · Code review · QA tests · Done |
 | PR review | Understanding · Preparation · Review · Final review · Done | — |
 | Survey | Understanding · Exploration · Estimate · Final review · Done | — |
+| Question, Investigation, New card, Knowledge review | Understanding · Exploration · Answer · Done | — |
 
 Outside steps the context adds (`[[workflows.external_steps]]`) appear only in a demand that goes through them
 (`demand set --extra-step`). Steps of the old flow fall into the equivalent phase.
