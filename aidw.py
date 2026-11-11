@@ -4820,6 +4820,129 @@ def md_section(text: str, heading: re.Pattern) -> str:
     return (rest[:nxt.start()] if nxt else rest).strip()
 
 
+# Effort of a demand, for the calibration of the survey's rubric (`kb collect` → `/aidw:done`)
+EFFORT_DEV_START = {"EXPLORE", "PLAN", "SPEC", "IMPLEMENT"}       # the development starts at one of these
+EFFORT_PR = {"PR", "CODE_REVIEW"}                                  # the PR is open
+EFFORT_OUTSIDE = {"CODE_REVIEW", "QA_TEST", "UX_VALIDATION"}       # with the team, the QA or the UX
+EFFORT_NOT_DEV = {"UNDERSTAND", "ESTIMATE", "FINAL_REVIEW", "DONE", *EFFORT_OUTSIDE}
+SURVEY_LABEL_RE = re.compile(r"survey|levantamento", re.I)
+
+
+def md_table(text: str) -> list[dict[str, str]]:
+    """The rows of the first Markdown table of `text`, as {lowercased header: cell}."""
+    rows, header = [], None
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if not line.startswith("|"):
+            if header:
+                break
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if header is None:
+            header = [c.lower() for c in cells]
+        elif not set("".join(cells)) <= set("-: "):
+            rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def cell(row: dict[str, str], *names: str) -> str:
+    return next((row[n] for n in names if n in row), "")
+
+
+def seconds(text: str) -> int:
+    m = re.search(r"(\d+)\s*s\b", text)
+    return int(m.group(1)) if m else 0
+
+
+def demand_effort(folder: Path) -> dict | None:
+    """What a surveyed demand took to reach the PR, from what the flow already records — the steps with their time
+    (`demand.json`), the agents' durations (metrics.md) and the orchestrator's turns by step
+    (orchestrator-metrics.md) — next to the survey's estimate. None when the demand had no survey or never got to
+    development."""
+    survey = next((f for p in legacy_names("artifact", "survey-") for f in sorted(folder.glob(f"{p}*.md"))), None)
+    try:
+        history = json.loads((folder / "demand.json").read_text(encoding="utf-8")).get("history") or []
+    except (OSError, ValueError):
+        return None
+    if not survey or not history:
+        return None
+    steps = [h.get("step", "") for h in history]
+    # the development starts after the survey closed (DONE, or FINAL_REVIEW, before the first plan or implementation):
+    # an exploration of the survey's open questions does not count
+    after = max((i for i, s in enumerate(steps) if s == "ESTIMATE"), default=-1)
+    build = next((i for i in range(after + 1, len(steps)) if steps[i] in EFFORT_DEV_START - {"EXPLORE"}), None)
+    if build is None:
+        return None
+    closed = max((i for i in range(after, build) if steps[i] in ("DONE", "FINAL_REVIEW")), default=after)
+    start = next(i for i in range(closed + 1, build + 1) if steps[i] in EFFORT_DEV_START)
+    pr = next((i for i in range(start, len(steps)) if steps[i] in EFFORT_PR), None)
+    when = [str(h.get("at", "")) for h in history]
+    end = pr if pr is not None else len(steps) - 1
+    days = sorted({w[:10] for w in when[start:end + 1] if w})
+    after_pr = steps[pr + 1:] if pr is not None else []
+    returns = sum(1 for a, b in zip(steps[pr:] if pr is not None else [], after_pr)
+                  if a in EFFORT_OUTSIDE and b not in EFFORT_OUTSIDE | {"DONE"})
+    # the agents: rows from the development's first day, without the survey's own exploration
+    dev_day, pr_day = when[start][:10], when[end][:10]
+    agents_to_pr = agents_after = 0
+    metrics = demand_file(folder, "metrics.md")
+    rows = md_table(metrics.read_text(encoding="utf-8")) if metrics.exists() else []
+    for r in rows:
+        day = cell(r, "date", "data")[:10]
+        if day < dev_day or SURVEY_LABEL_RE.search(cell(r, "label")):
+            continue
+        secs = seconds(cell(r, "duration", "duração"))
+        if pr is not None and day > pr_day:
+            agents_after += secs
+        else:
+            agents_to_pr += secs
+    # the orchestrator: its turns by step, only the development's steps (the survey's and the outside ones apart)
+    orch, measured = 0, False
+    om = demand_file(folder, "orchestrator-metrics.md")
+    if om.exists():
+        text = om.read_text(encoding="utf-8")
+        m = re.search(r"^##\s+(?:By step|Por etapa)\s*$", text, re.M)
+        measured = bool(m)
+        for r in md_table(text[m.end():]) if m else []:
+            if cell(r, "step", "etapa") not in EFFORT_NOT_DEV:
+                orch += seconds(cell(r, "duration", "duração"))
+    est = survey.read_text(encoding="utf-8")
+    sp = (re.search(r"\*\*Story points:?\*\*:?\s*\**\s*(\d+)", est) or re.search(r"(\d+)\s*SP\b", est))
+    hours = re.search(r"\|\s*\**Total dev\**\s*\|\s*\**([^|*\n]+)", est, re.I)
+    return {
+        "survey": survey.name,
+        "estimate_sp": int(sp.group(1)) if sp else None,
+        "estimate_total": hours.group(1).strip() if hours else "",
+        "pr_reached": pr is not None,
+        "dev_start": when[start], "pr_at": when[pr] if pr is not None else "",
+        "days_to_pr": len(days),
+        "agents_hours_to_pr": round(agents_to_pr / 3600, 1),
+        "agents_hours_after_pr": round(agents_after / 3600, 1),
+        "orchestrator_hours_dev": round(orch / 3600, 1),
+        "orchestrator_measured": measured,
+        "review_rounds": steps[start:end + 1].count("REVIEW"),
+        "fix_rounds": steps[start:end + 1].count("CODER_FIX"),
+        "returns_after_pr": returns,
+    }
+
+
+def effort_lines(e: dict) -> list[str]:
+    to_pr = (f"PR on {e['pr_at'][:10]}, {e['days_to_pr']} working day(s) with activity from {e['dev_start'][:10]}"
+             if e["pr_reached"] else f"no PR yet; {e['days_to_pr']} day(s) with activity from {e['dev_start'][:10]}")
+    orch = (f"{e['orchestrator_hours_dev']} h" if e["orchestrator_measured"]
+            else "not measured (no turns by step in orchestrator-metrics.md)")
+    return [
+        "## Effort (calibration of the survey)", "",
+        f"- **Survey ({e['survey']}):** {e['estimate_sp'] or '?'} SP · {e['estimate_total'] or '?'}",
+        f"- **To the PR:** {to_pr}",
+        f"- **Agents:** {e['agents_hours_to_pr']} h to the PR, {e['agents_hours_after_pr']} h after it",
+        f"- **Orchestrator (development steps):** {orch}",
+        f"- **Rounds:** {e['review_rounds']} review(s), {e['fix_rounds']} fix(es) to the PR; "
+        f"{e['returns_after_pr']} return(s) from code review, QA or UX",
+        "",
+        "`/aidw:done` turns this into a row of the *Calibration* table of the context's estimation rubric.", "",
+    ]
+
+
 def kb_collect(ctx: dict | None, demand: str, out) -> int:
     """Gathers in a single file what the demand learned, so /aidw:done starts from it instead of rereading every
     artifact: the *Knowledge base* sections of the agents' reports, the `learnings-<id>.md` (what was born in the
@@ -4848,6 +4971,10 @@ def kb_collect(ctx: dict | None, demand: str, out) -> int:
         if body:
             parts += [f"## {f.name}", "", body, ""]
             sources.append(f.name)
+    effort = demand_effort(folder)
+    if effort:
+        parts += effort_lines(effort)
+        sources.append("effort")
     target = folder / f"collect-{demand}.md"
     header = [f"# What demand {demand} learned", "",
               "Generated by `aidw.py kb collect` for `/aidw:done`: only the *Knowledge base* sections of the reports, "
@@ -4855,7 +4982,7 @@ def kb_collect(ctx: dict | None, demand: str, out) -> int:
               "needs more context.", ""]
     target.write_text("\n".join(header + (parts or ["Nothing recorded in the demand's artifacts.", ""])),
                       encoding="utf-8", newline="\n")
-    return out({"ok": True, "path": target.as_posix(), "sources": sources},
+    return out({"ok": True, "path": target.as_posix(), "sources": sources, "effort": effort},
                [f"[ok]    {target.as_posix()} — {len(sources)} source(s): {', '.join(sources) or 'none'}"])
 
 

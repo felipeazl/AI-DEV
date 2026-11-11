@@ -1572,6 +1572,49 @@ class KnowledgeTest(unittest.TestCase):
                 self.assertIn(expected, text)
             for absent in ("## Q1", "velha", "nunca colhido"):
                 self.assertNotIn(absent, text)
+            self.assertNotIn("## Effort", text, "no survey: no calibration section")
+
+    def test_collect_effort_of_a_surveyed_demand(self) -> None:
+        """A surveyed demand that reached the PR: the collect measures it from what the flow recorded, without the
+        survey's own exploration (also the one of its open questions) and apart from what came after the PR."""
+        with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
+            root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")
+            demand = root / "contexts" / "exemplo" / "demandas" / "dt-7"
+            demand.mkdir(parents=True)
+            (demand / "survey-dt-7.md").write_text(
+                "## Estimate\n| Block | With AiDW (h) |\n|---|---|\n| x | 1–2 |\n| **Total dev** | **6–9 h · ~2 days to the PR** |\n\n"
+                "- **Story points:** 8 — two systems\n", encoding="utf-8")
+            steps = [("UNDERSTAND", "2026-11-04T09:00"), ("EXPLORE", "2026-11-04T09:10"), ("ESTIMATE", "2026-11-04T10:00"),
+                     ("FINAL_REVIEW", "2026-11-04T10:30"), ("EXPLORE", "2026-11-05T09:00"),
+                     ("FINAL_REVIEW", "2026-11-05T09:30"), ("DONE", "2026-11-09T08:00"), ("EXPLORE", "2026-11-09T08:05"),
+                     ("PLAN", "2026-11-09T09:00"), ("IMPLEMENT", "2026-11-09T10:00"), ("REVIEW", "2026-11-09T11:00"),
+                     ("CODER_FIX", "2026-11-10T09:00"), ("REVIEW", "2026-11-10T10:00"), ("PR", "2026-11-10T11:00"),
+                     ("CODE_REVIEW", "2026-11-10T11:05"), ("CODER_FIX", "2026-11-12T09:00"),
+                     ("CODE_REVIEW", "2026-11-12T10:00")]
+            (demand / "demand.json").write_text(json.dumps(
+                {"id": "dt-7", "history": [{"step": s, "at": a} for s, a in steps]}), encoding="utf-8")
+            (demand / "metrics.md").write_text(
+                "# Metrics\n\n| Date | Agent | Model | Effort | Label | State | Tool uses | Duration |\n|---|---|---|---|---|---|---|---|\n"
+                "| 2026-11-04 | busca | sonnet | high | survey | exploration_complete | 40 | 3600s |\n"
+                "| 2026-11-09 | busca | haiku | medium | levantamento-duvidas | exploration_complete | 9 | 600s |\n"
+                "| 2026-11-09 | dev | sonnet | high | E1 | implementation_complete | 50 | 5400s |\n"
+                "| 2026-11-10 | revisao | sonnet | high | E1 | review_approved | 20 | 1800s |\n"
+                "| 2026-11-12 | dev | sonnet | medium | cr | implementation_complete | 10 | 720s |\n", encoding="utf-8")
+            (demand / "orchestrator-metrics.md").write_text(
+                "# Orchestrator metrics\n\n| Session | Duration |\n|---|---|\n| abc | 999s |\n\n## By step\n\n"
+                "| Step | Turns | Duration |\n|---|---|---|\n| ESTIMATE | 3 | 900s |\n| PLAN | 2 | 600s |\n"
+                "| REVIEW | 4 | 1200s |\n| CODE_REVIEW | 1 | 300s |\n", encoding="utf-8")
+            out = run_aidw(root, "kb", "collect", "dt-7", "--json")
+            self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+            e = json.loads(out.stdout)["effort"]
+            self.assertEqual((e["estimate_sp"], e["estimate_total"]), (8, "6–9 h · ~2 days to the PR"))
+            self.assertEqual((e["dev_start"], e["pr_at"], e["days_to_pr"]), ("2026-11-09T08:05", "2026-11-10T11:00", 2))
+            self.assertEqual((e["agents_hours_to_pr"], e["agents_hours_after_pr"]), (2.0, 0.2))
+            self.assertEqual((e["orchestrator_hours_dev"], e["orchestrator_measured"]), (0.5, True))
+            self.assertEqual((e["review_rounds"], e["fix_rounds"], e["returns_after_pr"]), (2, 1, 1))
+            text = (demand / "collect-dt-7.md").read_text(encoding="utf-8")
+            self.assertIn("## Effort (calibration of the survey)", text)
+            self.assertIn("2 working day(s)", text)
 
     def test_knowledge_base(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
