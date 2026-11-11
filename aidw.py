@@ -1546,7 +1546,8 @@ def effort_table(resolved: dict, routing: dict, cfg: dict, ns: str = "") -> str:
         *rows, "",
         "Use an exception only for the reason in its cell, and say which one in the delegation. Each agent runs "
         "**once per step**: a new round needs a named reason (the user's adjustment, a finding kept, a test that "
-        "failed, a result that made no sense). Another model (Opus) only when the user asks."])
+        "failed, a result that made no sense). Another model only through an exception of this table or when the user "
+        "asks."])
 
 
 def variant_cells(resolved: dict) -> dict[str, list[str]]:

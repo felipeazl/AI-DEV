@@ -72,7 +72,7 @@ description: Turn a request into a persistent, self-contained specification (spe
 
 ## Deliveries
 ### E1 — <system>: <what it delivers, plain words>
-- Covers: CA1, RN2 · Depends on: — · Worktree: <path> · Build: `<ready command>`
+- Covers: CA1, RN2 · Depends on: — · Worktree: <path> · Build: `<ready command>` · Complex: no | yes — <why>
 - Files: `path/File.cs:42` — <what changes>; `path/Other.cs` (new) — <what it holds>
 - Tests: <only internal steps an end-to-end test would not show> | none
 - Docs: <README/ARCHITECTURE/API doc of this repository the change makes stale> | none
@@ -97,6 +97,9 @@ description: Turn a request into a persistent, self-contained specification (spe
    the criteria, the worktree and the build/test command from *Systems*. If the coder would have to search for where
    something lives, the delivery is not finished.
 4. Order by dependency; deliveries on the same files run in sequence.
+5. `Complex: yes` only for a migration, concurrency, performance, a change of contract between systems or legacy code
+   with no tests around the change — with the reason in a few words. It runs the delivery on a stronger coder, so
+   never for size alone; the default is `no`.
 
 Finish with:
 

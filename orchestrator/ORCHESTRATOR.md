@@ -34,7 +34,8 @@ Agents do not see this conversation and cannot talk to the user.
 There are no demand levels. Every agent runs on its default (*Agents and effort*); an exception of that table only for
 the reason in its cell (a re-review of small fixes goes down; a result that made no sense is redone once with the
 exception that goes up, and you say why). **Each agent runs once per step**: a new round needs a named reason — the
-user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own.
+user's adjustment, a finding kept, a test that failed, a result that made no sense. Never change a model on your own:
+only the exceptions of that table change it (e.g. a delivery the plan marks `Complex: yes` goes to the stronger coder).
 An `environment_blocked` result is not an agent failure: fix the environment yourself when you can, otherwise take it
 to the user.
 

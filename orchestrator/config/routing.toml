@@ -7,6 +7,10 @@
 # Each agent ends with `"state": "<state>"` using the keys of [rules] (see the OUTPUT of each AGENT.md); the
 # orchestrator applies the rule. Agents do not choose the next action.
 #
+# Escalation (claude.dev, "Which Claude model should you build with?", 2026-11): when a result is not good enough,
+# first make the agent verify its own work (build, test), then raise the effort one level, then move to the next
+# model up starting at a LOWER effort. Never past `high`: one more level costs about as much as the bigger model.
+#
 # Context: contexts/<name>/routing.toml, when it exists, goes on top of this file (tables merge, values
 # replace).
 
@@ -67,6 +71,11 @@ when = "survey: the end-to-end flow map is the deliverable"
 [[effort.variants.coder]]
 effort = "medium"
 when = "small fix (kept finding, failed test, user adjustment) or temporary test adjustment"
+
+[[effort.variants.coder]]
+model = "opus"
+effort = "medium"
+when = "delivery the plan marks as complex (migration, concurrency, performance, contract between systems), or a fix that failed twice (say which)"
 
 [[effort.variants.reviewer]]
 effort = "medium"

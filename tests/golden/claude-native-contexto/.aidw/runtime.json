@@ -49,7 +49,7 @@
       "enabled": true,
       "model": "haiku",
       "model_id": "haiku",
-      "effort": "",
+      "effort": "low",
       "skills": [
         "database-safe"
       ],
@@ -139,7 +139,7 @@
       "enabled": true,
       "model": "haiku",
       "model_id": "haiku",
-      "effort": "",
+      "effort": "medium",
       "skills": [],
       "preload": [],
       "tools": {
@@ -291,7 +291,8 @@
     ],
     "coder": [
       "coder",
-      "coder-medium"
+      "coder-medium",
+      "coder-opus-medium"
     ],
     "reviewer": [
       "reviewer",

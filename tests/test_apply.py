@@ -232,12 +232,12 @@ class OrchestratorReferenceTest(unittest.TestCase):
         high; the api, bugs and security agents are gone; on Codex, each model's equivalent by tier."""
         expected = {  # role: {variant: model/effort}
             "planner": {"planner": "sonnet/high", "planner-medium": "sonnet/medium"},
-            "explorer": {"explorer": "haiku/", "explorer-sonnet-medium": "sonnet/medium",
+            "explorer": {"explorer": "haiku/low", "explorer-sonnet-medium": "sonnet/medium",
                          "explorer-sonnet-high": "sonnet/high"},
-            "coder": {"coder": "sonnet/high", "coder-medium": "sonnet/medium"},
+            "coder": {"coder": "sonnet/high", "coder-medium": "sonnet/medium", "coder-opus-medium": "opus/medium"},
             "reviewer": {"reviewer": "sonnet/high", "reviewer-medium": "sonnet/medium", "reviewer-low": "sonnet/low"},
             "qa": {"qa": "sonnet/medium", "qa-high": "sonnet/high"},
-            "documenter": {"documenter": "haiku/"},
+            "documenter": {"documenter": "haiku/medium"},
         }
         with tempfile.TemporaryDirectory(prefix="aidw-test-", ignore_cleanup_errors=True) as tmp:
             root = make_sandbox(Path(tmp).resolve(), "claude", "native", "exemplo")

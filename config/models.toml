@@ -48,7 +48,9 @@ provider = "claude"
 model_id = "haiku"
 alias = "haiku"
 tiers = ["fast"]
-efforts = []
+# Haiku 5.5 takes effort (API default medium); the `haiku` alias resolves to Haiku 5.5 from Claude Code 2.1.293.
+efforts = ["low", "medium", "high"]
+min_cli = "2.1.293"
 
 [models.fable]
 name = "Claude Fable"

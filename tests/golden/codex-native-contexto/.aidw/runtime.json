@@ -171,7 +171,8 @@
     ],
     "coder": [
       "coder",
-      "coder-medium"
+      "coder-medium",
+      "coder-gpt-6-sol-medium"
     ],
     "reviewer": [
       "reviewer",
