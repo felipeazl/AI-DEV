@@ -56,7 +56,7 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
 │ ● Coder Sonnet medium      2m10s │
 │ fix r1               184k tokens │
 ╰──────────────────────────────────╯
-                                                                  General  Metrics  Tests and Review 4
+                                                            Diff  General  Metrics  Tests and Review 4
 ```
 
 1. **Demand and usage:** the id, the step, **● waits for you** when the step is yours (approval, triage, your code
@@ -64,7 +64,7 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
    and the plan's usage windows (7d and 5h), each with a thin bar.
 2. **Running agents**, one card each: name, model and effort, elapsed time, label and the tokens of its latest
    response. With no agent, the line does not appear. When the cards do not fit in one line, they become a list.
-3. **The buttons** **General**, **Metrics** and **Tests and Review** (**Questions** in a survey), with the number of
+3. **The buttons** **Diff** (runs `/aidw:diff`, when the demand has a worktree), **General**, **Metrics** and **Tests and Review** (**Questions** in a survey), with the number of
    items waiting for a decision.
 
 Bars turn yellow from 75% and red from 90%; from 75% the 7d and 5h windows show the local time they renew. The usage

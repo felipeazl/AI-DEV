@@ -337,6 +337,8 @@ export type BandNav = {
   /** What waits for you on the decision screens (the orange count). */
   pending: number
   hasMetrics: boolean
+  /** Runs `/aidw:diff` (the diff panel goes to the demand's next repository); absent when the demand has no worktree. */
+  diff?: () => void
 }
 
 /**
@@ -475,6 +477,7 @@ export function Band(ui: UI, s: Snapshot, running: RunningAgent[], usage: Usage 
         ))}
       {nav && (
         <Box key="nav" justifyContent="flex-end" gap={1} flexWrap="nowrap">
+          {nav.diff && <Button key="run-diff" label={t('band.diff')} plain dimColor onPress={nav.diff} />}
           <Button key="open-general" label={t('view.general')} plain dimColor onPress={() => nav.open('general')} />
           {nav.hasMetrics && <Button key="open-metrics" label={t('view.metrics')} plain dimColor onPress={() => nav.open('metrics')} />}
           {nav.canDecide && (

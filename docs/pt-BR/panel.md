@@ -25,7 +25,7 @@ no `context.toml`); dentro deles, cada aba só aparece quando há o arquivo que 
 ```text
 AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
 ● Coder Sonnet medium · fix r1 · 2m10s
-                                                                    Geral  Métricas  Testes e Review 4
+                                                              Diff  Geral  Métricas  Testes e Review 4
 ```
 
 1. **A demanda e o consumo:** AiDW, o id, a etapa atual (com o uso na frente quando não é desenvolvimento: "Revisão de
@@ -33,7 +33,8 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
    revisão de código, teste manual, PR, revisão final); do outro lado, o contexto em % da janela real do modelo com os
    tokens, e as janelas 7d e 5h.
 2. **Os agentes rodando** (nome, modelo e effort, tarefa, tempo), com o ponto laranja. Sem agente, a linha não aparece.
-3. **Os botões**, numa linha só à direita: **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
+3. **Os botões**, numa linha só à direita: **Diff** (quando a demanda tem worktree: roda `/aidw:diff`, o diff do app
+   vai para o próximo repositório da demanda); **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
    gravado); **Testes e Review** (quando a demanda tem revisão, roteiro ou comentários de PR; **Dúvidas** no
    levantamento), com o número do que ainda espera decisão.
 
