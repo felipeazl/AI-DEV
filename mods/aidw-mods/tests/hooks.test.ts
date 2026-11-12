@@ -239,6 +239,9 @@ test('desenvolvimento: a delegação vira métrica, a faixa e o painel mostram a
     // the panel buttons: a click opens the panel
     expect(await band.find({ key: 'open-general' })).toBeDefined()
     expect(await band.find({ key: 'open-metrics' })).toBeDefined()
+    // the demand has a worktree: Diff runs /aidw:diff (a failed run does not break the strip)
+    expect(await band.find({ key: 'run-diff' })).toBeDefined()
+    await band.press({ key: 'run-diff' })
     const opened = f.opens
     await band.press({ key: 'open-decide' })
     expect(f.opens).toBe(opened + 1)

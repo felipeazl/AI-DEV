@@ -113,6 +113,7 @@ const en = {
   'band.backAt': ' · back {at}',
   'band.renewsAt': ' · renews {at}',
   'band.waitsForYou': '● waits for you',
+  'band.diff': 'Diff',
   // views and tabs
   'view.general': 'General',
   'view.metrics': 'Metrics',
@@ -433,6 +434,7 @@ const ptBR: Record<Key, string> = {
   'band.backAt': ' · volta {at}',
   'band.renewsAt': ' · renova {at}',
   'band.waitsForYou': '● espera você',
+  'band.diff': 'Diff',
   'view.general': 'Geral',
   'view.metrics': 'Métricas',
   'view.decide': 'Testes e Review',

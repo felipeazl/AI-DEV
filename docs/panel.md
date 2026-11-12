@@ -25,7 +25,7 @@ The strip works in every context. The panels and the strip buttons disappear in 
 ```text
 AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renews 16:40
 ● Coder Sonnet medium · fix r1 · 2m10s
-                                                                  General  Metrics  Tests and Review 4
+                                                            Diff  General  Metrics  Tests and Review 4
 ```
 
 1. **Demand and usage:** AiDW, the id, the current step (with the use in front when it is not development: "PR review ·
@@ -33,7 +33,8 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
    review, manual test, PR, final review); on the other side, the context as a % of the model's real window with the
    tokens, and the 7d and 5h windows.
 2. **Running agents** (name, model and effort, task, time), with the orange dot. With no agent, the line is not shown.
-3. **The buttons**, on one line to the right: **General**; **Metrics** (when a delegation or orchestrator turn is
+3. **The buttons**, on one line to the right: **Diff** (when the demand has a worktree: runs `/aidw:diff`, the
+   app's diff goes to the demand's next repository); **General**; **Metrics** (when a delegation or orchestrator turn is
    recorded); **Tests and Review** (when the demand has a review, a script or PR comments; **Questions** in a survey),
    with the number still waiting for a decision.
 

@@ -55,7 +55,7 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
 │ ● Coder Sonnet medium      2m10s │
 │ fix r1               184k tokens │
 ╰──────────────────────────────────╯
-                                                                    Geral  Métricas  Testes e Review 4
+                                                              Diff  Geral  Métricas  Testes e Review 4
 ```
 
 1. **A demanda e o consumo:** o id, a etapa, **● espera você** quando a etapa é sua (aprovação, triagem, sua revisão de
@@ -63,7 +63,7 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
    janelas de uso do plano (7d e 5h), cada um com uma barra fina.
 2. **Os agentes rodando**, um card por agente: nome, modelo e effort, tempo, label e os tokens da última resposta. Sem
    agente, a linha não aparece. Quando os cards não cabem numa linha, viram uma lista.
-3. **Os botões** **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento), com o número do que espera
+3. **Os botões** **Diff** (roda `/aidw:diff`, quando a demanda tem worktree), **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento), com o número do que espera
    decisão.
 
 As barras ficam amarelas a partir de 75% e vermelhas a partir de 90%; a partir de 75%, o 7d e o 5h mostram a hora local

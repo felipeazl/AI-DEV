@@ -746,6 +746,8 @@ export const register: Register = (on, options) => {
           canDecide: visibleTabs(s, 'decide').length > 0,
           pending: pendingCount({ snap: s, reviewFile: await read($, reviewFile) }),
           hasMetrics: tabHasData(s, 'metrics'),
+          // the same as typing /aidw:diff: queued and run once the session is idle
+          ...(s.repos.length ? { diff: () => void $.command.run({ command: 'aidw:diff' }).catch(() => undefined) } : {}),
         }
       : undefined
     return Band(ui, s, await read($, running), await read($, usage), await $.clock.now(), nav,
