@@ -1,5 +1,8 @@
 # Comandos
 
+Todos os comandos do AiDW: os que você digita no chat e a linha de comando `python aidw.py` (instalação, diagnóstico,
+estado da demanda, worktrees, contextos e base de conhecimento).
+
 ## No chat
 
 | Claude | Codex | O que faz |
@@ -54,7 +57,7 @@ Sem comando, o `aidw.py` roda o `setup`. Os comandos com `--json` imprimem a sa�
 | `demand show <id>` · `demand list [--active]` | Consulta o estado |
 | `session bind [--demand <id>]` · `session unbind` | Põe esta sessão do Claude Code no (ou tira do) modo orquestrador e liga a demanda que ela conduz; `--session` substitui o `$CLAUDE_CODE_SESSION_ID` |
 | `worktree create --repo <pasta> --demand <id> [--slug s] [--base b] [--pr n]` | Worktree da demanda, branch e junctions (idempotente); `--pr` cria o worktree só leitura da PR de outra pessoa |
-| `worktree list` · `inspect <id>` · `remove <id>` · `cleanup` | Situação, remoção segura (`--repo` quando a demanda tem vários) e limpeza do registro |
+| `worktree list` · `inspect <id ou pasta>` · `remove <id ou pasta>` · `cleanup` | Situação, remoção segura (`--repo` quando a demanda tem vários) e limpeza do registro |
 
 Opções do `demand set`:
 
@@ -102,6 +105,6 @@ Opções do `demand set`:
 ```powershell
 .\setup.ps1          # ./setup.sh no Linux/macOS
 .\doctor.ps1         # ./doctor.sh — só verifica, não altera nada
-python -m unittest discover -s tests
+python tests/run.py                      # os testes, em paralelo (~1 min); uma classe: python tests/run.py WorktreeTest
 python tests/test_apply.py --update     # regrava as referências quando a mudança de saída é intencional
 ```

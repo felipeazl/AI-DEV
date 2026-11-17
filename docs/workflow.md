@@ -35,7 +35,7 @@ Understand → Explore → Plan → Your approval
 | **Explore** | explorer | `exploration-<topic>.md`: numbered questions answered with `file:line`, contracts between systems, real ids and data | — |
 | **Plan** | planner | `plan-<id>.md`: spec-driven, short, self-contained — verified premises, current and desired behavior, the card's `CA`/`RN`, deliveries `E1…` with files and build | — |
 | **Your approval** | you + orchestrator | the orchestrator reads the plan and points out gaps; you approve or ask for changes (planner in fix mode) | **yes: nothing goes to code without your OK** |
-| **Implement** | coder (one per delivery), documenter, qa | the code in the worktree; one Task per delivery on the board; `test-script-<id>.md` with the test data | the test data writes, in one batch |
+| **Implement** | coder (one per delivery), documenter, qa | the code in the worktree; `readme-<id>.md` (on the card when the context attaches it) and one Task per delivery on the board; `test-script-<id>.md` with the test data | the test data writes, in one batch |
 | **Review** | reviewer | `review-<id>-r<N>.md`: quality, bugs and security in one pass, each finding with a keep/discard recommendation | **yes: you decide each finding, every round** |
 | **Fix** | coder → reviewer | only the kept findings; the re-review looks only at the fixes | — |
 | **Your code review** | you | a change you ask for becomes a fix and a review of only that fix | **yes** |
@@ -59,15 +59,16 @@ named reason.
 
 ## Agents and effort
 
-No demand levels. Every agent runs on its default; the orchestrator uses an **exception** only for the reason written
-in its *Agents and effort* table. Defaults, exceptions and how to change them: [agents.md](agents.md#models-and-effort).
+No demand levels. Every agent runs on its default model and effort; the orchestrator switches to an **exception** (a
+variant with another model or effort) only for the reason written next to it. Defaults, exceptions and how to change them: [agents.md](agents.md#models-and-effort).
 
 ## Review and triage
 
 The reviewer reviews each delivery against the plan in one pass: the team's standards, **bugs** (each with a failure
-scenario traced in the code) and **security** (each with an attack path). Each finding has an ID, severity, category,
-the minimal fix in scope, the code before and after, and a recommendation (keep or discard, and why). Rule or
-architecture doubts come as questions, not findings.
+scenario traced in the code) and **security** (each with an attack path). When the context has a review checklist, it runs only the
+items whose trigger appears in the diff. Each finding has an ID, severity, category, the minimal fix in scope, the code
+before and after, and a recommendation (keep or discard, and why). Rule or architecture doubts come as questions, not
+findings.
 
 The findings go to **you** every round, and you decide in the chat. Before recommending to discard a critical or
 important finding, the orchestrator verifies the premise (skill `verify-premise`). Decisions are recorded in
@@ -83,8 +84,9 @@ decide, the demand goes to your code review.
 - **After your review:** qa checks the script against the final diff, runs the approved writes, the automatic steps
   (API and browser — Claude in Chrome, your logged-in Chrome, or Playwright) and the area's regression, and writes
   ✅/❌ and the evidence in the script.
-- **Manual steps** (desktop apps, or what qa could not do in the browser): the orchestrator shows one step at a time,
-  you run it and send the evidence in the chat, and it marks the result.
+- **Manual steps** (desktop apps, hardware, a visual judgment): the orchestrator shows one step at a time, you run it
+  and send the evidence in the chat, and it marks the result. The orchestrator never drives a browser itself: a step qa
+  left manual only because no browser connected goes back to a fresh qa once you connect it.
 - **Test adjustments:** a code change made only to test (bypass, flag, mock) is done by the coder, marked
   `AIDW-TEST`, in a separate patch (`test-env-<id>.patch`); it is reverted before the commit, and a hook refuses a
   commit that still has the mark.
@@ -98,10 +100,12 @@ everything with the exact commands and, with **one OK**, commits, pushes and ope
 when it has one). From then on the demand is with the team (`CODE_REVIEW`) and then QA (`QA_TEST`); you tell the
 orchestrator when it moves.
 
-**After delivery** (a bug QA returned, a change asked in the PR, a small adjustment): the short path, no new plan — the
-item's summary, the explorer only if the cause is unclear, the coder, a review of only the fix (findings go to you), a
-retest of the affected steps and a line in *Addenda* at the end of the plan. `demand set <id> --loop bug-<n>` numbers
-the review rounds of that loop from 1.
+**After delivery** (a bug QA returned, a change asked in the PR, a small adjustment): the short path (`/aidw:fix`), no new plan —
+the item's summary, the explorer when the item does not already name the cause, the coder, a review of only the fix
+(findings go to you), a retest of the affected steps and a line in *Addenda* at the end of the plan.
+`demand set <id> --loop bug-<n>` numbers the review rounds of that loop from 1. A bug QA returned or a change the
+team's review asked for is an **escape**: the reviewer also says whether the original diff showed it and, if so,
+drafts a *checklist candidate* that `/aidw:done` offers you.
 
 ## Reviewing someone else's PR (`pr-review`)
 
@@ -205,8 +209,8 @@ everything.
 ### Close
 
 `/aidw:done` closes the task: it starts from `aidw.py kb collect <id>`, writes into the context only what was
-**verified** and matters for the next demands, validates, reinstalls and commits and pushes **only the context
-repository**.
+**verified** and matters for the next demands, asks you once about any checklist candidates, validates, reinstalls and
+commits and pushes **only the context repository**.
 
 ## The knowledge base in the flow
 

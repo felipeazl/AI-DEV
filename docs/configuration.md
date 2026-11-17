@@ -1,6 +1,7 @@
 # Configuration
 
-Where each setting lives, the language settings, and ready-made profiles.
+What you can configure and where: your machine's `aidw.config.toml`, the team's context and the AiDW core; then the
+language settings and ready-made profiles.
 
 ## The three layers
 
@@ -26,7 +27,7 @@ config without asking.
 
 ## `aidw.config.toml` field by field
 
-The template is `aidw.config.example.toml`; `setup` creates yours through the wizard.
+The template is `aidw.config.example.toml`; `setup` creates yours through the wizard. On a first install the wizard offers the recommended setup (Claude Code, default models and agents) and asks only steps 4 to 7: project folders, MCPs, language and context; `configure` always runs every step.
 
 ### `[provider]`
 
@@ -100,12 +101,13 @@ Two settings, one inheriting the other:
 
 ```toml
 [policies]
-deny = ["Bash(git push --force *)", "Read(**/.env)"]   # always blocked
+deny = ["Bash(git push --force *)", "Read(**/.env)"]   # always blocked (replaces the default list)
 ask = ["Bash(npm publish *)"]                           # always asks for OK (beats any allow)
 ```
 
 They add up with the context's rules. The default `deny` list blocks force push, `reset --hard`, `clean -f` and
-reading `.env` files, in Bash and PowerShell.
+reading `.env` files, in Bash and PowerShell. Setting `deny` **replaces** that list: keep the default entries (they are
+in `aidw.config.example.toml`) and add yours.
 
 ### `[agents.<role>]`
 
@@ -123,16 +125,16 @@ preload = ["code-review"]
 |---|---|---|
 | `orchestrator` | `top` (Opus) — only a recommendation: the chat's model and effort apply | medium |
 | `planner` | `mid` (Sonnet) | high |
-| `explorer` | `fast` (Haiku) | low (ignored by Haiku) |
+| `explorer` | `fast` (Haiku) | low |
 | `coder` | `mid` (Sonnet) | high |
 | `reviewer` | `mid` (Sonnet) | high |
 | `qa` | `mid` (Sonnet) | medium |
-| `documenter` | `fast` (Haiku) | medium (ignored by Haiku) |
+| `documenter` | `fast` (Haiku) | medium |
 
 These come from `DEFAULT_AGENTS` in `aidw.py` and `config/models.toml`
 ([agents.md](agents.md#where-the-defaults-live)).
 
-- A config without a newer role gets it with the default; a removed role (`api-db`, `bug-hunter`, `security`) is
+- A config without the `planner` or `explorer` role (added later) gets it with the default; a removed role (`api-db`, `bug-hunter`, `security`) is
   ignored with a warning.
 - Old core skill names (`verificar-premissa`, `preparar-worktree`) are still accepted and mapped to the new ones.
 - Names that collide with the CLI's agents (`plan`, `explore`, `default`…) are refused.
@@ -204,7 +206,7 @@ Changes here apply to everyone who uses AiDW: do them by PR.
 | `config/models.toml` | Model catalog per provider: `model_id` (on Claude, the alias), `label`, `tiers` (`top`/`mid`/`fast`), accepted `efforts`, `min_cli`, `alias` |
 | `orchestrator/config/routing.toml` | `[rules]` (`state` → action) and `[[effort.variants.<role>]]` (the exceptions: `effort`, optional `model`, `when`) |
 | `config/mcp.toml` | MCP catalog: command or URL, `auth`, `allow`, the roles that may use each (`agents`), `use_when` and `triggers` |
-| `orchestrator/ORCHESTRATOR.md` · `orchestrator/SURVEY.md` | The orchestrator's core, and the lean survey orchestrator |
+| `orchestrator/ORCHESTRATOR.md` · `SURVEY.md` · `ASK.md` · `INVESTIGATE.md` · `CARD.md` · `KB_REVIEW.md` | The orchestrator's core, and the lean orchestrators of `/aidw:survey`, `ask`, `investigate`, `card` and `kb-review` |
 | `orchestrator/reference/` | What the orchestrator reads on demand (`short-path`, `testing`, `pr-review`, `pr-triage`, `survey`) |
 | `orchestrator/policies/` | Generic policies: git, database, production, secrets, permissions |
 | `agents/`, `skills/`, `workflows/` | Agents, skills and workflows |

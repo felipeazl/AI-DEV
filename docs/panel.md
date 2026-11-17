@@ -24,7 +24,10 @@ The strip works in every context. The panels and the strip buttons disappear in 
 
 ```text
 AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renews 16:40
-● Coder Sonnet medium · fix r1 · 2m10s
+╭──────────────────────────────────╮
+│ ● Coder Sonnet medium      2m10s │
+│ fix r1               184k tokens │
+╰──────────────────────────────────╯
                                                             Diff  General  Metrics  Tests and Review 4
 ```
 
@@ -32,8 +35,9 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
    Final review") and **● waits for you** when the step is yours (`HUMAN_APPROVAL`, plan approval, triage, your code
    review, manual test, PR, final review); on the other side, the context as a % of the model's real window with the
    tokens, and the 7d and 5h windows.
-2. **Running agents** (name, model and effort, task, time), with the orange dot. With no agent, the line is not shown.
-3. **The buttons**, on one line to the right: **Diff** (when the demand has a worktree: runs `/aidw:diff`, the
+2. **Running agents**, one card each (name, model and effort, time, task label, tokens of the latest response), with
+   the orange dot. When the cards do not fit in one line, they become a list. With no agent, nothing is shown.
+3. **The buttons**, on one line to the right: **Diff** (when the demand has a repository: runs `/aidw:diff`, the
    app's diff goes to the demand's next repository); **General**; **Metrics** (when a delegation or orchestrator turn is
    recorded); **Tests and Review** (when the demand has a review, a script or PR comments; **Questions** in a survey),
    with the number still waiting for a decision.
@@ -51,14 +55,15 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
 | Metrics | **Metrics** · `/metrics` | usage | usage | usage |
 | Tests and Review | **Tests and Review** · `/review-tests` | tabs Review · Tests | Comments | becomes **Questions** |
 
-The use (development, PR review, survey) comes from the demand's files; the lean modes (question, investigation, new card, knowledge review), from the demand id's prefix (`ask-`, `inv-`, `card-`, `kb-review-`). A demand that finished its survey and moved on
-already shows as development, even before the plan is written.
+The use (development, PR review, survey) comes from the demand's files; the lean modes (question, investigation, new
+card, knowledge review), from the demand id's prefix (`ask-`, `inv-`, `card-`, `kb-review-`). A demand that finished
+its survey and moved on already shows as development, even before the plan is written.
 
 - **Each panel is its own pane** ("AiDW · General", "AiDW · Metrics", "AiDW · Tests and Review" or "AiDW · Questions");
   with two or more open, the app shows tabs between them. Leaving orchestrator mode closes all of them. In a window too
   narrow, the panel does not open and the command says why.
 - **`/panel <tab>`** opens the panel that has the tab: `review`, `tests`, `comments`, `questions` open Tests and
-  Review; anything else opens General. The old Portuguese tab names still work.
+  Review; `metrics` opens Metrics; anything else opens General. The old Portuguese tab names still work.
 - **Single header:** type and number, the situation (`● Review · waits for you`, `Code review · with the team` in blue,
   `Paused`, `Done` in green) and the card title.
 - **Tabs** (only in Tests and Review, only with two or more): next to the name, in orange, what still waits for a
@@ -84,7 +89,7 @@ Outside steps the context adds (`[[workflows.external_steps]]`) appear only in a
 One page, no tabs:
 
 1. **Demand map:** the summary (up to 4 lines) and the **progress** in both groups, with the current step's name. When
-   the team or QA returns the demand, the outside step turns yellow with "returned from QA tests"; a counter keeps the
+   the team or QA returns the demand, the outside step turns yellow with "↩ back from QA tests"; a counter keeps the
    returns per step.
 2. **Numbers**, only what is in no other block: in a PR review, the PRs and the published comments; in a survey, the
    open questions.

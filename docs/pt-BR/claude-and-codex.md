@@ -13,8 +13,8 @@ o AiDW roda inteiro, e é para ele que se escreve toda funcionalidade nova.
 | | Claude Code | Codex |
 |---|---|---|
 | O que o `install` entrega | o plugin `aidw` (agentes e variantes, skills, comandos, hooks), o plugin `aidw-mods` e as regras do AiDW no `~/.claude/settings.json` | **só** os agentes `aidw-*` (`~/.codex/agents/aidw-<nome>.toml`) e as skills `aidw-*` (`~/.agents/skills`) |
-| Chamar o orquestrador | `/aidw:go`, `/aidw:survey`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-exit`, `$aidw-done` |
-| Comandos do usuário | só `go`, `survey`, `exit`, `diff`, `done`, `knowledge`, `context` no menu `/`; as skills de fluxo ficam ocultas (`user-invocable: false`) | toda skill `$aidw-*` aparece (o Codex não esconde skill); `go`, `survey`, `exit` e `done` só rodam quando chamadas (`agents/openai.yaml`) |
+| Chamar o orquestrador | `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-fix`, `$aidw-ask`, `$aidw-investigate`, `$aidw-card`, `$aidw-kb-review`, `$aidw-exit`, `$aidw-done` |
+| Comandos do usuário | só os comandos acima, mais `diff`, `knowledge` e `context`, no menu `/`; as skills que os agentes usam ficam ocultas (`user-invocable: false`) | toda skill `$aidw-*` aparece (o Codex não esconde skill); os comandos acima só rodam quando chamados (`agents/openai.yaml`) |
 | Agentes | `aidw:<nome>`, mais uma variante por exceção (modelo e effort fixos) | `aidw-<nome>`, mais um papel por exceção (`aidw-<nome>-<effort>`), com o modelo e o effort fixados em cada TOML |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |
 | Workflows (`development`, `pr-review`, `survey`), QA, revisão | ✅ | ✅ (pelas skills) |
@@ -25,7 +25,7 @@ o AiDW roda inteiro, e é para ele que se escreve toda funcionalidade nova.
 | MCP e ferramentas limitados por agente | ✅ `tools`/`disallowedTools` do subagente | — todo agente vê os MCPs do seu `~/.codex/config.toml` |
 | Lembrete depois de compactação, registro do modo orquestrador | ✅ hooks do plugin | — |
 | Mods: faixa e painéis, métricas sozinhas, travas da delegação, filtro de segredos | ✅ `aidw-mods` | — o orquestrador roda o `record` |
-| Levar o chat ao worktree, painel de diff (`/aidw:diff`), pastas da sessão | ✅ | — (`aidw open --provider codex --demand <id>` abre já no worktree) |
+| Levar o chat ao worktree, painel de diff (`/aidw:diff`), pastas da sessão | ✅ | — (`python aidw.py open --provider codex --demand <id>` abre já no worktree) |
 | Navegador | Claude in Chrome, navegador do app, Playwright | `@Chrome` e `@Browser` (app), Playwright (se estiver no seu Codex) |
 | Modo projeto (chat na raiz do AiDW) | ✅ `CLAUDE.md` | ✅ `AGENTS.md` (gerado pelo `apply`) |
 
@@ -43,9 +43,9 @@ python aidw.py open --provider codex --demand 1234   # a sessão no worktree da 
 ```
 
 - **`multi_agent_v2`:** o orquestrador chama os agentes com `spawn_agent`, que precisa dessa feature. O
-  `aidw open --provider codex` passa `--enable multi_agent_v2`; abrindo o Codex de outro jeito, ligue no seu
+  `python aidw.py open --provider codex` passa `--enable multi_agent_v2`; abrindo o Codex de outro jeito, ligue no seu
   `~/.codex/config.toml` (`[features]` → `multi_agent_v2 = true`). O `install` e o `doctor` avisam quando falta.
-- **Pastas:** o `aidw open` inicia o Codex no worktree da demanda (`-C`) e acrescenta a pasta do AiDW (`--add-dir`),
+- **Pastas:** o `python aidw.py open` inicia o Codex no worktree da demanda (`-C`) e acrescenta a pasta do AiDW (`--add-dir`),
   onde ficam os artefatos da demanda. Escrever em qualquer outra pasta pede a aprovação do sandbox.
 - **Worktree:** o `worktree create` grava no `.git` do repositório, que o sandbox do Codex deixa só leitura: aprove esse
   comando. Os agentes não fazem commit (você faz).
@@ -101,9 +101,9 @@ bloqueadas vão por `-c`). As ações travadas voltam como `denials`. Serve para
 Além do que é exclusivo do Claude Code (acima):
 
 - Não há ferramenta para mudar a pasta da sessão nem acrescentar uma no meio da conversa: o `/aidw:diff` e as pastas da
-  sessão não existem lá. O `aidw open --provider codex` abre já no worktree (com `--app`, no app desktop).
+  sessão não existem lá. O `python aidw.py open --provider codex` abre já no worktree (com `--app`, no app desktop).
 - Os worktrees que o app do Codex cria são dele (`$CODEX_HOME/worktrees`); os da demanda são do AiDW e abrem pelo
-  `aidw open`.
+  `python aidw.py open`.
 - Se o `node` do PATH mora no perfil do usuário (ex.: nvm), o sandbox do Codex não o lê: instale o Node fora do perfil
   (ex.: em Program Files) para os builds.
 
@@ -113,7 +113,7 @@ Nada disso é versionado.
 
 | Arquivo | Gerado por | Conteúdo |
 |---|---|---|
-| `.aidw/marketplace/plugins/aidw/` | `install` | O plugin: agentes e variantes, skills, `go`/`survey`/`exit`/`diff`, referências, hooks |
+| `.aidw/marketplace/plugins/aidw/` | `install` | O plugin: agentes e variantes, skills, os comandos (`go`, `survey`, `fix`, `ask`, `investigate`, `card`, `kb-review`, `exit`, `diff`), referências, hooks |
 | `.aidw/marketplace/plugins/aidw-mods/` | `install` | Os mods do Claude Code, copiados de `mods/aidw-mods` (sem os testes) com a raiz do AiDW desta máquina |
 | `.aidw/install-manifest.json` | `install` | O que o install acrescentou no Claude e no Codex (para o `uninstall` remover só isso) |
 | `~/.claude/settings.json` (merge) | `install` | Regras `deny`/`ask`/`allow`, pastas liberadas e `env`, só os itens do AiDW |

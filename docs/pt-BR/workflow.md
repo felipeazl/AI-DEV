@@ -34,7 +34,7 @@ Entender → Explorar → Plano → Sua aprovação
 | **Explorar** | explorer | `exploration-<assunto>.md`: perguntas numeradas respondidas com `arquivo:linha`, contratos entre sistemas, ids e dados reais | — |
 | **Plano** | planner | `plan-<id>.md`: spec-driven, curto e autossuficiente — premissas verificadas, comportamento atual e desejado, os `CA`/`RN` do card, as entregas `E1…` com os arquivos e o build | — |
 | **Sua aprovação** | você + orquestrador | o orquestrador lê o plano e aponta o que não fecha; você aprova ou pede ajuste (planner em modo fix) | **sim: nada vai para o código sem o seu OK** |
-| **Implementar** | coder (um por entrega), documenter, qa | o código no worktree; uma Task por entrega no board; `test-script-<id>.md` com a massa | as escritas da massa, de uma vez |
+| **Implementar** | coder (um por entrega), documenter, qa | o código no worktree; `readme-<id>.md` (no card quando o contexto anexa) e uma Task por entrega no board; `test-script-<id>.md` com a massa | as escritas da massa, de uma vez |
 | **Revisão** | reviewer | `review-<id>-r<N>.md`: qualidade, bugs e segurança numa passada, cada achado com a recomendação de manter ou descartar | **sim: você decide cada achado, a cada rodada** |
 | **Correção** | coder → reviewer | só os achados mantidos; a re-revisão olha só as correções | — |
 | **Sua revisão de código** | você | um pedido seu vira correção e revisão só dela | **sim** |
@@ -58,15 +58,15 @@ nova precisa de um motivo nomeado.
 
 ## Agentes e effort
 
-Não há nível de demanda. Cada agente roda no seu padrão; o orquestrador só usa uma **exceção** pelo motivo escrito na
-tabela *Agents and effort*. Padrões, exceções e como trocar: [agents.md](agents.md#modelos-e-effort).
+Não há nível de demanda. Cada agente roda no seu modelo e effort padrão; o orquestrador só troca para uma **exceção**
+(uma variante com outro modelo ou effort) pelo motivo escrito ao lado dela. Padrões, exceções e como trocar: [agents.md](agents.md#modelos-e-effort).
 
 ## Revisão e triagem
 
 O reviewer revisa cada entrega contra o plano numa passada: os padrões do time, **bugs** (cada um com o cenário de
-falha rastreado no código) e **segurança** (cada falha com o caminho de ataque). Cada achado tem ID, severidade,
-categoria, a correção mínima dentro do escopo, o código antes e depois e a recomendação (manter ou descartar, e por
-quê). Dúvidas de regra ou de arquitetura vêm como dúvida, não como achado.
+falha rastreado no código) e **segurança** (cada falha com o caminho de ataque). Quando o contexto tem um checklist de revisão, ele roda só os
+itens cujo gatilho aparece no diff. Cada achado tem ID, severidade, categoria, a correção mínima dentro do escopo, o
+código antes e depois e a recomendação (manter ou descartar, e por quê). Dúvidas de regra ou de arquitetura vêm como dúvida, não como achado.
 
 Os achados vão para **você** a cada rodada, e você decide no chat. Antes de recomendar descartar um achado crítico ou
 importante, o orquestrador confere a premissa (skill `verify-premise`). As decisões ficam em `triage-<id>-r<N>.md`; os
@@ -83,8 +83,9 @@ revisão de código.
 - **Depois da sua revisão:** o qa confere o roteiro contra o diff final, roda as escritas aprovadas, os passos
   automáticos (API e navegador — Claude in Chrome, o seu Chrome logado, ou Playwright) e a regressão da área, e escreve
   ✅/❌ e a evidência no roteiro.
-- **Passos manuais** (aplicativos desktop, ou o que o qa não conseguiu no navegador): o orquestrador mostra um passo
-  por vez, você executa e manda a evidência no chat, e ele marca o resultado.
+- **Passos manuais** (aplicativos desktop, hardware, um julgamento visual): o orquestrador mostra um passo por vez,
+  você executa e manda a evidência no chat, e ele marca o resultado. O orquestrador nunca usa o navegador: um passo que
+  o qa deixou manual só porque nenhum navegador conectou volta para um qa novo assim que você o conecta.
 - **Ajustes de teste:** mudança de código só para testar (bypass, flag, mock) é feita pelo coder, marcada com
   `AIDW-TEST`, num patch separado (`test-env-<id>.patch`); sai antes do commit, e um hook recusa o commit que ainda tem
   a marca.
@@ -97,10 +98,12 @@ items ligados e as pendências para a QA. O orquestrador confere que os ajustes 
 comandos exatos e, com **um OK**, faz o commit, o push e abre a PR (pela skill do contexto, quando ele tem uma). A partir
 daí a demanda está com o time (`CODE_REVIEW`) e depois com a QA (`QA_TEST`); você avisa o orquestrador quando ela muda.
 
-**Depois da entrega** (um bug devolvido pela QA, um pedido de mudança na PR, um ajuste pequeno): o caminho curto, sem
-plano novo — o resumo do item, o explorer só se a causa não estiver clara, o coder, a revisão só da correção (os achados
-vão para você), o reteste dos passos afetados e uma linha em *Addenda* no fim do plano. O
-`demand set <id> --loop bug-<n>` numera as rodadas de revisão desse laço a partir de 1.
+**Depois da entrega** (um bug devolvido pela QA, um pedido de mudança na PR, um ajuste pequeno): o caminho curto
+(`/aidw:fix`), sem plano novo — o resumo do item, o explorer quando o item ainda não aponta a causa, o coder, a revisão
+só da correção (os achados vão para você), o reteste dos passos afetados e uma linha em *Addenda* no fim do plano. O
+`demand set <id> --loop bug-<n>` numera as rodadas de revisão desse laço a partir de 1. Um bug devolvido pela QA ou um
+pedido de mudança da revisão do time é um **escape**: o reviewer também diz se o diff original já mostrava o problema
+e, se sim, redige um *candidato ao checklist* que o `/aidw:done` te oferece.
 
 ## Revisar a PR de outra pessoa (`pr-review`)
 
@@ -151,10 +154,10 @@ decide; o `/aidw:done` fecha.
 | Comando | Demanda | Agentes | Resultado |
 |---|---|---|---|
 | `/aidw:fix us-1234 bug 5678` | a que já existe | o fluxo completo, pelo caminho curto | a correção, a revisão só da correção e o reteste dos passos afetados; sem plano nem Task nova |
-| `/aidw:ask <pergunta>` | `ask-<slug>` | explorador | `answer-<id>.md`: a resposta curta e a evidência (`arquivo:linha`, consulta); uma nota da base pode responder sem delegar |
-| `/aidw:investigate <evidência>` | `inv-<slug>` (ou `bug-<n>`) | explorador, documentador | `investigation-<id>.md`: a causa provada (ou a próxima hipótese), o impacto e as opções; depois você escolhe: Bug, dívida técnica, corrigir agora ou nada |
-| `/aidw:card <ideia>` | `card-<slug>` | explorador (quando o texto afirma algo do código), documentador | `workitem-<id>.md`: o rascunho e os campos; criado no board só com o seu OK |
-| `/aidw:kb-review [escopo]` | `kb-review-<data>` | explorador | `kb-review-<id>.md`: por nota, o que vale, o que mudou e o que sumiu; as notas mudam com o seu OK, depois `kb index` e `kb check` |
+| `/aidw:ask <pergunta>` | `ask-<slug>` | explorer | `answer-<id>.md`: a resposta curta e a evidência (`arquivo:linha`, consulta); uma nota da base pode responder sem delegar |
+| `/aidw:investigate <evidência>` | `inv-<slug>` (ou `bug-<n>`) | explorer, documenter | `investigation-<id>.md`: a causa provada (ou a próxima hipótese), o impacto e as opções; depois você escolhe: Bug, dívida técnica, corrigir agora ou nada |
+| `/aidw:card <ideia>` | `card-<slug>` | explorer (quando o texto afirma algo do código), documenter | `workitem-<id>.md`: o rascunho e os campos; criado no board só com o seu OK |
+| `/aidw:kb-review [escopo]` | `kb-review-<data>` | explorer | `kb-review-<id>.md`: por nota, o que vale, o que mudou e o que sumiu; as notas mudam com o seu OK, depois `kb index` e `kb check` |
 
 Só leitura em código e ambientes; uma escrita que qualquer um deles precisasse volta como proposta, como dizem as
 policies.
@@ -205,7 +208,8 @@ longas (o review do time, a QA), feche o chat e retome num novo: a pasta da dema
 ### Concluir
 
 `/aidw:done` fecha a tarefa: parte do `aidw.py kb collect <id>`, grava no contexto só o que foi **verificado** e vale
-para as próximas demandas, valida, reinstala e faz commit e push **só do repositório do contexto**.
+para as próximas demandas, pergunta uma vez sobre os candidatos ao checklist, se houver, valida, reinstala e faz
+commit e push **só do repositório do contexto**.
 
 ## A base de conhecimento no fluxo
 

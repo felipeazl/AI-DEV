@@ -29,13 +29,14 @@ Each role also gets the MCP servers `config/mcp.toml` allows it, minus the tools
 
 **Orchestrator** — drives the demand end to end: understands the card, orders the exploration and the plan, **reads the
 plan** and brings it to your approval, starts the code, the Tasks and the test script in parallel, brings you the
-review findings, runs the manual test steps with you and, with your OK, commits, pushes and opens the PR.
+review findings, runs the manual test steps with you and, with your OK, commits, pushes and opens the PR. It never
+reads code or drives a browser itself: finding a cause is the explorer's job, the browser is qa's.
 
 **Explorer** — the cheap reader. Gets numbered questions ("where is the validation?", "what is the contract of endpoint
 X?") and answers with `file:line` or the query that proves it: ids, enums, real data through the context's SELECT
 validator, read-only API calls. Does not design the solution or change anything. Its report
 `exploration-<topic>.md` is reused by the plan. In **survey mode** it validates each point of the card and maps the flow
-end to end.
+end to end. It is also the agent behind `/aidw:ask`, `/aidw:investigate`, `/aidw:card` and `/aidw:kb-review`.
 
 **Planner** — writes `plan-<id>.md` (skill `to-spec`, preloaded): a **spec-driven, short, self-contained** plan —
 verified premises, current and desired behavior, the card's acceptance criteria and business rules (`CA1`, `RN1`), and
@@ -52,7 +53,9 @@ temporary change marked `AIDW-TEST`, in its own patch; the review and the commit
 **Reviewer** — reviews each delivery's **diff** against the plan in one pass (skill `code-review`, preloaded):
 quality (the team's guide and the repository's conventions), **bugs** (each with a failure scenario) and **security**
 (each with an attack path). Each finding has a stable ID, severity, category, the minimal fix, the code before and
-after, and a **recommendation** (keep or discard, and why). In **PR mode** (someone else's PR) each finding worth telling
+after, and a **recommendation** (keep or discard, and why). When the context has a review checklist, it runs only the items
+whose trigger appears in the diff. Reviewing the fix of an **escape** (a bug QA returned, a change the team's review
+asked for), it also drafts a *checklist candidate* for `/aidw:done`. In **PR mode** (someone else's PR) each finding worth telling
 the author comes with a draft comment; it never comments, approves or completes a PR.
 
 **QA** — two moments:
@@ -60,13 +63,17 @@ the author comes with a draft comment; it never comments, approves or completes 
    expected result, evidence and how to prove it (`auto-api`, `auto-browser`, `auto-suite` or `manual`), and the test
    data, listing under *Approvals* what must be created or changed.
 2. **Test** (`test` mode, after your code review): checks the script against the final diff, runs the approved writes
-   and the automatic steps and marks ✅/❌ with evidence. Manual steps are left for you and the orchestrator.
+   and the automatic steps and marks ✅/❌ with evidence. Manual steps are left for you and the orchestrator. A browser
+   step it cannot run because no browser connects becomes `manual` with the note `browser_unavailable`, so a new qa can
+   run it once you connect the browser.
 
 **Documenter** — after the plan approval, writes the demand's README (`readme-<id>.md`: what the card delivers, in
-plain words, without the plan's technical detail or your decisions), attaches it to the card and creates one Task per
-delivery; the plan stays in the demand folder as the agents' spec. After the tests, it updates the README with what was
+plain words, without the plan's technical detail or your decisions), attaches it to the card when the context says
+so and creates one Task per delivery; the plan stays in the demand folder as the agents' spec. After the tests, it updates the README with what was
 done and tested and writes `pr-<id>.md` (commit message, title, description, work items, pending items for QA). The
-orchestrator commits, pushes, opens the PR and swaps the README on the card with your OK.
+orchestrator commits, pushes, opens the PR and swaps the README on the card with your OK. In **work item** mode
+(`/aidw:investigate`, `/aidw:card`) it drafts a User Story or technical debt, created only with your OK of the
+fields.
 
 ## Models and effort
 
@@ -76,12 +83,12 @@ each with the reason that allows it:
 | Agent | Default | Exceptions (only for the reason) |
 |---|---|---|
 | orchestrator | the chat's (see below) | — |
-| explorer | Haiku | Sonnet medium — redo once when the result made no sense; Sonnet high — survey |
+| explorer | Haiku low | Sonnet medium — redo once when the result made no sense; Sonnet high — survey |
 | planner | Sonnet high | medium — plan adjustment you asked for at approval |
-| coder | Sonnet high | medium — small fix (kept finding, failed test, your adjustment) or temporary test adjustment |
+| coder | Sonnet high | medium — small fix (kept finding, failed test, your adjustment) or temporary test adjustment; Opus medium — a delivery the plan marks as complex (migration, concurrency, performance, contract between systems), or a fix that failed twice |
 | reviewer | Sonnet high | medium — re-review of only the fixes; low — re-review of a trivial fix |
 | qa | Sonnet medium | high — redo once when the result made no sense |
-| documenter | Haiku | — |
+| documenter | Haiku medium | — |
 
 **The orchestrator runs with the model and effort of the chat it is opened in — the config value is only the
 recommendation shown in the Runtime section.** (Default recommendation: Opus, medium.)
@@ -91,7 +98,7 @@ recommendation shown in the Runtime section.** (Default recommendation: Opus, me
 | What | Where |
 |---|---|
 | Each role's model **tier** (`top`/`mid`/`fast`) and default effort | `DEFAULT_AGENTS` in `aidw.py` — orchestrator `top`/medium (only the recommendation), planner, coder and reviewer `mid`/high, qa `mid`/medium, explorer `fast`/low, documenter `fast`/medium |
-| Which model is each tier, and which efforts it accepts | `config/models.toml` — Claude: `top` = Opus, `mid` = Sonnet, `fast` = Haiku (Haiku takes no effort, so the explorer and documenter efforts are ignored on Claude) |
+| Which model is each tier, and which efforts it accepts | `config/models.toml` — Claude: `top` = Opus, `mid` = Sonnet, `fast` = Haiku (Haiku accepts only `low`, `medium` and `high`) |
 | The exceptions | `[[effort.variants.<role>]]` in `orchestrator/config/routing.toml` (`effort`, optional `model`, and `when`, the reason) |
 | Your overrides | `[agents.<role>]` in `aidw.config.toml` |
 | A team's overrides of the exceptions | `contexts/<name>/routing.toml` (merged on top of the core file) |
@@ -132,7 +139,7 @@ effort = "high"
 when = "survey: the end-to-end flow map is the deliverable"
 ```
 
-Every exception needs a `when`. Run the tests (`python -m unittest discover -s tests`) when changing the core file.
+Every exception needs a `when`. Run the tests (`python tests/run.py`) when changing the core file.
 
 ### Variants
 
@@ -158,8 +165,7 @@ The same table serves both providers through each model's **tier** (`config/mode
 | Haiku | `fast` | the light one |
 
 On Claude, `model_id` is the **alias** (`opus`, `sonnet`, `haiku`), which Claude Code resolves to the newest model of the
-family it knows. On Codex it is the exact ID, and `metrics.md` records the model the session really used. Codex's
-`fast` model accepts effort, so there the explorer runs at `low` and the documenter at `medium`.
+family it knows. On Codex it is the exact ID, and `metrics.md` records the model the session really used.
 
 ## Output contract
 
@@ -223,4 +229,4 @@ Names that collide with the CLI's own agents (`plan`, `explore`, `default`, `gen
 3. The role in `DEFAULT_AGENTS`, `DEFAULT_NAMES` and `RUN_PROFILE` in `aidw.py` (tier and effort, name, headless profile).
 4. Its exceptions, if any, in `[[effort.variants.<role>]]`.
 5. `[agents.<role>]` in `aidw.config.example.toml` and, if needed, the MCPs in `config/mcp.toml`.
-6. `python -m unittest discover -s tests` and `python aidw.py install`.
+6. `python tests/run.py` and `python aidw.py install`.

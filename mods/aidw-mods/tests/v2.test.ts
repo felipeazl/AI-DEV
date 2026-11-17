@@ -328,6 +328,15 @@ describe('painel v3', () => {
     expect(visibleTabs(s, 'decide')).toEqual([])
   })
 
+  test('modos enxutos (ask, investigate, card, kb-review) têm abas e não quebram o painel', async () => {
+    for (const id of ['ask-1', 'inv-1', 'card-1', 'kb-review-1']) {
+      const s = buildSnapshot({ dir: `C:/x/${id}`, demand: { id, step: 'EXPLORE' }, files: [], texts: {} })
+      expect(visibleTabs(s, 'general').map(([tab]) => tab)).toEqual(['general'])
+      expect(visibleTabs(s, 'decide')).toEqual([])
+      expect(viewFor(s.kind, 'metrics').view).toBe('metrics')
+    }
+  })
+
   test('riscos da estimativa: subtópicos, na linha ou a seção antiga', async () => {
     const lines = (...l: string[]) => l.join('\n')
     const lev = lines('- **Confiança:** média.', '- **Riscos:**', '  - **Texto como contrato:** testes.', '  - **UX:** sem desenho.', '', '### Fora')

@@ -13,9 +13,10 @@ English; [configuration.md](configuration.md#language)).
 
 The AiDW mods are on **only in orchestrator mode**:
 
-- **On:** `/aidw:go` or `/aidw:survey` register the session in `state/sessions.json`, and `aidw-mods` checks that
-  registry on every message. The `go` skill writes it with `aidw.py session bind` (reads `CLAUDE_CODE_SESSION_ID`), and
-  so does the guard hook where the client sends it the slash command (the desktop app does, the terminal does not).
+- **On:** `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card` or `/aidw:kb-review`
+  register the session in `state/sessions.json`, and `aidw-mods` checks that registry on every message. The skill
+  writes it with `aidw.py session bind` (reads `CLAUDE_CODE_SESSION_ID`), and so does the guard hook where the client
+  sends it the slash command (the desktop app does, the terminal does not).
 - **Which demand:** the registry keeps the context, the id and the demand folder (`session bind --demand <id>`, and
   every `demand set` in a registered session). The mod reads the folder from there, without guessing the demand from
   the text, so any id works. With no demand in the registry, the chat's folder counts when it opened in the demand or
@@ -64,8 +65,8 @@ AiDW us-1234 Review ● waits for you        context ▰▰▰▱▱ 41% · 82k 
    and the plan's usage windows (7d and 5h), each with a thin bar.
 2. **Running agents**, one card each: name, model and effort, elapsed time, label and the tokens of its latest
    response. With no agent, the line does not appear. When the cards do not fit in one line, they become a list.
-3. **The buttons** **Diff** (runs `/aidw:diff`, when the demand has a worktree), **General**, **Metrics** and **Tests and Review** (**Questions** in a survey), with the number of
-   items waiting for a decision.
+3. **The buttons** **Diff** (runs `/aidw:diff`, when the demand has a repository), **General**, **Metrics** and
+   **Tests and Review** (**Questions** in a survey), with the number of items waiting for a decision.
 
 Bars turn yellow from 75% and red from 90%; from 75% the 7d and 5h windows show the local time they renew. The usage
 windows appear only on a subscription account. The strip disappears in `DONE`; **`/strip`** hides and shows it. It
@@ -82,7 +83,7 @@ Three panels, each next to the chat, opened only when you ask, by the strip butt
 | Tests and Review | `/review-tests` | Review · Tests | Comments | Questions |
 
 `/panel <tab>` opens the panel that has the tab (`/panel review`, `/panel tests`, `/panel comments`,
-`/panel questions` open Tests and Review). **The panels only inform:** keeping or discarding a finding, a manual
+`/panel questions` open Tests and Review; `/panel metrics` opens Metrics). **The panels only inform:** keeping or discarding a finding, a manual
 step's result, what to publish, approving a PR and answering a question are decided in the chat. What each panel shows
 and where its data comes from: [panel.md](panel.md).
 

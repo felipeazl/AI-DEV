@@ -29,12 +29,14 @@ bloqueia para ele (`disallowed_tools`).
 
 **Orchestrator** — conduz a demanda de ponta a ponta: entende o card, encomenda a exploração e o plano, **lê o plano** e
 o leva à sua aprovação, dispara em paralelo o código, as Tasks e o roteiro de testes, leva os achados da revisão a você,
-roda os passos manuais do teste com você e, com o seu OK, faz o commit, o push e abre a PR.
+roda os passos manuais do teste com você e, com o seu OK, faz o commit, o push e abre a PR. Ele nunca lê código nem
+usa o navegador: achar uma causa é trabalho do explorer, e o navegador é do qa.
 
 **Explorer** — o leitor barato. Recebe perguntas numeradas ("onde fica a validação?", "qual o contrato do endpoint
 X?") e responde com `arquivo:linha` ou com a consulta que prova: ids, enums, dado real pelo validador de SELECT do
 contexto, chamada de API que só lê. Não desenha a solução nem altera nada. O relatório `exploration-<assunto>.md` é
-reusado pelo plano. No **modo levantamento**, valida cada ponto do card e mapeia o fluxo de ponta a ponta.
+reusado pelo plano. No **modo levantamento**, valida cada ponto do card e mapeia o fluxo de ponta a ponta. É também o agente por trás do
+`/aidw:ask`, `/aidw:investigate`, `/aidw:card` e `/aidw:kb-review`.
 
 **Planner** — escreve o `plan-<id>.md` (skill `to-spec`, pré-carregada): um plano **spec-driven, curto e
 autossuficiente** — premissas verificadas, comportamento atual e desejado, os critérios de aceite e as regras de negócio
@@ -52,7 +54,9 @@ marcada com `AIDW-TEST`, num patch só; a revisão e o commit nunca o veem.
 **Reviewer** — revisa o **diff** de cada entrega contra o plano numa passada (skill `code-review`, pré-carregada):
 qualidade (o guia do time e as convenções do repositório), **bugs** (cada um com o cenário de falha) e **segurança**
 (cada falha com o caminho de ataque). Cada achado tem ID estável, severidade, categoria, a correção mínima, o código antes
-e depois e a **recomendação** (manter ou descartar, e por quê). No **modo PR** (a PR de outra pessoa), cada achado que
+e depois e a **recomendação** (manter ou descartar, e por quê). Quando o contexto tem um checklist de revisão, roda só
+os itens cujo gatilho aparece no diff. Ao revisar a correção de um **escape** (um bug devolvido pela QA, um pedido de
+mudança da revisão do time), também redige um *candidato ao checklist* para o `/aidw:done`. No **modo PR** (a PR de outra pessoa), cada achado que
 vale contar ao autor vem com o rascunho do comentário; ele nunca comenta, aprova nem conclui a PR.
 
 **QA** — dois momentos:
@@ -61,12 +65,16 @@ vale contar ao autor vem com o rascunho do comentário; ele nunca comenta, aprov
    listando em *Approvals* o que precisa ser criado ou alterado.
 2. **Teste** (modo `test`, depois da sua revisão de código): confere o roteiro contra o diff final, roda as escritas
    aprovadas e os passos automáticos e marca ✅/❌ com a evidência. Os passos manuais ficam para você e o orquestrador.
+   Um passo de navegador que ele não consegue rodar porque nenhum navegador conecta vira `manual` com a nota
+   `browser_unavailable`, para um qa novo rodá-lo assim que você conectar o navegador.
 
 **Documenter** — depois da aprovação do plano, escreve o README da demanda (`readme-<id>.md`: o que o card entrega, em
-palavras simples, sem o detalhe técnico do plano nem as suas decisões), anexa ao card e cria uma Task por entrega; o
+palavras simples, sem o detalhe técnico do plano nem as suas decisões), anexa ao card quando o contexto pede e cria uma Task por
+entrega; o
 plano fica na pasta da demanda como a spec dos agentes. Depois dos testes, atualiza o README com o que foi feito e
 testado e escreve o `pr-<id>.md` (mensagem de commit, título, descrição, work items, pendências para a QA). Quem faz o
-commit, o push, abre a PR e troca o README no card é o orquestrador, com o seu OK.
+commit, o push, abre a PR e troca o README no card é o orquestrador, com o seu OK. No modo **work item**
+(`/aidw:investigate`, `/aidw:card`), redige uma User Story ou dívida técnica, criada só com o seu OK dos campos.
 
 ## Modelos e effort
 
@@ -76,12 +84,12 @@ uma com o motivo que a permite:
 | Agente | Padrão | Exceções (só pelo motivo) |
 |---|---|---|
 | orchestrator | o do chat (veja abaixo) | — |
-| explorer | Haiku | Sonnet medium — refazer uma vez quando o resultado não fez sentido; Sonnet high — levantamento |
+| explorer | Haiku low | Sonnet medium — refazer uma vez quando o resultado não fez sentido; Sonnet high — levantamento |
 | planner | Sonnet high | medium — ajuste do plano que você pediu na aprovação |
-| coder | Sonnet high | medium — correção pequena (achado mantido, teste que falhou, seu ajuste) ou ajuste temporário de teste |
+| coder | Sonnet high | medium — correção pequena (achado mantido, teste que falhou, seu ajuste) ou ajuste temporário de teste; Opus medium — entrega que o plano marca como complexa (migração, concorrência, performance, contrato entre sistemas), ou correção que falhou duas vezes |
 | reviewer | Sonnet high | medium — re-revisão só das correções; low — re-revisão de uma correção trivial |
 | qa | Sonnet medium | high — refazer uma vez quando o resultado não fez sentido |
-| documenter | Haiku | — |
+| documenter | Haiku medium | — |
 
 **O orquestrador roda com o modelo e o effort do chat em que é aberto — o valor da configuração é só a recomendação
 mostrada na seção Runtime.** (Recomendação padrão: Opus, medium.)
@@ -91,7 +99,7 @@ mostrada na seção Runtime.** (Recomendação padrão: Opus, medium.)
 | O quê | Onde |
 |---|---|
 | O **tier** de modelo (`top`/`mid`/`fast`) e o effort padrão de cada papel | `DEFAULT_AGENTS` no `aidw.py` — orchestrator `top`/medium (só a recomendação), planner, coder e reviewer `mid`/high, qa `mid`/medium, explorer `fast`/low, documenter `fast`/medium |
-| Qual modelo é cada tier, e os efforts que ele aceita | `config/models.toml` — Claude: `top` = Opus, `mid` = Sonnet, `fast` = Haiku (o Haiku não aceita effort; no Claude, o effort do explorer e do documenter é ignorado) |
+| Qual modelo é cada tier, e os efforts que ele aceita | `config/models.toml` — Claude: `top` = Opus, `mid` = Sonnet, `fast` = Haiku (o Haiku aceita só `low`, `medium` e `high`) |
 | As exceções | `[[effort.variants.<papel>]]` no `orchestrator/config/routing.toml` (`effort`, `model` opcional e `when`, o motivo) |
 | As suas sobreposições | `[agents.<papel>]` no `aidw.config.toml` |
 | As exceções de um time | `contexts/<nome>/routing.toml` (mesclado sobre o arquivo do núcleo) |
@@ -132,7 +140,7 @@ effort = "high"
 when = "survey: the end-to-end flow map is the deliverable"
 ```
 
-Toda exceção precisa de `when`. Rode os testes (`python -m unittest discover -s tests`) ao mudar o arquivo do núcleo.
+Toda exceção precisa de `when`. Rode os testes (`python tests/run.py`) ao mudar o arquivo do núcleo.
 
 ### Variantes
 
@@ -158,8 +166,7 @@ A mesma tabela serve aos dois provedores pelo **tier** de cada modelo (`config/m
 | Haiku | `fast` | o leve |
 
 No Claude, o `model_id` é o **apelido** (`opus`, `sonnet`, `haiku`), que o Claude Code resolve para o modelo mais novo
-da família. No Codex é o ID exato, e o `metrics.md` grava o modelo que a sessão realmente usou. O modelo `fast` do Codex
-aceita effort, então lá o explorer roda em `low` e o documenter em `medium`.
+da família. No Codex é o ID exato, e o `metrics.md` grava o modelo que a sessão realmente usou.
 
 ## Contrato de saída
 
@@ -223,4 +230,4 @@ aviso. Nomes que colidem com agentes do CLI (`plan`, `explore`, `default`, `gene
 3. O papel em `DEFAULT_AGENTS`, `DEFAULT_NAMES` e `RUN_PROFILE` do `aidw.py` (tier e effort, nome, perfil headless).
 4. As exceções, se houver, em `[[effort.variants.<papel>]]`.
 5. `[agents.<papel>]` no `aidw.config.example.toml` e, se fizer sentido, os MCPs no `config/mcp.toml`.
-6. `python -m unittest discover -s tests` e `python aidw.py install`.
+6. `python tests/run.py` e `python aidw.py install`.
