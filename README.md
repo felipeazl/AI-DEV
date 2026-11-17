@@ -64,23 +64,39 @@ No API key is needed: everything runs on the CLI login (a Claude subscription or
 
 ### Steps
 
+Log in to Claude Code once before the setup (run `claude` and authenticate). Then:
+
 ```powershell
-git clone <AiDW url> C:\AiDW
+git clone https://github.com/felipeazl/AI-DEV.git C:\AiDW
 cd C:\AiDW
 git clone <your context url> contexts\<name>    # optional: your team's rules (docs/contexts.md)
 .\setup.ps1                                     # Linux/macOS: ./setup.sh
-python aidw.py install                          # Claude: AiDW is available in any folder
-.\doctor.ps1                                    # checks everything; ends with READY or NOT READY
+python aidw.py install                          # makes /aidw:go available in any folder
+.\doctor.ps1                                    # confirms everything; ends with READY or NOT READY
 ```
 
 | Step | What it does |
 |---|---|
-| `setup` | Makes sure Python is there, runs the **wizard** (provider, delegation mode, each agent's model and effort, agents to disable, names, project folders, MCPs, language, context) and writes `aidw.config.toml`. Checks Git, Node, the CLIs and the login, creates missing folders, runs `apply`, offers to register the MCPs and ends with `doctor`. |
+| `setup` | Makes sure Python is there, runs the **wizard** and writes `aidw.config.toml`. Checks Git, Node, the CLIs and the login (offers to install what is missing), creates missing folders, runs `apply`, offers to register the context's MCPs and ends with `doctor`. |
 | `install` | Builds the **`aidw`** plugin (agents, skills, commands, hooks) and the **`aidw-mods`** plugin ([mods](docs/mods.md)) and installs both in Claude Code (CLI and desktop app). Adds AiDW's own rules to `~/.claude/settings.json`, only its items. If Codex was installed before, updates it too. |
 | `install --provider codex` | Optional. **Only** the `aidw-*` agents (`~/.codex/agents`) and skills (`~/.agents/skills`). |
 | `doctor` | Checks core, CLIs, login, context, environment variables, MCPs, folders and install. Changes nothing. |
 
-After `install`, **open a new chat**. `/aidw:go` shows up in any folder.
+**The wizard**, on a first install, offers the **recommended setup** (Claude Code, the default models and agents):
+answer `y` and it only asks four things:
+
+1. **Your projects' folders** — the folder(s) that hold your Git repositories, e.g. `C:/Repos`.
+2. **MCPs** — Enter keeps all of them (browser, Chrome DevTools, Figma, library docs).
+3. **Language** of the conversation.
+4. **Context** — your team's rules. Your team has one: clone it into `contexts/<name>/` before the setup. None yet:
+   pick *none*; later, in a Claude Code chat, `/aidw:context create` reads your repositories, asks you about them and
+   builds one ([docs/contexts.md](docs/contexts.md#create-a-context)).
+
+Everything can be changed later with `python aidw.py configure` (the full wizard: each agent's model and effort,
+agents to disable, names).
+
+After `install`, **open a new chat**: `/aidw:go` shows up in any folder. A cheap first try that changes nothing, in a
+repository folder: `/aidw:ask how is X implemented?`.
 
 - **Update:** `git pull` in AiDW (and in the context), then `python aidw.py install` and a new chat.
 - **Another machine:** clone AiDW and the context, run `setup` and `install`. `aidw.config.toml` and the generated
@@ -166,19 +182,18 @@ Step by step: [docs/workflow.md](docs/workflow.md).
 | Agent | Does | Default model · effort | Exceptions |
 |---|---|---|---|
 | `orchestrator` | The main chat: drives, reads the plan, delegates, brings decisions to you, opens the PR with your OK | the chat's (see below) | — |
-| `explorer` | Reads code and environment and answers numbered questions with `file:line` | Haiku | Sonnet medium (redo once), Sonnet high (survey) |
+| `explorer` | Reads code and environment and answers numbered questions with `file:line` | Haiku · low | Sonnet medium (redo once), Sonnet high (survey) |
 | `planner` | Writes the plan with its deliveries; adjusts it when you ask | Sonnet · high | medium (plan adjustment) |
-| `coder` | Implements one delivery at a time: code, tests, build | Sonnet · high | medium (small fix, test adjustment) |
+| `coder` | Implements one delivery at a time: code, tests, build | Sonnet · high | medium (small fix, test adjustment), Opus medium (complex delivery or a fix that failed twice) |
 | `reviewer` | Reviews the diff against the plan: quality, bugs, security | Sonnet · high | medium (re-review), low (trivial fix) |
 | `qa` | Test script and data in parallel with the code; then the tests | Sonnet · medium | high (redo once) |
-| `documenter` | The demand README and the Tasks on the board, and the PR text | Haiku | — |
+| `documenter` | The demand README and the Tasks on the board, and the PR text | Haiku · medium | — |
 
 - The defaults live in `DEFAULT_AGENTS` in `aidw.py` (each role's model **tier** and effort) and in
   `config/models.toml` (which model is each tier); the exceptions live in `[effort.variants]` of
   `orchestrator/config/routing.toml`. Your `aidw.config.toml` overrides the defaults.
 - **The orchestrator runs with the model and effort of the chat it is opened in — the config value is only the
   recommendation shown in the Runtime section.**
-- Haiku takes no effort, so the explorer and documenter efforts are ignored on Claude.
 
 Change model and effort: [docs/agents.md](docs/agents.md#change-model-and-effort).
 

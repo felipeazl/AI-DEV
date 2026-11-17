@@ -64,23 +64,39 @@ Não é preciso API key: tudo roda com o login do CLI (assinatura do Claude ou c
 
 ### Passo a passo
 
+Faça login no Claude Code uma vez antes do setup (rode `claude` e autentique). Depois:
+
 ```powershell
-git clone <url do AiDW> C:\AiDW
+git clone https://github.com/felipeazl/AI-DEV.git C:\AiDW
 cd C:\AiDW
 git clone <url do seu contexto> contexts\<nome>    # opcional: as regras do seu time (docs/pt-BR/contexts.md)
 .\setup.ps1                                       # Linux/macOS: ./setup.sh
-python aidw.py install                            # Claude: o AiDW passa a existir em qualquer pasta
-.\doctor.ps1                                      # confere tudo e termina com READY ou NOT READY
+python aidw.py install                            # o /aidw:go passa a existir em qualquer pasta
+.\doctor.ps1                                      # confirma tudo e termina com READY ou NOT READY
 ```
 
 | Etapa | O que faz |
 |---|---|
-| `setup` | Garante o Python, roda o **wizard** (provedor, modo de delegação, modelo e effort de cada agente, agentes a desligar, nomes, pastas dos projetos, MCPs, idioma, contexto) e grava o `aidw.config.toml`. Confere Git, Node, os CLIs e o login, cria as pastas que faltam, roda o `apply`, oferece registrar os MCPs e termina com o `doctor`. |
+| `setup` | Garante o Python, roda o **wizard** e grava o `aidw.config.toml`. Confere Git, Node, os CLIs e o login (oferece instalar o que falta), cria as pastas que faltam, roda o `apply`, oferece registrar os MCPs do contexto e termina com o `doctor`. |
 | `install` | Gera o plugin **`aidw`** (agentes, skills, comandos, hooks) e o plugin **`aidw-mods`** ([mods](docs/pt-BR/mods.md)) e instala os dois no Claude Code (CLI e app desktop). Acrescenta ao `~/.claude/settings.json` só as regras do AiDW. Se o Codex já foi instalado, atualiza ele junto. |
 | `install --provider codex` | Opcional. **Só** os agentes `aidw-*` (`~/.codex/agents`) e as skills (`~/.agents/skills`). |
 | `doctor` | Verifica núcleo, CLIs, login, contexto, variáveis de ambiente, MCPs, pastas e instalação. Não altera nada. |
 
-Depois do `install`, **abra um chat novo**. O `/aidw:go` aparece em qualquer pasta.
+**O wizard**, na primeira instalação, oferece a **configuração recomendada** (Claude Code, os modelos e agentes
+padrão): responda `y` e ele só pergunta quatro coisas:
+
+1. **As pastas dos seus projetos** — a(s) pasta(s) onde ficam seus repositórios Git, ex.: `C:/Repos`.
+2. **MCPs** — Enter mantém todos (navegador, Chrome DevTools, Figma, documentação de bibliotecas).
+3. **Idioma** da conversa.
+4. **Contexto** — as regras do seu time. O time já tem um: clone em `contexts/<nome>/` antes do setup. Ainda não tem:
+   escolha *none*; depois, num chat do Claude Code, o `/aidw:context create` lê seus repositórios, te pergunta sobre
+   eles e monta um ([docs/pt-BR/contexts.md](docs/pt-BR/contexts.md#criar-um-contexto)).
+
+Tudo pode ser mudado depois com `python aidw.py configure` (o wizard completo: modelo e effort de cada agente, agentes
+a desligar, nomes).
+
+Depois do `install`, **abra um chat novo**: o `/aidw:go` aparece em qualquer pasta. Um primeiro teste barato e que
+não altera nada, numa pasta de repositório: `/aidw:ask como X está implementado?`.
 
 - **Atualizar:** `git pull` no AiDW (e no contexto), depois `python aidw.py install` e um chat novo.
 - **Outra máquina:** clone o AiDW e o contexto, rode `setup` e `install`. O `aidw.config.toml` e os arquivos gerados
@@ -96,6 +112,9 @@ Abra um chat do Claude Code, de preferência na pasta do repositório, e chame:
 /aidw:go 1234 pr 5678         ← revisa a PR de outra pessoa (sem implementar)
 /aidw:survey 1234             ← levantamento: valida o card no código e estima (sem implementar)
 /aidw:go                      ← sem argumento: retoma a demanda desta pasta
+/aidw:fix us-1234 bug 5678    ← bug devolvido pelo QA: o caminho curto na demanda
+/aidw:ask como funciona X?    ← pergunta sobre o código, respondida com arquivo:linha
+/aidw:investigate <erro>      ← causa-raiz de um problema e, se for defeito, o Bug redigido
 ```
 
 O orquestrador detecta o projeto, abre a demanda (ou **retoma da etapa gravada**), cria o worktree, leva o chat para
@@ -158,19 +177,18 @@ Etapa por etapa: [docs/pt-BR/workflow.md](docs/pt-BR/workflow.md).
 | Agente | Faz | Modelo · effort padrão | Exceções |
 |---|---|---|---|
 | `orchestrator` | O chat principal: conduz, lê o plano, delega, leva as decisões a você, abre a PR com o seu OK | o do chat (veja abaixo) | — |
-| `explorer` | Lê código e ambiente e responde perguntas numeradas com `arquivo:linha` | Haiku | Sonnet medium (refazer uma vez), Sonnet high (levantamento) |
+| `explorer` | Lê código e ambiente e responde perguntas numeradas com `arquivo:linha` | Haiku · low | Sonnet medium (refazer uma vez), Sonnet high (levantamento) |
 | `planner` | Escreve o plano com as entregas; ajusta quando você pede | Sonnet · high | medium (ajuste do plano) |
-| `coder` | Implementa uma entrega por vez: código, testes, build | Sonnet · high | medium (correção pequena, ajuste de teste) |
+| `coder` | Implementa uma entrega por vez: código, testes, build | Sonnet · high | medium (correção pequena, ajuste de teste), Opus medium (entrega complexa ou correção que falhou duas vezes) |
 | `reviewer` | Revisa o diff contra o plano: qualidade, bugs, segurança | Sonnet · high | medium (re-revisão), low (correção trivial) |
 | `qa` | Roteiro e massa em paralelo com o código; depois, o teste | Sonnet · medium | high (refazer uma vez) |
-| `documenter` | O README da demanda e as Tasks no board, e o texto da PR | Haiku | — |
+| `documenter` | O README da demanda e as Tasks no board, e o texto da PR | Haiku · medium | — |
 
 - Os padrões ficam em `DEFAULT_AGENTS` no `aidw.py` (o **tier** de modelo e o effort de cada papel) e no
   `config/models.toml` (qual modelo é cada tier); as exceções, em `[effort.variants]` do
   `orchestrator/config/routing.toml`. O seu `aidw.config.toml` sobrepõe os padrões.
 - **O orquestrador roda com o modelo e o effort do chat em que é aberto — o valor da configuração é só a
   recomendação mostrada na seção Runtime.**
-- O Haiku não aceita effort; no Claude, o effort do explorer e do documenter é ignorado.
 
 Trocar modelo e effort: [docs/pt-BR/agents.md](docs/pt-BR/agents.md#trocar-modelo-e-effort).
 

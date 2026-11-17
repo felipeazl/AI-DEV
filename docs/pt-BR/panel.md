@@ -24,7 +24,10 @@ no `context.toml`); dentro deles, cada aba só aparece quando há o arquivo que 
 
 ```text
 AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82k   7d ▰▰▰▰▱ 58%   5h ▰▰▰▰▰ 91% · renova 16:40
-● Coder Sonnet medium · fix r1 · 2m10s
+╭──────────────────────────────────╮
+│ ● Coder Sonnet medium      2m10s │
+│ fix r1               184k tokens │
+╰──────────────────────────────────╯
                                                               Diff  Geral  Métricas  Testes e Review 4
 ```
 
@@ -32,9 +35,10 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
    PR · Revisão final") e **● espera você** quando a etapa é sua (`HUMAN_APPROVAL`, aprovação do plano, triagem, sua
    revisão de código, teste manual, PR, revisão final); do outro lado, o contexto em % da janela real do modelo com os
    tokens, e as janelas 7d e 5h.
-2. **Os agentes rodando** (nome, modelo e effort, tarefa, tempo), com o ponto laranja. Sem agente, a linha não aparece.
-3. **Os botões**, numa linha só à direita: **Diff** (quando a demanda tem worktree: roda `/aidw:diff`, o diff do app
-   vai para o próximo repositório da demanda); **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
+2. **Os agentes rodando**, um card por agente (nome, modelo e effort, tempo, label da tarefa, tokens da última
+   resposta), com o ponto laranja. Quando os cards não cabem numa linha, viram uma lista. Sem agente, nada aparece.
+3. **Os botões**, numa linha só à direita: **Diff** (quando a demanda tem repositório: roda `/aidw:diff`, o diff do
+   app vai para o próximo repositório da demanda); **Geral**; **Métricas** (quando há delegação ou turno do orquestrador
    gravado); **Testes e Review** (quando a demanda tem revisão, roteiro ou comentários de PR; **Dúvidas** no
    levantamento), com o número do que ainda espera decisão.
 
@@ -51,14 +55,15 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
 | Métricas | **Métricas** · `/metrics` | consumo | consumo | consumo |
 | Testes e Review | **Testes e Review** · `/review-tests` | abas Revisão · Testes | Comentários | vira **Dúvidas** |
 
-O uso (desenvolvimento, revisão de PR, levantamento) vem dos arquivos da demanda; os modos enxutos (pergunta, investigação, card novo, revisão da base), do prefixo do id da demanda (`ask-`, `inv-`, `card-`, `kb-review-`). Uma demanda que fechou o levantamento e
-seguiu já aparece como desenvolvimento, mesmo antes de o plano ser gravado.
+O uso (desenvolvimento, revisão de PR, levantamento) vem dos arquivos da demanda; os modos enxutos (pergunta,
+investigação, card novo, revisão da base), do prefixo do id da demanda (`ask-`, `inv-`, `card-`, `kb-review-`). Uma
+demanda que fechou o levantamento e seguiu já aparece como desenvolvimento, mesmo antes de o plano ser gravado.
 
 - **Cada painel é um pane próprio** ("AiDW · Geral", "AiDW · Métricas", "AiDW · Testes e Review" ou "AiDW · Dúvidas");
   com dois ou mais abertos, o app mostra abas entre eles. Ao sair do modo orquestrador, todos fecham. Numa janela estreita
   demais o painel não abre e o comando diz por quê.
 - **`/panel <aba>`** abre o painel que tem a aba: `review`, `tests`, `comments`, `questions` (ou `revisao`, `testes`,
-  `comentarios`, `duvidas`) abrem Testes e Review; qualquer outra coisa abre a Geral.
+  `comentarios`, `duvidas`) abrem Testes e Review; `metrics` abre Métricas; qualquer outra coisa abre a Geral.
 - **Cabeçalho único:** tipo e número, a situação (`● Revisão · espera você`, `Code review · com o time` em azul,
   `Pausada`, `Concluída` em verde) e o título do card.
 - **Abas** (só em Testes e Review, e só com duas ou mais): ao lado do nome, em laranja, o que ainda espera decisão. Aba
@@ -84,7 +89,7 @@ As etapas de fora que o contexto acrescenta (`[[workflows.external_steps]]`) ent
 Uma página só, sem abas:
 
 1. **Mapa da demanda:** o resumo (até 4 linhas) e o **progresso** nos dois grupos, com o nome da etapa atual. Quando o
-   time ou a QA devolve, a etapa de fora fica amarela com "voltou do Testes QA"; um contador guarda as voltas por etapa.
+   time ou a QA devolve, a etapa de fora fica amarela com "↩ voltou do Testes QA"; um contador guarda as voltas por etapa.
 2. **Números**, só o que não está em outro bloco: na revisão de PR, as PRs e os comentários publicados; no levantamento,
    as dúvidas abertas.
 3. **Próximo passo:** a nota do `demand.json` (`demand set --note`), quando há.

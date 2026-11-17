@@ -1000,7 +1000,8 @@ def normalize_dir(path: str) -> str:
 
 
 def ask_project_dirs(cfg: dict, step: str) -> None:
-    print(f"{step} Your projects' folders — open to the orchestrator and every agent.")
+    print(f"{step} Your projects' folders: the folder(s) that hold your Git repositories (e.g. C:/Repos), open to\n"
+          "     the orchestrator and every agent. Without one, the agents only see the folder the chat is opened in.")
     current = cfg["workspace"]["project_dirs"]
     answer = ask("  Paths separated by ';' ('-' = none)", "; ".join(current) or "-")
     dirs = []
@@ -1052,10 +1053,15 @@ def ask_context(cfg: dict, step: str) -> None:
         print(f"  To use it, cancel (Ctrl+C), clone its repository into contexts/{current}/ and "
               "run setup again.")
         current = ""
-    options = ([("", "none — only AiDW's generic rules")] + [(c, c) for c in contexts]
-               + [("+", "create a new context now")])
+    options = ([("", "none — only AiDW's generic rules (you can add one later)")] + [(c, c) for c in contexts]
+               + [("+", "create an empty context now, to fill in by hand")])
     prefix = f"{step} " if step else ""
-    choice = choose(f"{prefix}Work context (rules in contexts/<name>/):", options, current)
+    print(f"{prefix}Work context: your team's rules (systems, build commands, conventions, board) in "
+          "contexts/<name>/.\n"
+          "     Your team has one? Clone it into contexts/<name>/ and run setup again. None yet? Pick none and,\n"
+          "     later, in a Claude Code chat, run /aidw:context create: it reads your repositories and asks you\n"
+          "     about them.")
+    choice = choose("  Context:", options, current)
     cfg["context"]["active"] = ask_new_context(ui_language(cfg)) if choice == "+" else choice
 
 
@@ -1063,10 +1069,26 @@ def installed_providers() -> list[str]:
     return [p for p in PROVIDERS if shutil.which(p)]
 
 
-def wizard(cfg: dict, catalog: dict) -> dict:
+def wizard(cfg: dict, catalog: dict, offer_quick: bool = False) -> dict:
     heading("AiDW · configuration")
     print("Enter keeps the current value. Everything can be changed later in aidw.config.toml.\n")
+    if not (offer_quick and confirm("Use the recommended setup (Claude Code, the default models and agents)? You "
+                                    "will only answer your projects' folders, the MCPs, the language and the "
+                                    "context.", True)):
+        wizard_agents(cfg, catalog)
+    print()
+    ask_project_dirs(cfg, "4/7")
+    print()
+    ask_mcp(cfg, "5/7")
+    print()
+    ask_language(cfg, "6/7")  # before the context: a context created now inherits it
+    print()
+    ask_context(cfg, "7/7")
+    return cfg
 
+
+def wizard_agents(cfg: dict, catalog: dict) -> None:
+    """Steps 1 to 3 of the wizard: provider, delegation mode, each agent's model and effort, agents and names."""
     installed = installed_providers()
     options = [(p, f"{PROVIDER_LABEL[p]}{'  — limited to agents and skills' if p == 'codex' else '  — recommended'}"
                    f"{'' if p in installed else '  (CLI not installed)'}")
@@ -1124,16 +1146,6 @@ def wizard(cfg: dict, catalog: dict) -> dict:
                 a.pop("name", None)
             else:
                 a["name"] = name
-
-    print()
-    ask_project_dirs(cfg, "4/7")
-    print()
-    ask_mcp(cfg, "5/7")
-    print()
-    ask_language(cfg, "6/7")  # before the context: a context created now inherits it
-    print()
-    ask_context(cfg, "7/7")
-    return cfg
 
 
 def ask_language(cfg: dict, step: str) -> None:
@@ -2285,7 +2297,7 @@ def build(cfg: dict, catalog: dict, rep: Report, ns: str = "", ref_dir: Path = G
             "modes_md": modes_md, "orchestrator_refs": refs}
 
 
-def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
+def apply(cfg: dict, catalog: dict, dry: bool, next_hint: bool = True) -> bool:
     heading("Validating configuration" + (" (dry-run)" if dry else ""))
     rep = Report()
     b = build(cfg, catalog, rep)
@@ -2421,7 +2433,8 @@ def apply(cfg: dict, catalog: dict, dry: bool) -> bool:
     }
     write_if_changed(RUNTIME_FILE, json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", dry, rep)
     print(f"\nDone{' (nothing was changed: dry-run)' if dry else ''}"
-          f"{f' with {len(rep.warnings)} warning(s)' if rep.warnings else ''}. Open a new chat at the AiDW root.")
+          f"{f' with {len(rep.warnings)} warning(s)' if rep.warnings else ''}."
+          + (" Open a new chat at the AiDW root." if next_hint else ""))
     return True
 
 
@@ -3053,7 +3066,7 @@ def check_global_install(cfg: dict, catalog: dict, rep: Report) -> None:
     heading("Global install (Claude)")
     manifest = load_manifest()
     if not manifest:
-        rep.info("not installed (optional): `python aidw.py install` makes AiDW available in any folder")
+        rep.info("not installed yet: run `python aidw.py install` so `/aidw:go` shows up in any folder")
         return
     plugins = manifest.get("plugins") or []
     if not plugins or not isinstance(manifest.get("settings"), dict):
@@ -6254,7 +6267,8 @@ def main() -> int:
 
     if command == "setup":
         if cfg is None or getattr(args, "reconfigure", False):
-            cfg = wizard(cfg or default_config((installed_providers() or ["claude"])[0]), catalog)
+            first = "claude" if shutil.which("claude") or not installed_providers() else installed_providers()[0]
+            cfg = wizard(cfg or default_config(first), catalog, offer_quick=cfg is None)
             if not confirm("\nSave and apply this configuration?", True):
                 print("Nothing was saved.")
                 return 1
@@ -6266,12 +6280,17 @@ def main() -> int:
         if not args.skip_tools:
             ensure_tools(cfg["provider"]["name"])
         ensure_folders(cfg)
-        if not apply(cfg, catalog, dry=False):
+        if not apply(cfg, catalog, dry=False, next_hint=False):  # setup ends with its own next step
             return 1
         offer_mcp_registration(cfg)
         offer_codex_trust(cfg)
         ok = doctor(cfg, catalog)
-        print("\nReady. Open the orchestrator: `python aidw.py chat` (or the provider's app in the AiDW folder).")
+        if not ok:
+            print("\nFix the errors above and run setup again.")
+        elif cfg["provider"]["name"] == "claude":
+            print("\nNext step: `python aidw.py install`, then open a new Claude Code chat and call `/aidw:go`.")
+        else:
+            print("\nNext step: `python aidw.py install --provider codex`, then open Codex and call `$aidw-go`.")
         return 0 if ok else 1
 
     if cfg is None:

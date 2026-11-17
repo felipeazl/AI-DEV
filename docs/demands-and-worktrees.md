@@ -24,8 +24,8 @@ C:\wt\                                   ← [worktree] root
 
 - Branch `<context branch_prefix><number>-<slug>` (prefix `aidw/` without a context), created from the base the plan
   sets (by default the origin's default branch; it may be someone else's unmerged branch the demand depends on).
-- `packages/` and `node_modules/` come in by **junction** from the main working copy (the context's `[worktree] link`
-  changes the list): the build runs without restoring everything again.
+- `packages/` and `node_modules/` come in by **junction** (a Windows folder link) from the main working copy (the
+  context's `[worktree] link` changes the list): the build runs without restoring everything again.
 - The registry lives in `state/worktrees.json`; the demand's repositories in its `demand.json`.
 
 ### Repositories with the same name
@@ -140,6 +140,6 @@ python aidw.py demand show us-1234
 python aidw.py demand set us-1234 --step REVIEW --status paused --note "waiting for QA"
 ```
 
-`demand.json` keeps the step, the status (`active`, `paused`, `done`), the summary, the repositories, Tasks, PRs and the
-step history. It is what lets you close the chat and come back later. Every option of `demand set`:
-[commands.md](commands.md#day-to-day).
+`demand.json` keeps the step, the status (`active`, `paused`, `done`), the title, the summary, the note (where it
+stopped), the repositories with their PRs, the Tasks, the fix loop, the outside steps and the step history. It is what lets you close the chat and come back later. Every option of
+`demand set`: [commands.md](commands.md#day-to-day).

@@ -80,7 +80,7 @@ preload = ["to-spec"]
 
 [agents.explorer]
 # name = "explorer"
-# Code with file:line, contracts, ids and SELECT through the validator. Haiku (no effort); Sonnet only in the exceptions.
+# Code with file:line, contracts, ids and SELECT through the validator. Haiku low; Sonnet only in the exceptions.
 model = "haiku"
 enabled = true
 effort = "low"

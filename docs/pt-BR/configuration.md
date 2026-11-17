@@ -1,6 +1,7 @@
 # Configuração
 
-Onde cada coisa se configura, o idioma e perfis prontos.
+O que dá para configurar e onde: o `aidw.config.toml` da sua máquina, o contexto do time e o núcleo do AiDW; depois, o
+idioma e perfis prontos.
 
 ## As três camadas
 
@@ -26,7 +27,7 @@ padrão sem perguntar.
 
 ## `aidw.config.toml` campo a campo
 
-O modelo é o `aidw.config.example.toml`; o `setup` cria o seu pelo wizard.
+O modelo é o `aidw.config.example.toml`; o `setup` cria o seu pelo wizard. Na primeira instalação o wizard oferece a configuração recomendada (Claude Code, modelos e agentes padrão) e pergunta só os passos 4 a 7: pastas dos projetos, MCPs, idioma e contexto; o `configure` sempre roda todos os passos.
 
 ### `[provider]`
 
@@ -100,12 +101,13 @@ Duas configurações, uma herdando da outra:
 
 ```toml
 [policies]
-deny = ["Bash(git push --force *)", "Read(**/.env)"]   # bloqueado sempre
+deny = ["Bash(git push --force *)", "Read(**/.env)"]   # bloqueado sempre (substitui a lista padrão)
 ask = ["Bash(npm publish *)"]                           # sempre pede OK (vence qualquer allow)
 ```
 
 Somam às regras do contexto. A lista `deny` padrão bloqueia force push, `reset --hard`, `clean -f` e a leitura de
-arquivos `.env`, no Bash e no PowerShell.
+arquivos `.env`, no Bash e no PowerShell. Definir `deny` **substitui** essa lista: mantenha os itens padrão (estão no
+`aidw.config.example.toml`) e acrescente os seus.
 
 ### `[agents.<papel>]`
 
@@ -123,15 +125,15 @@ preload = ["code-review"]
 |---|---|---|
 | `orchestrator` | `top` (Opus) — só recomendação: valem o modelo e o effort do chat | medium |
 | `planner` | `mid` (Sonnet) | high |
-| `explorer` | `fast` (Haiku) | low (ignorado pelo Haiku) |
+| `explorer` | `fast` (Haiku) | low |
 | `coder` | `mid` (Sonnet) | high |
 | `reviewer` | `mid` (Sonnet) | high |
 | `qa` | `mid` (Sonnet) | medium |
-| `documenter` | `fast` (Haiku) | medium (ignorado pelo Haiku) |
+| `documenter` | `fast` (Haiku) | medium |
 
 Vêm do `DEFAULT_AGENTS` do `aidw.py` e do `config/models.toml` ([agents.md](agents.md#onde-ficam-os-padrões)).
 
-- Uma config sem um papel mais novo recebe o papel com o padrão; um papel que saiu (`api-db`, `bug-hunter`, `security`)
+- Uma config sem o papel `planner` ou `explorer` (criados depois) recebe o papel com o padrão; um papel que saiu (`api-db`, `bug-hunter`, `security`)
   é ignorado com aviso.
 - Os nomes antigos das skills do núcleo (`verificar-premissa`, `preparar-worktree`) continuam aceitos e viram os novos.
 - Nomes que colidem com agentes do CLI (`plan`, `explore`, `default`…) são recusados.
@@ -203,7 +205,7 @@ Mudanças aqui valem para todos que usam o AiDW: faça por PR.
 | `config/models.toml` | Catálogo de modelos por provedor: `model_id` (no Claude, o apelido), `label`, `tiers` (`top`/`mid`/`fast`), `efforts` aceitos, `min_cli`, `alias` |
 | `orchestrator/config/routing.toml` | `[rules]` (`state` → ação) e `[[effort.variants.<papel>]]` (as exceções: `effort`, `model` opcional, `when`) |
 | `config/mcp.toml` | Catálogo de MCPs: comando ou URL, `auth`, `allow`, os papéis que podem usar (`agents`), `use_when` e `triggers` |
-| `orchestrator/ORCHESTRATOR.md` · `orchestrator/SURVEY.md` | O núcleo do orquestrador e o orquestrador enxuto do levantamento |
+| `orchestrator/ORCHESTRATOR.md` · `SURVEY.md` · `ASK.md` · `INVESTIGATE.md` · `CARD.md` · `KB_REVIEW.md` | O núcleo do orquestrador e os orquestradores enxutos do `/aidw:survey`, `ask`, `investigate`, `card` e `kb-review` |
 | `orchestrator/reference/` | O que o orquestrador lê sob demanda (`short-path`, `testing`, `pr-review`, `pr-triage`, `survey`) |
 | `orchestrator/policies/` | Políticas genéricas: git, banco, produção, segredos, permissões |
 | `agents/`, `skills/`, `workflows/` | Agentes, skills e workflows |

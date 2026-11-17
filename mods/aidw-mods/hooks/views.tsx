@@ -48,6 +48,10 @@ export type View = 'general' | 'metrics' | 'decide'
  * The panels (panel v4): each one is its own pane, opened by the strip button or the command, never by itself. Inside
  * each one, the tabs of the kind; with two or more panels open, the app shows tabs between them.
  */
+/** The lean modes (`/aidw:ask`, `investigate`, `card`, `kb-review`): the same tabs for each one. */
+const lean = (tabs: [string, Key][]): Record<'ask' | 'investigate' | 'card' | 'kb-review', [string, Key][]> =>
+  ({ ask: tabs, investigate: tabs, card: tabs, 'kb-review': tabs })
+
 // Titles and tab labels are i18n keys; `viewTitle` and `visibleTabs` give them in the UI language.
 export const VIEWS: Record<View, { title: Key; command: string; tabs: Record<DemandKind, [string, Key][]> }> = {
   general: {
@@ -57,12 +61,14 @@ export const VIEWS: Record<View, { title: Key; command: string; tabs: Record<Dem
       development: [['general', 'view.general']],
       'pr-review': [['general', 'view.general']],
       survey: [['general', 'view.general']],
+      ...lean([['general', 'view.general']]),
     },
   },
   metrics: {
     title: 'view.metrics',
     command: 'metrics',
-    tabs: { development: [['metrics', 'view.metrics']], 'pr-review': [['metrics', 'view.metrics']], survey: [['metrics', 'view.metrics']] },
+    tabs: { development: [['metrics', 'view.metrics']], 'pr-review': [['metrics', 'view.metrics']], survey: [['metrics', 'view.metrics']],
+      ...lean([['metrics', 'view.metrics']]) },
   },
   decide: {
     title: 'view.decide',
@@ -71,6 +77,7 @@ export const VIEWS: Record<View, { title: Key; command: string; tabs: Record<Dem
       development: [['review', 'tab.review'], ['manual', 'tab.tests']],
       'pr-review': [['comments', 'tab.comments']],
       survey: [['questions', 'tab.questions']],
+      ...lean([]),
     },
   },
 }

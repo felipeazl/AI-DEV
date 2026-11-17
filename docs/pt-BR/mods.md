@@ -13,9 +13,10 @@ Os mods falam o `[ui] language` do `aidw.config.toml` (uma tag `pt*` mostra em p
 
 Os mods do AiDW ficam ligados **só no modo orquestrador**:
 
-- **Ligar:** `/aidw:go` ou `/aidw:survey` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse
-  registro a cada mensagem. Quem grava é a skill `go`, com `aidw.py session bind` (lê `CLAUDE_CODE_SESSION_ID`), e o
-  hook do guard, onde o cliente manda o comando de barra para ele (o app desktop manda, o terminal não).
+- **Ligar:** `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card` ou
+  `/aidw:kb-review` registram a sessão em `state/sessions.json`, e o `aidw-mods` confere esse registro a cada mensagem.
+  Quem grava é a skill, com `aidw.py session bind` (lê `CLAUDE_CODE_SESSION_ID`), e o hook do guard, onde o cliente
+  manda o comando de barra para ele (o app desktop manda, o terminal não).
 - **Qual demanda:** o registro guarda o contexto, o id e a pasta da demanda (`session bind --demand <id>`, e todo
   `demand set` numa sessão registrada). O mod lê a pasta dali, sem deduzir a demanda do texto, então qualquer id
   funciona. Sem demanda no registro, vale a pasta do chat quando ele abriu na demanda ou num worktree dela.
@@ -63,8 +64,8 @@ AiDW us-1234 Revisão ● espera você        contexto ▰▰▰▱▱ 41% · 82
    janelas de uso do plano (7d e 5h), cada um com uma barra fina.
 2. **Os agentes rodando**, um card por agente: nome, modelo e effort, tempo, label e os tokens da última resposta. Sem
    agente, a linha não aparece. Quando os cards não cabem numa linha, viram uma lista.
-3. **Os botões** **Diff** (roda `/aidw:diff`, quando a demanda tem worktree), **Geral**, **Métricas** e **Testes e Review** (**Dúvidas** no levantamento), com o número do que espera
-   decisão.
+3. **Os botões** **Diff** (roda `/aidw:diff`, quando a demanda tem repositório), **Geral**, **Métricas** e **Testes e
+   Review** (**Dúvidas** no levantamento), com o número do que espera decisão.
 
 As barras ficam amarelas a partir de 75% e vermelhas a partir de 90%; a partir de 75%, o 7d e o 5h mostram a hora local
 em que a janela renova. As janelas de uso só aparecem em conta de assinatura. A faixa some em `DONE`; **`/strip`** esconde
@@ -81,7 +82,8 @@ Três painéis, cada um ao lado do chat, abertos só quando você pede, pelo bot
 | Testes e Review | `/review-tests` | Revisão · Testes | Comentários | Dúvidas |
 
 `/panel <aba>` abre o painel que tem a aba (`/panel review`, `/panel tests`, `/panel comments`, `/panel questions` — ou
-os nomes em português `revisao`, `testes`, `comentarios`, `duvidas` — abrem Testes e Review). **Os painéis só informam:**
+os nomes em português `revisao`, `testes`, `comentarios`, `duvidas` — abrem Testes e Review; `/panel metricas` abre
+Métricas). **Os painéis só informam:**
 manter ou descartar um achado, o resultado de um passo manual, o que publicar, aprovar uma PR e responder uma dúvida são
 decididos no chat. O que cada painel mostra e de onde vem cada dado: [panel.md](panel.md).
 

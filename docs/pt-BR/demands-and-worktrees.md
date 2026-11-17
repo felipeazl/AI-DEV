@@ -26,8 +26,8 @@ C:\wt\                                   ← [worktree] root
 - Branch `<branch_prefix do contexto><número>-<slug>` (prefixo `aidw/` sem contexto), criada a partir da base que o
   plano define (por padrão a branch padrão do origin; pode ser a branch não mergeada de outra pessoa da qual a demanda
   depende).
-- `packages/` e `node_modules/` entram por **junction** a partir do working copy principal (o `[worktree] link` do
-  contexto muda a lista): o build roda sem restaurar tudo de novo.
+- `packages/` e `node_modules/` entram por **junction** (um link de pasta do Windows) a partir do working copy
+  principal (o `[worktree] link` do contexto muda a lista): o build roda sem restaurar tudo de novo.
 - O registro fica em `state/worktrees.json`; os repositórios da demanda, no `demand.json` dela.
 
 ### Repositórios com o mesmo nome
@@ -141,6 +141,6 @@ python aidw.py demand show us-1234
 python aidw.py demand set us-1234 --step REVIEW --status paused --note "esperando o QA"
 ```
 
-O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`), o resumo, os repositórios, Tasks, PRs e o
-histórico das etapas. É o que permite fechar o chat e voltar depois. Todas as opções do `demand set`:
-[commands.md](commands.md#dia-a-dia).
+O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`), o título, o resumo, a nota (onde parou), os
+repositórios com as PRs, as Tasks, o laço de correção, as etapas de fora e o histórico das etapas. É o que permite fechar o chat e voltar depois. Todas as opções do
+`demand set`: [commands.md](commands.md#dia-a-dia).

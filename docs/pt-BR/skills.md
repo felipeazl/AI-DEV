@@ -26,13 +26,13 @@ Uma skill de fluxo **só vale dentro de uma demanda** conduzida pelo orquestrado
 | `go [demanda]` | Assume o chat como orquestrador: detecta o projeto, abre ou retoma a demanda, cria o worktree e conduz o fluxo. `pr <n>` revisa a PR de outra pessoa |
 | `survey <card ou texto>` | Levantamento antes de implementar, só leitura ([workflow.md](workflow.md#levantamento-survey)) |
 | `fix <demanda> <o quê>` | O orquestrador completo, começando pelo caminho curto de uma demanda que já tem código: um bug que a QA devolveu (`bug <n>`), os comentários da PR (`pr`) ou um ajuste |
-| `ask <pergunta>` | Uma pergunta sobre o código, um contrato ou o ambiente; o explorador responde com `arquivo:linha` (`answer-<id>.md`). Prompt enxuto: só o explorador, só leitura |
-| `investigate <evidência>` | A causa-raiz de um erro, log ou registro em estado errado (`investigation-<id>.md`) e, se for defeito, o Bug ou a dívida técnica redigidos pelo documentador. Prompt enxuto: explorador e documentador |
-| `card <ideia ou problema>` | Uma User Story ou dívida técnica com base no código (`workitem-<id>.md`), criada só com o seu OK dos campos. Prompt enxuto: explorador e documentador |
-| `kb-review [escopo]` | Revisa a base de conhecimento contra o código (`kb check` e as notas mais antigas) e atualiza as notas com o seu OK. Prompt enxuto: só o explorador |
+| `ask <pergunta>` | Uma pergunta sobre o código, um contrato ou o ambiente; o explorer responde com `arquivo:linha` (`answer-<id>.md`). Prompt enxuto: só o explorer, só leitura |
+| `investigate <evidência>` | A causa-raiz de um erro, log ou registro em estado errado (`investigation-<id>.md`) e, se for defeito, o Bug ou a dívida técnica redigidos pelo documenter. Prompt enxuto: explorer e documenter |
+| `card <ideia ou problema>` | Uma User Story ou dívida técnica com base no código (`workitem-<id>.md`), criada só com o seu OK dos campos. Prompt enxuto: explorer e documenter |
+| `kb-review [escopo]` | Revisa a base de conhecimento contra o código (`kb check` e as notas mais antigas) e atualiza as notas com o seu OK. Prompt enxuto: só o explorer |
 | `exit` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
 | `diff [repo\|exit]` | Só no Claude. Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demands-and-worktrees.md](demands-and-worktrees.md#ver-o-diff-de-cada-repositório)) |
-| `done` | Fecha a tarefa: a partir do `kb collect`, grava no contexto só o que foi verificado e vale para as próximas demandas — a nota da demanda e as notas da base que ela tocou, ligadas sem duplicar; build e ambiente no `context.toml` —, valida, reinstala, faz commit e push do repositório do contexto, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal |
+| `done` | Fecha a tarefa: a partir do `kb collect`, grava no contexto só o que foi verificado e vale para as próximas demandas — a nota da demanda e as notas da base que ela tocou, ligadas sem duplicar; build e ambiente no `context.toml` —, pergunta uma vez quais candidatos entram no checklist do reviewer, valida, reinstala, faz commit e push do repositório do contexto, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal |
 | `knowledge [tema]` | O que a base de conhecimento do contexto sabe sobre um sistema, contrato, conceito ou demanda (`kb show` + `kb search`), seguindo os links só até onde a pergunta pede; corrige ou completa uma nota quando você pede ([contexts.md](contexts.md#base-de-conhecimento)) |
 | `context` (`list`, `use <nome>`, `create`) | Lista os contextos (também sem argumento), ativa um, ou cria um novo a partir da análise dos repositórios e de no mínimo 10 perguntas ([contexts.md](contexts.md#criar-um-contexto)) |
 
@@ -43,7 +43,7 @@ Uma skill de fluxo **só vale dentro de uma demanda** conduzida pelo orquestrado
 | `to-spec` | planner (pré-carregada) | Confere trabalho existente, parte dos relatórios de exploração, inspeciona as dependências, descreve o comportamento atual pelo código e grava o plano spec-driven com as entregas `E1…`, autossuficiente para o coder |
 | `verify-premise` | orchestrator, planner, reviewer | Antes de aceitar "não dá para corrigir aqui", "cobre todos os casos", "é a convenção do repositório", "esse valor nunca acontece": evidência de primeira mão, ou a premissa cai |
 | `prepare-worktree` | orchestrator, coder | Cria, confere e remove o worktree da demanda com `aidw.py worktree`: base certa, branch, junctions, registro; também o worktree só leitura da PR de outra pessoa |
-| `code-review` | reviewer (pré-carregada) | Revisão contra o plano numa passada — qualidade, bugs com cenário de falha, segurança com caminho de ataque —, achados com IDs estáveis, severidade, categoria e a recomendação de manter ou descartar |
+| `code-review` | reviewer (pré-carregada) | Revisão contra o plano numa passada — qualidade, bugs com cenário de falha, segurança com caminho de ataque —, achados com IDs estáveis, severidade, categoria e a recomendação de manter ou descartar. Roda só os itens do checklist do contexto cujo gatilho aparece no diff; na correção de um escape (um bug devolvido pela QA), redige um candidato ao checklist |
 | `database-safe` | explorer, qa | Classifica cada operação de banco: leitura só pelo validador; escrita sempre proposta com a query exata, o `SELECT` de conferência e como reverter |
 
 Os nomes antigos (`verificar-premissa`, `preparar-worktree`) numa config ou num contexto continuam virando os novos.
