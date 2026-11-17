@@ -75,7 +75,8 @@ what, where (`file:line` when the plan already shows it), why.
    script's `Result` column**: `✅` or `❌` and the evidence in one line (status and an excerpt of the response, the
    network call, a screenshot path, the test name). Locate screen elements by their `id`. If no browser tool works here
    (none is available or connects), do not fail the step and do not work around it: turn it into `manual` with the
-   exact steps, so the user runs it with the orchestrator.
+   exact steps and the note `browser_unavailable` (what is missing: sign-in, extension, connection), so the
+   orchestrator can hand it back to a new QA once the user connects the browser.
 5. **Regression** — the tests of the area the diff touches, not only the new ones.
 6. Write the report to the path the task gives (`qa-<id>-r<N>.md`): what ran, what failed (with how to reproduce),
    what was adjusted in the script, and the manual steps left.

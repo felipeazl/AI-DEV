@@ -15,6 +15,11 @@
   record ✅/❌ and a one-line description in the step's `Result` (never a secret or personal data), show the next
   step. On a ❌, record it and go on with the steps that do not depend on it. At the end, revert the adjustments and
   stop the servers; all ✅ → `PR`; any ❌ → `CODER_FIX` with the failing steps and their evidence.
+- **The browser is the qa's, never this chat's:** do not drive a browser here (no navigate, click, screenshot or page
+  script) — every screenshot and page text stays in this context and is re-read on every action. A step the qa left
+  `manual` only because no browser connected (`browser_unavailable`), once the user connects it (signs in, enables the
+  extension), goes back to a fresh qa that continues from the last report with only those steps; the user keeps only
+  what needs a person (desktop/WPF, hardware, a visual judgment) and sends the evidence here.
 - **Before the commit**, prove the adjustments are gone: `git -C <wt> grep -n -I -F --untracked AIDW-TEST` prints
   nothing and `git -C <wt> diff <base> --stat` matches the last reviewed patch. The guard hook also refuses a
   `git commit` in a demand worktree that still has `AIDW-TEST`.
