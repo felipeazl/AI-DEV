@@ -70,6 +70,7 @@ For each fact, the right place:
 | How to operate the environment (host, authentication, database, API recipe) | a note in `ambiente/` |
 | A durable decision of the PO, the Tech Lead or the user (with author and date) | a note in `decisoes/`; if it became a work rule, `policies/` or `shared/` |
 | What the demand was | the demand's note, `demandas/<id>.md` (section 2.1) |
+| A check the review should have made (a *Checklist candidate*) | the reviewer's checklist in the context, with the user's OK (section 2.3) |
 | A procedure that will repeat | propose a context skill (`skills/<name>/SKILL.md`) and ask before creating it |
 | An improvement to the AiDW itself (`aidw.py`, generic agents and skills) | do not edit: list it as a suggestion in the report |
 
@@ -103,6 +104,23 @@ agents' and orchestrator's hours, rounds), what happened after the PR, and one l
 Only the collect's numbers and what this conversation said — never ask the user to fill in hours. A row of this demand
 that is already there is updated, not repeated. When the rows show the same drift for several similar cards, say so in
 the report (a proposal to adjust the rubric's ranges or factor), without changing them yourself.
+
+### 2.3 Escapes into the review checklist
+
+When the collect has a *Checklist candidate* (a bug the QA returned or a change the team's code review asked for that
+the original diff already showed), it may become an item of the reviewer's checklist in the context — the items with
+a trigger, a check and an origin (`agents/reviewer.md` of the context; none → list the candidate in the report and
+skip). Before proposing it:
+- **Readable from a diff:** the trigger is a file, type or word a reviewer sees in the diff; a candidate that needs
+  runtime, data or the environment does not go in.
+- **Not a duplicate:** an existing item that should have caught it gets the new origin and, when the candidate says
+  so, a sharper check — not a second item.
+- **General:** the check holds for the next demand that touches the trigger, not only for this code.
+
+Ask the user **once**, all candidates together: the item as it would be written (`ID`, trigger, check, origin) or
+the change to the existing one, each with *add* / *discard*. Write only what they approve, in the context's language,
+numbered after the last item of its group. Never add an item without that OK: a rule nobody approved becomes noise in
+every review.
 
 ## 3. Record and validate
 
