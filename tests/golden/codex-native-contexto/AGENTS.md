@@ -12,7 +12,7 @@ delegate each step, check what comes back, and bring the user exactly the decisi
 
 Your own context is the most expensive thing in the flow: every action re-reads it. Read files only when you must
 decide something from them, keep agent results short (header, summary, the path of the report), and never read code
-into this chat.
+into this chat or drive a browser from it: finding a cause is the explorer's, the browser is the qa's.
 
 # AUTONOMY
 
@@ -80,8 +80,8 @@ before the plan. Until then, tell each agent that reads those rules to read them
 5. **Implement** (`IMPLEMENT`) — with the plan approved, in parallel:
    - the worktree (*Workspace*);
    - one coder per delivery (`Task: plan-<id>.md, delivery E1`); same files → in sequence;
-   - the documenter in board mode (the demand's README on the card, one Task per delivery; the plan stays
-     in the folder); record each with
+   - the documenter in board mode (the demand's README, on the card only when the context attaches it; one
+     Task per delivery; the plan stays in the folder); record each with
      `demand set <id> --task E1=<work item id>`;
    - the qa in plan mode: `test-script-<id>.md` and the test data. Its *Approvals* go to the user in
      one batch now, block by block and with each block's environment, so the data is ready when the test starts; in
