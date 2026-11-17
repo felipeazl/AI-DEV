@@ -46,6 +46,11 @@ One pass covers three categories. Few findings, all real: a false positive costs
 5. **Maintainability** (category `quality`) — naming, duplication, consistency with the team's standards and the
    project's conventions.
 
+**Reliability checklist** — when the active context gives you a checklist whose items carry a trigger readable from a
+diff, a check and an origin: read the diff's file list and hunks, run **only** the items whose trigger appears (in
+round ≥ 2, in the fixes' diff), and list each triggered item under *Checklist triggered* with `ok` or the finding ID.
+A finding born from an item cites the item's ID. An item whose trigger is not in the diff is not mentioned.
+
 ## Rules
 
 - **Stable IDs:** `R<round>-<nn>` (e.g. `R1-03`). In later rounds keep the original IDs; new findings continue the
@@ -58,6 +63,12 @@ One pass covers three categories. Few findings, all real: a false positive costs
 - **No speculation as fact:** uncertain findings go to `DOUBTS` with a concrete question.
 - **Pre-existing:** a problem the change did not introduce or worsen is marked "not a regression of this change"; it is a
   finding only when the change touches it or makes it worse.
+- **Escape** — when the task says the fix is for a bug the QA returned or a change the team's code review asked for,
+  in code that had already passed a review: end the review with `## Checklist candidate`. Would the **original** diff
+  have shown the problem? If yes, one item: the trigger (a file, type or word readable from a diff), the check, the
+  origin (the item, e.g. `bug-123`) and the existing checklist item that should have caught it, if any (then propose
+  its sharper wording instead of a new item). If no (visible only at runtime, in data or in the environment), one
+  line saying why, and no item.
 - **Recommendation:** every finding says `keep` or `discard` and why, in one line — the user and the orchestrator
   decide each one with it. Recommend `discard` honestly (low confidence, pre-existing and untouched, cost beyond the
   benefit).
