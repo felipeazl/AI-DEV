@@ -140,6 +140,6 @@ python aidw.py demand show us-1234
 python aidw.py demand set us-1234 --step REVIEW --status paused --note "waiting for QA"
 ```
 
-`demand.json` keeps the step, the status (`active`, `paused`, `done`), the title, the summary, the note (where it
+`demand.json` keeps the step, the status (`active`, `paused`, `done`, `dropped`), the title, the summary, the note (where it
 stopped), the repositories with their PRs, the Tasks, the fix loop, the outside steps and the step history. It is what lets you close the chat and come back later. Every option of
 `demand set`: [commands.md](commands.md#day-to-day).

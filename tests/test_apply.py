@@ -1108,6 +1108,31 @@ class SessionModeTest(unittest.TestCase):
             demand_file.write_text(json.dumps(data), encoding="utf-8")
             code, d = wt.aidw_json(root, "demand", "set", "us-5", "--pr", "app.front=7789", "--json")
             self.assertEqual((code, d["repos"][0]["pr"]), (0, "7789"), d)
+            # /aidw:list: dropped closes like done; --active groups by whose turn it is, with idle days and PRs
+            code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
+            self.assertEqual((lst["demands"][0]["group"], lst["demands"][0]["prs"], lst["demands"][0]["idle_days"]),
+                             ("outside", ["App.Front=7789"], 0), "QA_TEST waits outside AiDW")
+            wt.aidw_json(root, "demand", "set", "us-8", "--status", "paused", "--json")
+            code, d = wt.aidw_json(root, "demand", "set", "us-9", "--status", "active", "--step", "PLAN", "--json")
+            old = json.loads((Path(d["folder"]) / "demand.json").read_text(encoding="utf-8"))
+            old["updated"] = "2020-01-01T00:00:00"
+            (Path(d["folder"]) / "demand.json").write_text(json.dumps(old), encoding="utf-8")
+            wt.aidw_json(root, "demand", "set", "us-10", "--status", "active", "--step", "PLAN", "--json")
+            code, d = wt.aidw_json(root, "demand", "set", "us-10", "--status", "dropped", "--json")
+            self.assertEqual((code, d["status"]), (0, "dropped"), d)
+            code, lst = wt.aidw_json(root, "demand", "list", "--active", "--json")
+            self.assertEqual({x["id"]: x["group"] for x in lst["demands"]},
+                             {"us-5": "outside", "us-8": "paused", "us-9": "stale"}, "dropped and done are closed")
+            code, all_ = wt.aidw_json(root, "demand", "list", "--json")
+            self.assertNotIn("group", next(x for x in all_["demands"] if x["id"] == "us-10"))
+            proc = run_aidw(root, "demand", "list", "--active")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertLess(proc.stdout.index("Waiting outside AiDW"), proc.stdout.index("Paused"))
+            self.assertLess(proc.stdout.index("Paused"), proc.stdout.index("Idle for more than 14 days"))
+            self.assertIn("PR App.Front=7789", proc.stdout)
+            self.assertNotIn("us-10", proc.stdout)
+            self.assertIn("Idle for more than 30 days",
+                          run_aidw(root, "demand", "list", "--active", "--stale-days", "30").stdout)
 
             hook = lambda payload: subprocess.run([sys.executable, str(root / "aidw_guard.py")],  # noqa: E731
                                                   input=json.dumps(payload), capture_output=True, text=True,
@@ -1234,6 +1259,10 @@ class SessionModeTest(unittest.TestCase):
                 self.assertNotIn(gone, orq, "no session mode choice")
             self.assertLess(orq.index("When called"), orq.index("# ROLE"), "the protocol comes before the rest")
             leave = files["plugins/aidw/skills/exit/SKILL.md"].decode("utf-8")
+            listing = files["plugins/aidw/skills/list/SKILL.md"].decode("utf-8")
+            for part in ("name: list", "disable-model-invocation: true", "demand list --active", "--status dropped",
+                         "/aidw:go <id>", "/aidw:done", "Never close on your own"):
+                self.assertIn(part, listing)
             diff = files["plugins/aidw/skills/diff/SKILL.md"].decode("utf-8")
             for step in ("ExitWorktree", 'action: "keep"', 'name: "<demand>/<folder>"', "worktree list --json",
                          "**after**", "`exit`: the demand folder"):
@@ -1839,6 +1868,10 @@ class CodexInstallTest(unittest.TestCase):
             self.assertIn("allow_implicit_invocation: false",
                           (skills / "aidw-survey" / "agents" / "openai.yaml").read_text())
             self.assertIn("name: aidw-exit", (skills / "aidw-exit" / "SKILL.md").read_text(encoding="utf-8"))
+            listing = (skills / "aidw-list" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("name: aidw-list", listing)
+            self.assertIn("$aidw-go <id>", listing)
+            self.assertNotIn("disable-model-invocation", listing)
             to_spec = (skills / "aidw-to-spec" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("name: aidw-to-spec", to_spec)
             self.assertNotIn("user-invocable", to_spec, "a Claude key; Codex does not hide skills")

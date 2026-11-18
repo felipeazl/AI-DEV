@@ -26,6 +26,9 @@ describe('aba Geral', () => {
     expect(impl.text).toContain('implementando')
     expect(nextStep(snap({ id: 'us-1', step: 'REVIEW', status: 'paused' })).text).toContain('/aidw:go us-1')
     expect(nextStep(snap({ id: 'us-1', step: 'DONE' })).text).toContain('Concluída')
+    const dropped = nextStep(snap({ id: 'us-1', step: 'PLAN', status: 'dropped' }))
+    expect([dropped.you, dropped.text]).toEqual([false, expect.stringContaining('--status active')])
+    expect(dropped.text).not.toContain('grava o que ela ensinou')
   })
 
   test('nota do demand.json', async () => {

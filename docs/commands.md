@@ -14,6 +14,7 @@ diagnosis, demand state, worktrees, contexts and the knowledge base).
 | `/aidw:investigate <error, log or record>` | `$aidw-investigate` | Investigates a problem before there is a card: the explorer proves the root cause, `investigation-<id>.md` gives the diagnosis and the options and, if it is a defect, the documenter drafts the Bug or the technical debt (demand `inv-<slug>`); created only with your OK |
 | `/aidw:card <idea or problem>` | `$aidw-card` | Drafts a User Story or a technical debt grounded in the code (`workitem-<id>.md`, demand `card-<slug>`); created on the board only with your OK of the fields |
 | `/aidw:kb-review [system, note or number]` | `$aidw-kb-review` | Rechecks the knowledge base against the code: `kb check`, the oldest notes (or those named), each fact confirmed or corrected with `file:line`; the notes change only with your OK (demand `kb-review-<date>`) |
+| `/aidw:list [all\|<days>\|drop <id>…]` | `$aidw-list` | The open demands of the active context (not closed by `/aidw:done` nor `dropped`), grouped: your turn, waiting outside AiDW (code review, QA, UX), paused, idle for more than 14 days; with the PRs and how to resume. Offers to close abandoned ones and tests as `dropped`, only with your OK. Does not enter orchestrator mode |
 | `/aidw:exit` | `$aidw-exit` | Records the step and the next action (`paused`) and returns the chat to normal |
 | `/aidw:diff [repo\|exit]` | — | Moves the session to a demand repository's worktree; the diff panel follows ([demands-and-worktrees.md](demands-and-worktrees.md#see-each-repositorys-diff)) |
 | `/aidw:done` | `$aidw-done` | Closes the task: writes what it learned into the context (the demand's note and the knowledge notes it touched; build and environment in `context.toml`), validates, reinstalls, commits and pushes only the context repository and marks the demand `done` |
@@ -26,7 +27,7 @@ diagnosis, demand state, worktrees, contexts and the knowledge base).
 | `/metrics` | — | Opens the Metrics panel |
 | `/review-tests` | — | Opens the Tests and Review panel (Questions in a survey); read-only |
 
-`/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit` and `/aidw:done` run only when you call them. The skills the agents use are
+`/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:list`, `/aidw:exit` and `/aidw:done` run only when you call them. The skills the agents use are
 hidden from the `/` menu on Claude (`user-invocable: false`); Codex shows every `$aidw-*` skill.
 
 ## Command line (`python aidw.py …`)
@@ -53,8 +54,8 @@ With no command, `aidw.py` runs `setup`. Commands that take `--json` print machi
 | `open [--provider claude\|codex] [--demand <id> [--repo <repo>] \| --path <dir>] [--no-orchestrate] [--print] [--app]` | Opens the CLI in the demand's worktree (or a folder), already calling the orchestrator. `--print` only shows the command; `--app` (Codex) opens the Codex desktop app |
 | `chat` | Opens the orchestrator in project mode (a chat at the AiDW root) |
 | `project detect [--path <dir>] [--json]` | A folder's repository, context system and demand |
-| `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n] [--summary s] [--pr REPO=N] [--task TICKET=ID] [--loop ID\|-] [--extra-step STEP]` | Writes the demand state (see below) |
-| `demand show <id>` · `demand list [--active]` | Read the state |
+| `demand set <id> [--step S] [--status active\|paused\|done\|dropped] [--title t] [--note n] [--summary s] [--pr REPO=N] [--task TICKET=ID] [--loop ID\|-] [--extra-step STEP]` | Writes the demand state (see below) |
+| `demand show <id>` · `demand list [--active] [--stale-days N]` | Read the state; `--active` groups the unfinished ones (your turn, waiting outside AiDW, paused, idle for more than N days, default 14) |
 | `session bind [--demand <id>]` · `session unbind` | Puts this Claude Code session into (or out of) orchestrator mode and binds the demand it drives; `--session` overrides `$CLAUDE_CODE_SESSION_ID` |
 | `worktree create --repo <dir> --demand <id> [--slug s] [--base b] [--pr n]` | The demand's worktree, branch and junctions (idempotent); `--pr` makes a read-only worktree of someone else's PR |
 | `worktree list` · `inspect <id or path>` · `remove <id or path>` · `cleanup` | Status, safe removal (`--repo` when the demand has several) and registry cleanup |
@@ -64,7 +65,7 @@ With no command, `aidw.py` runs `setup`. Commands that take `--json` print machi
 | Option | Effect |
 |---|---|
 | `--step` | Current step: `UNDERSTAND`, an action of the routing (`PLAN`, `REVIEW`, `TEST`, `PR`, `DONE`…), `CODE_REVIEW`/`QA_TEST` or an outside step the context declares |
-| `--status` | `active`, `paused` or `done` |
+| `--status` | `active`, `paused`, `done` or `dropped` (abandoned or a test: closed without `/aidw:done`, so no knowledge note and no commit; `--status active` reopens it) |
 | `--title`, `--note` | Card title; where it stopped / next step (the panel shows the note) |
 | `--summary` | What the demand is about, up to 4 lines (the panel's demand map) |
 | `--pr REPO=N` | The open PR of one of the demand's repositories (repeatable) |

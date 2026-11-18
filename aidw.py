@@ -2603,6 +2603,44 @@ def exit_skill(plugin: str, provider: str = "claude", language: str = DEFAULT_LA
     ])
 
 
+def list_skill(plugin: str, provider: str = "claude", language: str = DEFAULT_LANGUAGE) -> str:
+    """`/aidw:list`: the unfinished demands of the active context, grouped, and closing the abandoned ones (dropped).
+    Outside orchestrator mode: no agent, no flow; it only reads demand.json and, with the user's OK, sets a status."""
+    codex = provider == "codex"
+    aidw = aidw_command(True)
+    go = "$aidw-go" if codex else f"/{plugin}:go"
+    done = "$aidw-done" if codex else f"/{plugin}:done"
+    description = (f"{PLUGIN_GUARD} Lists the unfinished demands of the active context (not closed by done or "
+                   "dropped), grouped by whose turn it is, and closes the abandoned ones as dropped with the user's OK.")
+    return "\n".join([
+        "---", f"name: {CODEX_NS + 'list' if codex else 'list'}",
+        f"description: {json.dumps(description, ensure_ascii=False)}",
+        *([] if codex else ["disable-model-invocation: true"]), "---", "",
+        f"<!-- {GENERATED_MARK} install; do not edit: change the sources and run `python aidw.py install`. -->", "",
+        "# Open demands", "",
+        "Request (may be empty): $ARGUMENTS", "",
+        "This command does not enter orchestrator mode and delegates to no agent: it reads the demands and, only "
+        "with the user's OK, closes some of them.", "",
+        f"1. **List.** Empty request: `{aidw} demand list --active` (already grouped: your turn, waiting outside "
+        f"AiDW, paused, idle). `all`: `{aidw} demand list` (every demand, flat). A number of days "
+        f"(`30`): `{aidw} demand list --active --stale-days 30`. Show the output as a short table per group, the "
+        "headings in the user's language, keeping each id, step, idle days, title (shortened if long), PRs and "
+        f"note; no extra commentary. Nothing open: say so in one line.",
+        f"2. **Next step per group**, one line under the table: *your turn* and *idle* resume with `{go} <id>`; "
+        "*waiting outside AiDW* (code review, QA, UX) waits for the team, and the user moves it when it comes back; "
+        f"*paused* resumes with `{go} <id>`.",
+        "3. **Closing.** Demands that look abandoned — idle ones, and tests or smoke runs (an id or title that says "
+        "so) — go into **one** question: which to close as `dropped` (none is the default). Never close on your "
+        f"own. `drop <id> [<id>…] [reason]` in the request is that OK already. For each chosen id: "
+        f"`{aidw} demand set <id> --status dropped --note \"<reason, or 'dropped from the list'>\"`. `dropped` "
+        f"closes without `{done}`: no knowledge note and no commit of the context; a demand whose learnings "
+        f"matter goes through `{done}` instead (say so when the demand has a `learnings-*.md` in its folder). An "
+        f"active worktree of a dropped demand stays where it is: say `{aidw} worktree remove <id>` and leave it "
+        f"to the user. Reopening is `{aidw} demand set <id> --status active`.",
+        f"Answer the user in {language_label(language)}.", "",
+    ])
+
+
 def diff_skill(plugin: str, language: str = DEFAULT_LANGUAGE) -> str:
     """Claude only: the diff panel follows the session folder, and Codex has no `EnterWorktree`."""
     aidw = aidw_command(True)
@@ -2706,6 +2744,7 @@ def build_plugin(cfg: dict, catalog: dict, rep: Report) -> dict | None:
                 orchestrator_skill(plugin, ctx, b["modes_md"][mode], plugin_dir / "skills" / mode / "SKILL.md",
                                    mode=mode))
     put(f"{base}/skills/exit/SKILL.md", exit_skill(plugin, language=ui_language(cfg)))
+    put(f"{base}/skills/list/SKILL.md", list_skill(plugin, language=ui_language(cfg)))
     put(f"{base}/skills/diff/SKILL.md", diff_skill(plugin, language=ui_language(cfg)))
     for name, r in b["orchestrator_refs"].items():
         put(f"{base}/reference/{name}.md", r["content"])
@@ -3674,7 +3713,12 @@ def worktree_command(cfg: dict, args: argparse.Namespace) -> int:
 # Demand: state to resume (aidw.py demand set / show / list)
 # ---------------------------------------------------------------------------
 
-DEMAND_STATUS = ("active", "paused", "done")
+DEMAND_STATUS = ("active", "paused", "done", "dropped")
+CLOSED_STATUS = ("done", "dropped")  # `dropped`: abandoned or a test, closed without `/aidw:done` (no knowledge, no commit)
+STALE_DAYS = 14  # `demand list --active`: an unfinished demand idle for longer goes to the "idle" group
+# `demand list --active` groups, in display order
+DEMAND_GROUPS = (("yours", "Your turn (in AiDW)"), ("outside", "Waiting outside AiDW (team, QA, UX)"),
+                 ("paused", "Paused"), ("stale", "Idle for more than {days} days"))
 
 
 def demand_set(cfg: dict, demand: str, step: str = "", status: str = "", title: str = "", note: str = "",
@@ -3767,9 +3811,14 @@ def exclude_root_claude_md(folder: Path) -> None:
         write_json_atomic(f, data)
 
 
-def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
+def demand_list(cfg: dict, active_only: bool = False, stale_days: int = STALE_DAYS) -> list[dict]:
+    """The context's demands, most recent first. Each one also carries `prs` (`repo=n`), `idle_days` (since the last
+    `demand set`) and, when unfinished, `group` (DEMAND_GROUPS): outside steps wait on others whatever their age;
+    the rest goes to `stale` once idle for more than `stale_days`."""
     ctx = load_context(cfg, Report(quiet=True))
     base = state_dir(ctx)
+    outside = {*EXTERNAL_STEPS, *(s["step"] for s in context_external_steps(ctx))}
+    now = datetime.now()
     out = []
     for f in sorted(base.glob("*/demand.json")) if base.is_dir() else []:
         try:
@@ -3778,13 +3827,44 @@ def demand_list(cfg: dict, active_only: bool = False) -> list[dict]:
             continue
         if d.get("context", ctx["name"] if ctx else None) != (ctx["name"] if ctx else None):
             continue  # another context sharing the state/ folder
-        if active_only and d.get("status") == "done":
+        if active_only and d.get("status") in CLOSED_STATUS:
             continue
-        out.append({"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
-                    "title": d.get("title", ""), "note": d.get("note", ""),
-                    "updated": d.get("updated"),
-                    "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in d.get("repos", [])]})
+        try:
+            idle = (now - datetime.fromisoformat(d["updated"])).days if d.get("updated") else None
+        except (TypeError, ValueError):
+            idle = None
+        repos = d.get("repos", [])
+        item = {"id": d.get("id", f.parent.name), "status": d.get("status"), "step": d.get("step"),
+                "title": d.get("title", ""), "note": d.get("note", ""),
+                "updated": d.get("updated"), "idle_days": idle,
+                "folder": f.parent.as_posix(), "repos": [r.get("repo") for r in repos],
+                "prs": [f"{Path(r.get('repo') or r.get('path') or '').name}={r['pr']}" for r in repos if r.get("pr")]}
+        if d.get("status") not in CLOSED_STATUS:
+            item["group"] = ("outside" if d.get("step") in outside else
+                             "stale" if idle is not None and idle > stale_days else
+                             "paused" if d.get("status") == "paused" else "yours")
+        out.append(item)
     return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
+
+
+def short(text: str, size: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= size else text[:size - 1].rstrip() + "…"
+
+
+def print_demand_groups(demands: list[dict], stale_days: int) -> None:
+    """`demand list --active` as text: one block per group, with the idle days, the PRs and the note."""
+    for key, label in DEMAND_GROUPS:
+        rows = [d for d in demands if d.get("group") == key]
+        if not rows:
+            continue
+        print(f"{label.format(days=stale_days)} ({len(rows)})")
+        for d in rows:
+            idle = f"{d['idle_days']}d" if d.get("idle_days") is not None else "—"
+            extra = "  ".join(x for x in ("PR " + ", ".join(d["prs"]) if d["prs"] else "",
+                                          f"note: {short(d['note'], 80)}" if d.get("note") else "") if x)
+            print(f"  {d['id']:<18} {d['step'] or '—':<15} {idle:>4}  {d['title']}" + (f"  [{extra}]" if extra else ""))
+        print()
 
 
 # ---------------------------------------------------------------------------
@@ -3880,11 +3960,13 @@ def demand_command(cfg: dict, args: argparse.Namespace) -> int:
         result = {"ok": True, "folder": demand_path(ctx, args.id).parent.as_posix(), **data} if data else \
             {"ok": False, "error": warning or f"demand {args.id!r} has no demand.json in {state_dir(ctx).as_posix()}"}
     else:
-        result = {"ok": True, "demands": demand_list(cfg, args.active)}
+        result = {"ok": True, "demands": demand_list(cfg, args.active, args.stale_days)}
     if args.json or args.dm_action != "list":
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif not result["demands"]:
         print("No" + (" active" if args.active else "") + " demands.")
+    elif args.active:
+        print_demand_groups(result["demands"], args.stale_days)
     else:
         for d in result["demands"]:
             print(f"  {d['id']:<18} {d['status'] or '—':<7} {d['step'] or '—':<15} {d['updated'] or '':<20} {d['title']}")
@@ -4017,6 +4099,9 @@ def build_codex_install(cfg: dict, catalog: dict, rep: Report) -> dict | None:
     leave = CODEX_SKILLS_HOME / f"{CODEX_NS}exit"
     files[leave / "SKILL.md"] = exit_skill(plugin_name(), provider="codex", language=ui_language(cfg)).encode("utf-8")
     files[leave / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
+    listing = CODEX_SKILLS_HOME / f"{CODEX_NS}list"
+    files[listing / "SKILL.md"] = list_skill(plugin_name(), provider="codex", language=ui_language(cfg)).encode("utf-8")
+    files[listing / "agents" / "openai.yaml"] = CODEX_NO_IMPLICIT.encode("utf-8")
     return {"files": files, "ctx": ctx, "resolved": resolved, "servers": b["servers"]}
 
 
@@ -6159,7 +6244,8 @@ def main() -> int:
     d_set = dm.add_parser("set", help="creates or updates demand.json (step, status, title, note)")
     d_set.add_argument("id", help="demand id, e.g. us-1234")
     d_set.add_argument("--step", help="current step: UNDERSTAND or a NEXT ACTION action")
-    d_set.add_argument("--status", choices=("active", "paused", "done"))
+    d_set.add_argument("--status", choices=DEMAND_STATUS,
+                       help="dropped: abandoned or a test, closed without /aidw:done (no knowledge, no commit)")
     d_set.add_argument("--title")
     d_set.add_argument("--note", help="where it stopped / next step")
     d_set.add_argument("--summary", help="what the demand is about, in up to 4 lines (the panel shows it in the "
@@ -6176,7 +6262,11 @@ def main() -> int:
     d_show = dm.add_parser("show", help="shows demand.json")
     d_show.add_argument("id")
     d_list = dm.add_parser("list", help="the context's demands (most recent first)")
-    d_list.add_argument("--active", action="store_true", help="only the unfinished ones")
+    d_list.add_argument("--active", action="store_true",
+                        help="only the unfinished ones (not done or dropped), grouped: your turn, waiting outside "
+                             "AiDW, paused, idle")
+    d_list.add_argument("--stale-days", type=int, default=STALE_DAYS,
+                        help=f"days without a `demand set` after which an unfinished demand is idle (default {STALE_DAYS})")
     for d in dm.choices.values():
         d.add_argument("--json", action="store_true", help="JSON output")
     p_ss = sub.add_parser("session", help="binds this session to orchestrator mode and to the demand: bind, unbind")

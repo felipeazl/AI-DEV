@@ -54,6 +54,7 @@ const en = {
   // next step
   'next.paused': 'Paused. `/aidw:go {id}` resumes where it stopped.',
   'next.done': 'Done. If you have not run it yet, `/aidw:done` writes what it taught into the knowledge base.',
+  'next.dropped': 'Dropped: closed without `/aidw:done`. `aidw.py demand set {id} --status active` reopens it.',
   'next.HUMAN_APPROVAL': 'Answer in the chat: the orchestrator is waiting for your approval or answer.',
   'next.PLAN_APPROVAL': 'Read the plan and say in the chat whether you approve it or what to adjust; nothing goes to code before that.',
   'next.TRIAGE': 'Decide each finding in the chat (keep or discard); the Tests and Review panel shows each one.',
@@ -378,6 +379,7 @@ const ptBR: Record<Key, string> = {
   'decision.pending': 'pendente',
   'next.paused': 'Pausada. `/aidw:go {id}` retoma de onde parou.',
   'next.done': 'Concluída. Se ainda não rodou, `/aidw:done` grava o que ela ensinou na base de conhecimento.',
+  'next.dropped': 'Descartada: fechada sem o `/aidw:done`. `aidw.py demand set {id} --status active` reabre.',
   'next.HUMAN_APPROVAL': 'Responda no chat: o orquestrador espera sua aprovação ou resposta.',
   'next.PLAN_APPROVAL': 'Leia o plano e diga no chat se aprova ou o que ajustar; nada vai para o código antes disso.',
   'next.TRIAGE': 'Decida no chat cada achado (manter ou descartar); o painel Testes e Review mostra cada um.',

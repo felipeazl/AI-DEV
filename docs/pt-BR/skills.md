@@ -30,6 +30,7 @@ Uma skill de fluxo **só vale dentro de uma demanda** conduzida pelo orquestrado
 | `investigate <evidência>` | A causa-raiz de um erro, log ou registro em estado errado (`investigation-<id>.md`) e, se for defeito, o Bug ou a dívida técnica redigidos pelo documenter. Prompt enxuto: explorer e documenter |
 | `card <ideia ou problema>` | Uma User Story ou dívida técnica com base no código (`workitem-<id>.md`), criada só com o seu OK dos campos. Prompt enxuto: explorer e documenter |
 | `kb-review [escopo]` | Revisa a base de conhecimento contra o código (`kb check` e as notas mais antigas) e atualiza as notas com o seu OK. Prompt enxuto: só o explorer |
+| `list` | As demandas abertas, em grupos por de quem é a vez; fecha as abandonadas como `dropped` com o seu OK |
 | `exit` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
 | `diff [repo\|exit]` | Só no Claude. Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demands-and-worktrees.md](demands-and-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `done` | Fecha a tarefa: a partir do `kb collect`, grava no contexto só o que foi verificado e vale para as próximas demandas — a nota da demanda e as notas da base que ela tocou, ligadas sem duplicar; build e ambiente no `context.toml` —, pergunta uma vez quais candidatos entram no checklist do reviewer, valida, reinstala, faz commit e push do repositório do contexto, marca a demanda como `done` e sai do modo orquestrador. Nunca grava segredo nem dado pessoal |

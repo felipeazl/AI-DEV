@@ -302,6 +302,7 @@ const YOUR_STEPS = new Set(['HUMAN_APPROVAL', 'PLAN_APPROVAL', 'TRIAGE', 'USER_R
 /** The next step in one sentence: what you do, or what the AiDW is doing. */
 export function nextStep(s: Snapshot): { you: boolean; text: string } {
   if (s.status === 'paused') return { you: true, text: t('next.paused', { id: s.id }) }
+  if (s.status === 'dropped') return { you: false, text: t('next.dropped', { id: s.id }) }
   if (s.step === 'DONE' || s.status === 'done') return { you: false, text: t('next.done') }
   if (YOUR_STEPS.has(s.step)) return { you: true, text: tk(`next.${s.step}`) }
   if (s.step === 'ANSWER') return { you: true, text: tk(`next.ANSWER.${s.kind}`, t('next.ANSWER')) }

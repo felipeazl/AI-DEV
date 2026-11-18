@@ -177,7 +177,7 @@ Tudo da demanda fica em `<pasta de estado>/<id>/`:
 
 | Arquivo | Conteúdo |
 |---|---|
-| `demand.json` | etapa, status (`active`/`paused`/`done`), resumo, repositórios, Tasks, PRs, laço, histórico das etapas |
+| `demand.json` | etapa, status (`active`/`paused`/`done`/`dropped`), resumo, repositórios, Tasks, PRs, laço, histórico das etapas |
 | `summary-<id>.md` | o card resumido, para nenhum agente reler o card |
 | `exploration-<assunto>.md` | as respostas do explorer, reusadas pelo plano |
 | `plan-<id>.md` (e `plan-<id>-v<N>.md`) | o plano versionado: a fonte da verdade e a tarefa do coder |

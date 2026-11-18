@@ -14,6 +14,7 @@ estado da demanda, worktrees, contextos e base de conhecimento).
 | `/aidw:investigate <erro, log ou registro>` | `$aidw-investigate` | Investiga um problema antes de haver card: o explorador prova a causa-raiz, o `investigation-<id>.md` traz o diagnóstico e as opções e, se for defeito, o documentador redige o Bug ou a dívida técnica (demanda `inv-<slug>`); criar só com o seu OK |
 | `/aidw:card <ideia ou problema>` | `$aidw-card` | Redige uma User Story ou uma dívida técnica com base no código (`workitem-<id>.md`, demanda `card-<slug>`); criada no board só com o seu OK dos campos |
 | `/aidw:kb-review [sistema, nota ou número]` | `$aidw-kb-review` | Revisa a base de conhecimento contra o código: `kb check`, as notas mais antigas (ou as pedidas), cada fato confirmado ou corrigido com `arquivo:linha`; as notas só mudam com o seu OK (demanda `kb-review-<data>`) |
+| `/aidw:list [all\|<dias>\|drop <id>…]` | `$aidw-list` | As demandas abertas do contexto ativo (não fechadas pelo `/aidw:done` nem `dropped`), em grupos: sua vez, esperando fora do AiDW (code review, QA, UX), pausadas, paradas há mais de 14 dias; com as PRs e como retomar. Oferece fechar as abandonadas e os testes como `dropped`, só com o seu OK. Não entra no modo orquestrador |
 | `/aidw:exit` | `$aidw-exit` | Grava a etapa e o próximo passo (`paused`) e devolve o chat ao normal |
 | `/aidw:diff [repo\|exit]` | — | Leva a sessão para o worktree de um repositório da demanda; o painel de diff segue ([demands-and-worktrees.md](demands-and-worktrees.md#ver-o-diff-de-cada-repositório)) |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou (a nota da demanda e as notas da base que ela tocou; build e ambiente no `context.toml`), valida, reinstala, faz commit e push só do repositório do contexto e marca a demanda como `done` |
@@ -26,7 +27,7 @@ estado da demanda, worktrees, contextos e base de conhecimento).
 | `/metrics` | — | Abre o painel Métricas |
 | `/review-tests` | — | Abre o painel Testes e Review (Dúvidas no levantamento); só informativo |
 
-`/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit` e `/aidw:done` só rodam quando você chama. As skills que os agentes usam ficam
+`/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:list`, `/aidw:exit` e `/aidw:done` só rodam quando você chama. As skills que os agentes usam ficam
 fora do menu `/` no Claude (`user-invocable: false`); o Codex mostra toda skill `$aidw-*`.
 
 ## Linha de comando (`python aidw.py …`)
@@ -53,8 +54,8 @@ Sem comando, o `aidw.py` roda o `setup`. Os comandos com `--json` imprimem a sa�
 | `open [--provider claude\|codex] [--demand <id> [--repo <repo>] \| --path <pasta>] [--no-orchestrate] [--print] [--app]` | Abre o CLI no worktree da demanda (ou numa pasta), já chamando o orquestrador. `--print` só mostra o comando; `--app` (Codex) abre o app desktop do Codex |
 | `chat` | Abre o orquestrador no modo projeto (chat na raiz do AiDW) |
 | `project detect [--path <pasta>] [--json]` | Repositório, sistema do contexto e demanda de uma pasta |
-| `demand set <id> [--step S] [--status active\|paused\|done] [--title t] [--note n] [--summary s] [--pr REPO=N] [--task TICKET=ID] [--loop ID\|-] [--extra-step STEP]` | Grava o estado da demanda (abaixo) |
-| `demand show <id>` · `demand list [--active]` | Consulta o estado |
+| `demand set <id> [--step S] [--status active\|paused\|done\|dropped] [--title t] [--note n] [--summary s] [--pr REPO=N] [--task TICKET=ID] [--loop ID\|-] [--extra-step STEP]` | Grava o estado da demanda (abaixo) |
+| `demand show <id>` · `demand list [--active] [--stale-days N]` | Consulta o estado; `--active` agrupa as não concluídas (sua vez, esperando fora do AiDW, pausadas, paradas há mais de N dias, padrão 14) |
 | `session bind [--demand <id>]` · `session unbind` | Põe esta sessão do Claude Code no (ou tira do) modo orquestrador e liga a demanda que ela conduz; `--session` substitui o `$CLAUDE_CODE_SESSION_ID` |
 | `worktree create --repo <pasta> --demand <id> [--slug s] [--base b] [--pr n]` | Worktree da demanda, branch e junctions (idempotente); `--pr` cria o worktree só leitura da PR de outra pessoa |
 | `worktree list` · `inspect <id ou pasta>` · `remove <id ou pasta>` · `cleanup` | Situação, remoção segura (`--repo` quando a demanda tem vários) e limpeza do registro |
@@ -64,7 +65,7 @@ Opções do `demand set`:
 | Opção | Efeito |
 |---|---|
 | `--step` | Etapa atual: `UNDERSTAND`, uma ação do roteamento (`PLAN`, `REVIEW`, `TEST`, `PR`, `DONE`…), `CODE_REVIEW`/`QA_TEST` ou uma etapa de fora declarada pelo contexto |
-| `--status` | `active`, `paused` ou `done` |
+| `--status` | `active`, `paused`, `done` ou `dropped` (abandonada ou teste: fecha sem o `/aidw:done`, então sem nota na base e sem commit; `--status active` reabre) |
 | `--title`, `--note` | Título do card; onde parou / próximo passo (o painel mostra a nota) |
 | `--summary` | Do que se trata a demanda, até 4 linhas (o mapa da demanda no painel) |
 | `--pr REPO=N` | A PR aberta de um dos repositórios da demanda (repetível) |
