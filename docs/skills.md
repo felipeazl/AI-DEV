@@ -30,6 +30,7 @@ A workflow skill is valid **only inside a demand** run by the orchestrator; its 
 | `investigate <evidence>` | The root cause of an error, log or record in a wrong state (`investigation-<id>.md`) and, if it is a defect, the Bug or technical debt drafted by the documenter. Lean prompt: explorer and documenter |
 | `card <idea or problem>` | A User Story or technical debt grounded in the code (`workitem-<id>.md`), created only with your OK of the fields. Lean prompt: explorer and documenter |
 | `kb-review [scope]` | Rechecks the knowledge base against the code (`kb check` and the oldest notes) and updates the notes with your OK. Lean prompt: only the explorer |
+| `list` | The open demands, grouped by whose turn it is; closes abandoned ones as `dropped` with your OK |
 | `exit` | Records the step and the next action (`paused`) and returns the chat to normal |
 | `diff [repo\|exit]` | Claude only. Moves the session to a demand repository's worktree; the diff panel follows ([demands-and-worktrees.md](demands-and-worktrees.md#see-each-repositorys-diff)) |
 | `done` | Closes the task: starting from `kb collect`, writes into the context only what was verified and matters for the next demands — the demand's note and the knowledge notes it touched, linked without duplicating; build and environment in `context.toml` —, asks you once which checklist candidates go into the reviewer's checklist, validates, reinstalls, commits and pushes the context repository, marks the demand `done` and leaves orchestrator mode. Never writes a secret or personal data |

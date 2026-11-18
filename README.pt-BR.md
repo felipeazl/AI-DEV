@@ -127,6 +127,7 @@ código, passos manuais, PR), as ações travadas, as dúvidas reais e o que sai
 |---|---|---|
 | `/aidw:go [demanda]` | `$aidw-go` | Assume o chat como orquestrador e conduz a demanda |
 | `/aidw:survey <card ou texto>` | `$aidw-survey` | Levantamento antes de implementar: valida cada ponto do card no código, mapeia o fluxo, estima esforço, story points e complexidade |
+| `/aidw:list` | `$aidw-list` | Lista as demandas abertas, em grupos por de quem é a vez |
 | `/aidw:exit` | `$aidw-exit` | Grava onde parou e devolve o chat ao modo normal |
 | `/aidw:diff [repo\|exit]` | — | Leva o painel de diff para o próximo repositório da demanda; `exit` volta para a pasta da demanda |
 | `/aidw:done` | `$aidw-done` | Fecha a tarefa: grava no contexto o que ela ensinou e faz commit do contexto |

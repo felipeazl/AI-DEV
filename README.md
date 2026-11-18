@@ -132,6 +132,7 @@ findings, your code review, manual steps, PR), locked actions, real doubts and a
 | `/aidw:investigate <evidence>` | `$aidw-investigate` | Root cause of an error, log or stuck record and, if it is a defect, the Bug or debt drafted |
 | `/aidw:card <idea>` | `$aidw-card` | Drafts a User Story or technical debt grounded in the code; created with your OK |
 | `/aidw:kb-review [scope]` | `$aidw-kb-review` | Rechecks the knowledge base against the code; notes change with your OK |
+| `/aidw:list` | `$aidw-list` | Lists the open demands, grouped by whose turn it is |
 | `/aidw:exit` | `$aidw-exit` | Records where it stopped and returns the chat to normal |
 | `/aidw:diff [repo\|exit]` | — | Moves the diff panel to the demand's next repository; `exit` returns to the demand folder |
 | `/aidw:done` | `$aidw-done` | Closes the task: writes what it learned into the context and commits the context |

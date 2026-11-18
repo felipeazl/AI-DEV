@@ -176,7 +176,7 @@ Everything about a demand lives in `<state dir>/<id>/`:
 
 | File | Content |
 |---|---|
-| `demand.json` | step, status (`active`/`paused`/`done`), summary, repositories, Tasks, PRs, loop, step history |
+| `demand.json` | step, status (`active`/`paused`/`done`/`dropped`), summary, repositories, Tasks, PRs, loop, step history |
 | `summary-<id>.md` | the card, summarized, so no agent rereads the card |
 | `exploration-<topic>.md` | the explorer's answers, reused by the plan |
 | `plan-<id>.md` (and `plan-<id>-v<N>.md`) | the versioned plan: the source of truth and the coder's task |

@@ -13,7 +13,7 @@ and every new feature is written for it.
 | | Claude Code | Codex |
 |---|---|---|
 | What `install` delivers | the `aidw` plugin (agents and variants, skills, commands, hooks), the `aidw-mods` plugin and AiDW's rules in `~/.claude/settings.json` | **only** the `aidw-*` agents (`~/.codex/agents/aidw-<name>.toml`) and the `aidw-*` skills (`~/.agents/skills`) |
-| Calling the orchestrator | `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-fix`, `$aidw-ask`, `$aidw-investigate`, `$aidw-card`, `$aidw-kb-review`, `$aidw-exit`, `$aidw-done` |
+| Calling the orchestrator | `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:list`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-fix`, `$aidw-ask`, `$aidw-investigate`, `$aidw-card`, `$aidw-kb-review`, `$aidw-list`, `$aidw-exit`, `$aidw-done` |
 | User commands | only the commands above plus `diff`, `knowledge` and `context` in the `/` menu; the skills the agents use are hidden (`user-invocable: false`) | every `$aidw-*` skill shows up (Codex does not hide skills); the commands above run only when called (`agents/openai.yaml`) |
 | Agents | `aidw:<name>`, plus one variant per exception (model and effort pinned) | `aidw-<name>`, plus one role per exception (`aidw-<name>-<effort>`), model and effort pinned in each TOML |
 | Models | aliases `opus`, `sonnet`, `haiku` (always the newest version) | exact IDs, the equivalent tier, among those enabled for the account |

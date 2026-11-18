@@ -13,7 +13,7 @@ o AiDW roda inteiro, e é para ele que se escreve toda funcionalidade nova.
 | | Claude Code | Codex |
 |---|---|---|
 | O que o `install` entrega | o plugin `aidw` (agentes e variantes, skills, comandos, hooks), o plugin `aidw-mods` e as regras do AiDW no `~/.claude/settings.json` | **só** os agentes `aidw-*` (`~/.codex/agents/aidw-<nome>.toml`) e as skills `aidw-*` (`~/.agents/skills`) |
-| Chamar o orquestrador | `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-fix`, `$aidw-ask`, `$aidw-investigate`, `$aidw-card`, `$aidw-kb-review`, `$aidw-exit`, `$aidw-done` |
+| Chamar o orquestrador | `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card`, `/aidw:kb-review`, `/aidw:list`, `/aidw:exit`, `/aidw:done` | `$aidw-go`, `$aidw-survey`, `$aidw-fix`, `$aidw-ask`, `$aidw-investigate`, `$aidw-card`, `$aidw-kb-review`, `$aidw-list`, `$aidw-exit`, `$aidw-done` |
 | Comandos do usuário | só os comandos acima, mais `diff`, `knowledge` e `context`, no menu `/`; as skills que os agentes usam ficam ocultas (`user-invocable: false`) | toda skill `$aidw-*` aparece (o Codex não esconde skill); os comandos acima só rodam quando chamados (`agents/openai.yaml`) |
 | Agentes | `aidw:<nome>`, mais uma variante por exceção (modelo e effort fixos) | `aidw-<nome>`, mais um papel por exceção (`aidw-<nome>-<effort>`), com o modelo e o effort fixados em cada TOML |
 | Modelos | apelidos `opus`, `sonnet`, `haiku` (sempre a versão mais nova) | IDs exatos, pelo tier equivalente, entre os liberados para a conta |

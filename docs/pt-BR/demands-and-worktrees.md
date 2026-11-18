@@ -141,6 +141,6 @@ python aidw.py demand show us-1234
 python aidw.py demand set us-1234 --step REVIEW --status paused --note "esperando o QA"
 ```
 
-O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`), o título, o resumo, a nota (onde parou), os
+O `demand.json` guarda a etapa, o status (`active`, `paused`, `done`, `dropped`), o título, o resumo, a nota (onde parou), os
 repositórios com as PRs, as Tasks, o laço de correção, as etapas de fora e o histórico das etapas. É o que permite fechar o chat e voltar depois. Todas as opções do
 `demand set`: [commands.md](commands.md#dia-a-dia).
