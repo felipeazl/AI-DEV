@@ -39,8 +39,9 @@ command = "npx"
 args = ["-y", "chrome-devtools-mcp@latest"]
 allow = false
 agents = ["coder", "qa"]
-use_when = "Debug the application in a real Chrome: console, network requests, performance (LCP, traces), DOM and CSS, JavaScript errors."
+use_when = "Drive and debug the application in a real Chrome: test a screen or flow (as an alternative to Playwright), console, network requests, performance (LCP, traces), DOM and CSS, JavaScript errors."
 triggers = [
+    "E2E / end-to-end test of a screen or flow (with Playwright, before Claude in Chrome)",
     "error in the browser console",
     "network request failing or slow in the front end",
     "slow page / performance problem",

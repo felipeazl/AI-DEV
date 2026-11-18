@@ -81,7 +81,7 @@ revisão de código.
   *Approvals* o que precisa ser criado ou alterado. Você aprova os blocos de escrita de uma vez, enquanto o código é
   escrito.
 - **Depois da sua revisão:** o qa confere o roteiro contra o diff final, roda as escritas aprovadas, os passos
-  automáticos (API e navegador — Claude in Chrome, o seu Chrome logado, ou Playwright) e a regressão da área, e escreve
+  automáticos (API e navegador — Playwright ou Chrome DevTools primeiro; Claude in Chrome, o seu Chrome logado, só quando nenhum dos dois funciona) e a regressão da área, e escreve
   ✅/❌ e a evidência no roteiro.
 - **Passos manuais** (aplicativos desktop, hardware, um julgamento visual): o orquestrador mostra um passo por vez,
   você executa e manda a evidência no chat, e ele marca o resultado. O orquestrador nunca usa o navegador: um passo que

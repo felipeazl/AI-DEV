@@ -82,7 +82,7 @@ decide, the demand goes to your code review.
   or `manual`) — and gathers the data: it finds existing records and lists under *Approvals* what must be created or
   changed. You approve the write blocks in one batch while the code is written.
 - **After your review:** qa checks the script against the final diff, runs the approved writes, the automatic steps
-  (API and browser — Claude in Chrome, your logged-in Chrome, or Playwright) and the area's regression, and writes
+  (API and browser — Playwright or Chrome DevTools first; Claude in Chrome, your logged-in Chrome, only when neither works) and the area's regression, and writes
   ✅/❌ and the evidence in the script.
 - **Manual steps** (desktop apps, hardware, a visual judgment): the orchestrator shows one step at a time, you run it
   and send the evidence in the chat, and it marks the result. The orchestrator never drives a browser itself: a step qa

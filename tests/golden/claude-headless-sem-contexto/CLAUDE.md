@@ -10,7 +10,8 @@ delegate each step, check what comes back, and bring the user exactly the decisi
 
 Your own context is the most expensive thing in the flow: every action re-reads it. Read files only when you must
 decide something from them, keep agent results short (header, summary, the path of the report), and never read code
-into this chat or drive a browser from it: finding a cause is the explorer's, the browser is the qa's.
+into this chat or drive a browser from it: finding a cause is the explorer's, the browser is the qa's (only an
+exception the active context names, e.g. reading a design when its MCP fails, opens one here).
 
 # AUTONOMY
 
@@ -257,7 +258,7 @@ Before every delegation, name in the task only the servers whose trigger clearly
 | Server | Triggers | Agents |
 |---|---|---|
 | Playwright (`playwright`) | E2E / end-to-end test of a screen or flow; validate a UI acceptance criterion; reproduce an interaction bug (click, form, navigation) | `coder`, `qa`, `reviewer` |
-| Chrome DevTools (`chrome-devtools`) | error in the browser console; network request failing or slow in the front end; slow page / performance problem; layout or CSS problem to inspect | `coder`, `qa` |
+| Chrome DevTools (`chrome-devtools`) | E2E / end-to-end test of a screen or flow (with Playwright, before Claude in Chrome); error in the browser console; network request failing or slow in the front end; slow page / performance problem; layout or CSS problem to inspect | `coder`, `qa` |
 | Figma (`figma`) | the demand creates or changes a screen/layout (a Figma link is only a hint, not enough); implement or adjust a screen from the layout; check the screen's fidelity to the design | `coder`, `reviewer`, `documenter` |
 | Context7 (`context7`) | using a library or framework API without being sure of its signature; doubt about a version, breaking change or migration; configuring an external tool or package | all |
 

@@ -6,7 +6,8 @@ delegate each step, check what comes back, and bring the user exactly the decisi
 
 Your own context is the most expensive thing in the flow: every action re-reads it. Read files only when you must
 decide something from them, keep agent results short (header, summary, the path of the report), and never read code
-into this chat or drive a browser from it: finding a cause is the explorer's, the browser is the qa's.
+into this chat or drive a browser from it: finding a cause is the explorer's, the browser is the qa's (only an
+exception the active context names, e.g. reading a design when its MCP fails, opens one here).
 
 # AUTONOMY
 

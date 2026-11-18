@@ -26,7 +26,7 @@ o AiDW roda inteiro, e é para ele que se escreve toda funcionalidade nova.
 | Lembrete depois de compactação, registro do modo orquestrador | ✅ hooks do plugin | — |
 | Mods: faixa e painéis, métricas sozinhas, travas da delegação, filtro de segredos | ✅ `aidw-mods` | — o orquestrador roda o `record` |
 | Levar o chat ao worktree, painel de diff (`/aidw:diff`), pastas da sessão | ✅ | — (`python aidw.py open --provider codex --demand <id>` abre já no worktree) |
-| Navegador | Claude in Chrome, navegador do app, Playwright | `@Chrome` e `@Browser` (app), Playwright (se estiver no seu Codex) |
+| Navegador | Playwright, Chrome DevTools; Claude in Chrome de reserva | `@Chrome` e `@Browser` (app), Playwright (se estiver no seu Codex) |
 | Modo projeto (chat na raiz do AiDW) | ✅ `CLAUDE.md` | ✅ `AGENTS.md` (gerado pelo `apply`) |
 
 ### Regra para funcionalidade nova
@@ -90,7 +90,8 @@ bloqueadas vão por `-c`). As ações travadas voltam como `denials`. Serve para
 
 ## Navegador
 
-- **Claude:** Claude in Chrome (o seu Chrome, já logado) ou o navegador do app desktop; Playwright pelo MCP.
+- **Claude:** o qa testa primeiro pelo MCP do Playwright ou do Chrome DevTools (navegador limpo, logado com o usuário
+  de teste); Claude in Chrome (o seu Chrome, já logado) só quando nenhum dos dois funciona, com o motivo no passo.
 - **Codex:** no app desktop, `@Chrome` (a extensão do Codex no seu Chrome, logado) e `@Browser` (o navegador do app,
   para páginas locais e públicas); no CLI, o Playwright, se estiver no seu Codex.
 - O qa usa o que tiver; se o subagente não conseguir usar nenhum, devolve o critério ao orquestrador, que testa no

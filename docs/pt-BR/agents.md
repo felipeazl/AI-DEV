@@ -19,7 +19,7 @@ pode ser trocado no `aidw.config.toml` (por padrão é igual ao papel). No plugi
 | `planner` | leitura, shell, grava o plano | não |
 | `coder` | leitura, edição, shell | **sim**, só no worktree |
 | `reviewer` | leitura, shell, grava a revisão | não |
-| `qa` | leitura, shell, navegador (Claude in Chrome, Playwright, Chrome DevTools), grava o roteiro e o relatório | não (pede ajustes ao coder) |
+| `qa` | leitura, shell, navegador (Playwright, Chrome DevTools; Claude in Chrome de reserva), grava o roteiro e o relatório | não (pede ajustes ao coder) |
 | `documenter` | leitura, edição, shell, board | só texto (Tasks, PR) |
 
 Cada papel recebe também os servidores MCP que o `config/mcp.toml` libera para ele, menos as ferramentas que o contexto
