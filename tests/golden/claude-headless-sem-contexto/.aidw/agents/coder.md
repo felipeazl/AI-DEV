@@ -134,7 +134,7 @@ Use a server when the task names it. Use one the task does not name only when it
 | Server | Use when |
 |---|---|
 | Playwright (`playwright`) | Exercise the application in the browser end to end: navigate, fill in forms, click, validate flows and UI acceptance criteria, reproduce screen bugs. |
-| Chrome DevTools (`chrome-devtools`) | Debug the application in a real Chrome: console, network requests, performance (LCP, traces), DOM and CSS, JavaScript errors. |
+| Chrome DevTools (`chrome-devtools`) | Drive and debug the application in a real Chrome: test a screen or flow (as an alternative to Playwright), console, network requests, performance (LCP, traces), DOM and CSS, JavaScript errors. |
 | Figma (`figma`) | Read the design in Figma (frames, components, variables, spacing, texts) to implement or check a screen faithful to the layout. |
 | Context7 (`context7`) | Look up current documentation and examples of a library/framework, in the version the project uses, before using an API you are unsure about. |
 

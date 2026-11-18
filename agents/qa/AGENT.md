@@ -33,9 +33,11 @@ Write `test-script-<id>.md` with the skill `plano-testes-qa` when it exists (oth
 
 - `auto-api` — HTTP calls against the running API (the local worktree or the test environment), checking status,
   body and, when needed, a read-only query.
-- `auto-browser` — drive the screen end to end yourself: in Claude, Claude in Chrome (`mcp__claude-in-chrome`, the
-  user's Chrome, already signed in — best for screens behind a login) or the Playwright MCP (a clean browser, best for
-  E2E without a session); in Codex, Chrome (`@Chrome`) or the app's browser (`@Browser`, local pages) when offered,
+- `auto-browser` — drive the screen end to end yourself: in Claude, the Playwright MCP (flows, forms, E2E) or the
+  Chrome DevTools MCP (console, network, DOM and CSS while you test) first — both a clean browser: sign in with the
+  script's test user. Claude in Chrome (`mcp__claude-in-chrome`, the user's Chrome, already signed in) only when
+  neither works (the MCP fails to start, the page cannot be reached from it, the sign-in cannot be done there): write
+  the reason in the step. In Codex, Chrome (`@Chrome`) or the app's browser (`@Browser`, local pages) when offered,
   otherwise Playwright.
 - `auto-suite` — an automated test in the repository proves it (name it).
 - `manual` — no way to run it here (desktop/WPF, hardware, a third party that blocks `localhost`): the user runs it

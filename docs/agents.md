@@ -19,7 +19,7 @@ changed in `aidw.config.toml` (by default it equals the role). In the Claude plu
 | `planner` | read, shell, writes the plan | no |
 | `coder` | read, edit, shell | **yes**, only in the worktree |
 | `reviewer` | read, shell, writes the review | no |
-| `qa` | read, shell, browser (Claude in Chrome, Playwright, Chrome DevTools), writes the script and report | no (asks the coder for adjustments) |
+| `qa` | read, shell, browser (Playwright, Chrome DevTools; Claude in Chrome as a fallback), writes the script and report | no (asks the coder for adjustments) |
 | `documenter` | read, edit, shell, board | only text (Tasks, PR) |
 
 Each role also gets the MCP servers `config/mcp.toml` allows it, minus the tools the context blocks for it
