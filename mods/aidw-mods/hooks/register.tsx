@@ -191,6 +191,12 @@ async function watchDemand($: EngineInterface): Promise<void> {
   if (entries && !(seen?.dir === dir && seen.sig === signature(entries))) await refresh($, dir)
 }
 
+/** The 5 s clock: on, re-reads the demand when a folder file changed; off, re-reads the registry (a `session bind` mid-turn). */
+async function watchSession($: EngineInterface): Promise<void> {
+  if (await read($, active)) await watchDemand($)
+  else await checkActive($)
+}
+
 /** A Write or Edit (yours or an agent's) on a demand folder file: the strip and the panels show it right away. */
 async function afterWrite($: EngineInterface, path: string | undefined): Promise<void> {
   if (!path || !(await read($, active))) return
@@ -544,10 +550,12 @@ export const register: Register = (on, options) => {
     ]) {
       await $.command.register(command).catch(() => undefined)
     }
-    // every 5 s: the running agents' time moves, and the demand is re-read if a folder file changed
+    // every 5 s: the running agents' time moves, and the demand is re-read if a folder file changed; while the session
+    // is off, the registry too: a `session bind` in the middle of a turn (a session started by another one) turns the
+    // strip on without waiting for your next message
     $.clock.every(5_000, () => {
       void tickRunning($)
-      void watchDemand($)
+      void watchSession($)
     })
     return next(e)
   })

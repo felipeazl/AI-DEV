@@ -311,6 +311,17 @@ test('o registro da sessão muda de demanda: o mod segue a pasta nova', async ($
   await band.unmount()
 })
 
+test('session bind no meio do turno (sessão filha): o relógio liga a faixa sem esperar mensagem', async ($, on) => {
+  const f = fake(on, { orchestrating: false, demand: 'us-1', cwd: 'C:/AiDW' })
+  await $.session.start({ ...START('us-1'), cwd: 'C:/AiDW' })
+  // the skill runs `aidw.py session bind --demand us-1` during the turn; no new message arrives
+  f.files['C:/AiDW/state/sessions.json'] = JSON.stringify({ [SESSION]: { plugin: 'aidw', folder: `${STATE}/us-1` } })
+  await f.clock.advance(5_000)
+  const band = await $.ui.mount({ plugin: 'aidw-mods', surface: 'terminal', component: 'AbovePrompt', props: PROPS_BAND })
+  await has(band, /^us-1$/)
+  await band.unmount()
+})
+
 test('travas: variante fora da tabela e model sem pedido são recusados', async ($, on) => {
   const f = fake(on, { orchestrating: true, demand: 'us-1' })
   await $.session.start(START('us-1'))
