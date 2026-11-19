@@ -14,7 +14,9 @@ English; [configuration.md](configuration.md#language)).
 The AiDW mods are on **only in orchestrator mode**:
 
 - **On:** `/aidw:go`, `/aidw:survey`, `/aidw:fix`, `/aidw:ask`, `/aidw:investigate`, `/aidw:card` or `/aidw:kb-review`
-  register the session in `state/sessions.json`, and `aidw-mods` checks that registry on every message. The skill
+  register the session in `state/sessions.json`, and `aidw-mods` checks that registry on every message and, while the
+  session is off, every 5 s (so a `session bind` in the middle of a turn, as in a session started by another one, turns
+  the strip on without a new message). The skill
   writes it with `aidw.py session bind` (reads `CLAUDE_CODE_SESSION_ID`), and so does the guard hook where the client
   sends it the slash command (the desktop app does, the terminal does not).
 - **Which demand:** the registry keeps the context, the id and the demand folder (`session bind --demand <id>`, and
